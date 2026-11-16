@@ -9,7 +9,8 @@
     "build:web": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && cross-env EXPO_NO_TELEMETRY=1 EXPO_NO_WEB_SETUP=0 npx expo export --platform web",
     "lint": "npx expo lint",
     "typecheck": "tsc --noEmit",
-    "prebuild:android": "npx expo prebuild --platform android"
+    "prebuild:android": "npx expo prebuild --platform android",
+    "setup:sdk": "node setup-android-sdk.js"
   },
   "dependencies": {
     "@expo-google-fonts/cairo": "^0.4.2",
