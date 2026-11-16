@@ -1,0 +1,56 @@
+export const palette = {
+  light: {
+    bg: '#F5F6FA',
+    surface: '#FFFFFF',
+    surfaceAlt: '#F0F1F7',
+    primary: '#0E7C6B',
+    primaryLight: '#1B9B86',
+    primaryDark: '#0A5D50',
+    accent: '#E8943B',
+    accentLight: '#F5B568',
+    danger: '#DC2626',
+    dangerLight: '#FCA5A5',
+    success: '#16A34A',
+    successLight: '#86EFAC',
+    warning: '#F59E0B',
+    warningLight: '#FCD34D',
+    info: '#2563EB',
+    text: '#1A1B2E',
+    textSecondary: '#6B6F8A',
+    textMuted: '#A0A4B8',
+    border: '#E2E4ED',
+    shadow: 'rgba(10, 30, 60, 0.08)',
+    tabActive: '#0E7C6B',
+    tabInactive: '#A0A4B8',
+  },
+  dark: {
+    bg: '#0F1117',
+    surface: '#1A1D2A',
+    surfaceAlt: '#232736',
+    primary: '#1B9B86',
+    primaryLight: '#2BB89E',
+    primaryDark: '#0E7C6B',
+    accent: '#F5B568',
+    accentLight: '#FAC886',
+    danger: '#F87171',
+    dangerLight: '#7F1D1D',
+    success: '#4ADE80',
+    successLight: '#166534',
+    warning: '#FBBF24',
+    warningLight: '#78350F',
+    info: '#60A5FA',
+    text: '#F2F3F8',
+    textSecondary: '#A0A4B8',
+    textMuted: '#6B6F8A',
+    border: '#2E3242',
+    shadow: 'rgba(0, 0, 0, 0.35)',
+    tabActive: '#2BB89E',
+    tabInactive: '#6B6F8A',
+  },
+};
+
+export type Palette = typeof palette.light;
+
+export function getPalette(theme: 'light' | 'dark'): Palette {
+  return palette[theme];
+}

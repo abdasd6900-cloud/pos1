@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "سحاب",
+    "slug": "sahab-pos",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "sahabpos",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sahab.pos"
+    },
+    "android": {
+      "package": "com.sahab.pos",
+      "versionCode": 10,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0E7C6B"
+      },
+      "permissions": [
+        "SEND_SMS",
+        "RECEIVE_SMS",
+        "READ_SMS",
+        "WRITE_SMS",
+        "RECEIVE_MMS",
+        "RECEIVE_WAP_PUSH",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_DATA_SYNC",
+        "RECEIVE_BOOT_COMPLETED",
+        "READ_PHONE_STATE",
+        "ANSWER_PHONE_CALLS",
+        "ACCESS_NOTIFICATION_POLICY",
+        "READ_CONTACTS",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png",
+      "name": "سحاب",
+      "shortName": "سحاب",
+      "display": "standalone",
+      "backgroundColor": "#0E7C6B",
+      "themeColor": "#0E7C6B",
+      "startUrl": "/",
+      "orientation": "portrait",
+      "barStyle": "default"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-web-browser",
+      "expo-splash-screen",
+      "expo-status-bar",
+      "expo-dev-client",
+      "./plugins/with-sms-native/withSmsNative.js",
+      "expo-sharing"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {}
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "projectId": "72780956",
+  "functions": {
+    "ai-ocr": {
+      "hasChanged": false,
+      "hash": "c8c6761a9ba236ab6b329cef93f2ac493a82047a14afdaf27d55ef540a294420"
+    },
+    "customer-portal": {
+      "hasChanged": false,
+      "hash": "b66a2ace16c1b83c61dd5526e88db16ba052b81ce90656fdba7e845fca4ec7c0"
+    }
+  }
+}

@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This file is a REFERENCE manifest. The actual permissions, services,
+  and receivers are injected at build time by the Expo Config Plugin
+  (plugins/with-sms-native/withSmsNative.ts) which merges them into
+  the generated android/app/src/main/AndroidManifest.xml.
+
+  Class names below use the FULLY-QUALIFIED path (com.sahabpos.sms.*)
+  to match the package declared in the Java source files, which must
+  also match the "android.package" field in app.json (com.sahab.pos).
+  The Java package (com.sahabpos.sms) is a sub-package and does NOT
+  need to equal the app package — it just needs to be a valid Java
+  package path that Android can resolve at runtime.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- SMS permissions — send, receive, read, write, and MMS -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.WRITE_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_MMS" />
+    <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
+
+    <!-- Foreground service permission (Android 9+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Boot permission — to restart the gateway after device reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Internet permission — to poll the Supabase outbox -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Call handling permissions -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+
+    <!-- Do Not Disturb / Interruption access -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
+    <!-- Read contacts — to resolve sender name -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Screenshot detection — read external storage for screenshot images -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!-- WhatsApp notification listener — captures incoming WhatsApp text messages -->
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
+
+    <!-- Post notifications (Android 13+) for incoming SMS alerts -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:largeHeap="true"
+        android:hardwareAccelerated="true"
+        android:allowBackup="false">
+
+        <!-- SMS Gateway foreground service -->
+        <service
+            android:name="com.sahabpos.sms.SmsGatewayService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
+
+        <!-- Screenshot observer foreground service -->
+        <service
+            android:name="com.sahabpos.sms.ScreenshotObserverService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
+
+        <!-- Boot receiver — restarts the gateway after device reboot -->
+        <receiver
+            android:name="com.sahabpos.sms.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- SMS receiver — intercepts incoming SMS for monitoring and auto-reply -->
+        <!-- Also handles SMS_DELIVER and WAP_PUSH_DELIVER for default SMS app capability -->
+        <receiver
+            android:name="com.sahabpos.sms.SmsReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+                <action android:name="android.provider.Telephony.MMS_RECEIVED" />
+            </intent-filter>
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_DELIVER" />
+            </intent-filter>
+        </receiver>
+
+        <!-- WAP Push receiver — handles WAP_PUSH_DELIVER for MMS (required for default SMS app) -->
+        <receiver
+            android:name="com.sahabpos.sms.WapPushReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_WAP_PUSH">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
+                <data android:mimeType="application/vnd.wap.mms-message" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Headless SMS service — handles RESPOND_VIA_MESSAGE (quick reply from call screen) -->
+        <service
+            android:name="com.sahabpos.sms.HeadlessSmsService"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </service>
+
+        <!-- Call receiver — rejects calls and sends auto-reply when store is closed -->
+        <receiver
+            android:name="com.sahabpos.sms.CallReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Call screening service — intercepts calls before ringing (API 29+) -->
+        <service
+            android:name="com.sahabpos.sms.CallScreeningService"
+            android:enabled="true"
+            android:exported="false"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
+        <!-- WhatsApp notification listener — captures incoming WhatsApp text messages -->
+        <service
+            android:name="com.sahabpos.sms.WhatsAppNotificationListener"
+            android:enabled="true"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <!-- SMS reply receiver — handles inline reply from notification RemoteInput -->
+        <receiver
+            android:name="com.sahabpos.sms.SmsReplyReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- SMS delivery receiver — confirms message delivery to recipient -->
+        <receiver
+            android:name="com.sahabpos.sms.SmsDeliveryReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.sahabpos.sms.SMS_DELIVERED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>
