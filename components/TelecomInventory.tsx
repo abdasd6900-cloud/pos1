@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, TouchableOpacity, FlatList, TextInput, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, FlatList, TextInput, ScrollView, Platform, useWindowDimensions } from 'react-native';
 import { useState, useMemo, useEffect } from 'react';
 import {
   Signal as SimIcon, Zap, Plus, Search, Trash2, Pencil,
@@ -32,6 +32,8 @@ export function TelecomInventory() {
     settings,
   } = useApp();
   const { colors } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && windowWidth >= 900;
   const [tab, setTab] = useState<Tab>('agents');
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -153,10 +155,15 @@ export function TelecomInventory() {
             {agentBundlesList.length === 0 ? (
               <Text style={[styles.noBundlesText, { color: colors.textMuted }]}>لا توجد حزم لهذا الوكيل بعد</Text>
             ) : (
-              agentBundlesList.map((ab) => {
-                const company = telecomCompanies.find((c) => c.id === ab.companyId);
-                return (
-                  <View key={ab.id} style={[styles.agentBundleCard, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+              <ScrollView
+                horizontal={isDesktop}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={isDesktop ? styles.desktopBundleRow : undefined}
+              >
+                {agentBundlesList.map((ab) => {
+                  const company = telecomCompanies.find((c) => c.id === ab.companyId);
+                  return (
+                  <View key={ab.id} style={[styles.agentBundleCard, isDesktop && styles.desktopAgentBundleCard, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
                     <View style={styles.agentBundleHeader}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
                         {company && <View style={[styles.companyDot, { backgroundColor: company.color }]} />}
@@ -224,8 +231,9 @@ export function TelecomInventory() {
                       </TouchableOpacity>
                     </View>
                   </View>
-                );
-              })
+                  );
+                })}
+              </ScrollView>
             )}
           </View>
         )}
@@ -1570,6 +1578,8 @@ const styles = StyleSheet.create({
   addBundleText: { fontSize: 12, fontWeight: '600', fontFamily: 'Cairo-SemiBold' },
   noBundlesText: { fontSize: 13, fontFamily: 'Cairo-Regular', paddingVertical: 6 },
   agentBundleCard: { borderRadius: 12, borderWidth: 1, padding: 10, gap: 8 },
+  desktopBundleRow: { flexDirection: 'row', gap: 10, paddingVertical: 2 },
+  desktopAgentBundleCard: { width: 260, minHeight: 158 },
   agentBundleHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   agentBundleName: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold' },
   priceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
