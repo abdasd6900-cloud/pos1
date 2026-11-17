@@ -1,8 +1,8 @@
 diff --git a/node_modules/expo-constants/scripts/get-app-config-android.gradle b/node_modules/expo-constants/scripts/get-app-config-android.gradle
-index 7911284..aa953c6 100644
+index 7911284..cd3e086 100644
 --- a/node_modules/expo-constants/scripts/get-app-config-android.gradle
 +++ b/node_modules/expo-constants/scripts/get-app-config-android.gradle
-@@ -8,7 +8,7 @@ def expoConstantsDir = project.providers.exec {
+@@ -8,17 +8,37 @@ def expoConstantsDir = project.providers.exec {
    commandLine("node", "-e", "console.log(require('path').dirname(require.resolve('expo-constants/package.json')));")
  }.standardOutput.asText.get().trim()
  
@@ -10,40 +10,64 @@ index 7911284..aa953c6 100644
 +def config = project.hasProperty("react") ? project.react : []
  def nodeExecutableAndArgs = config.nodeExecutableAndArgs ?: ["node"]
  
- afterEvaluate {
-@@ -16,42 +16,6 @@ afterEvaluate {
-   def customProjectRoot = expoGradleExtension?.projectRoot
-   def projectRoot = file("${customProjectRoot ?: rootProject.projectDir}")
+-afterEvaluate {
+-  def expoGradleExtension = gradle.extensions.findByName("expoGradle")
+-  def customProjectRoot = expoGradleExtension?.projectRoot
+-  def projectRoot = file("${customProjectRoot ?: rootProject.projectDir}")
++def expoGradleExtension = gradle.extensions.findByName("expoGradle")
++def customProjectRoot = expoGradleExtension?.projectRoot
++def projectRoot = file("${customProjectRoot ?: rootProject.projectDir}")
++def fingerprintAssetsDir = file("$buildDir/generated/assets/expo-constants-fingerprint")
  
 -  project.android.libraryVariants.all { variant ->
--    def assetsDir = file("$buildDir/generated/assets/expo-constants/${variant.name}")
++def createFingerprintTask = tasks.register('createExpoFingerprint', Exec) {
++  description = 'expo-constants: Embed the project fingerprint (app.fingerprint) in debug builds.'
++
++  doFirst {
++    fingerprintAssetsDir.deleteDir()
++    fingerprintAssetsDir.mkdirs()
++  }
++
++  outputs.upToDateWhen { false }
++  outputs.dir fingerprintAssetsDir
++  workingDir projectRoot
++
++  if (Os.isFamily(Os.FAMILY_WINDOWS)) {
++    commandLine("cmd", "/c", *nodeExecutableAndArgs, "$expoConstantsDir/scripts/createFingerprintFile.js", projectRoot, fingerprintAssetsDir, "android")
++  } else {
++    commandLine(*nodeExecutableAndArgs, "$expoConstantsDir/scripts/createFingerprintFile.js", projectRoot, fingerprintAssetsDir, "android")
++  }
++}
++
++androidComponents {
++  onVariants(selector().all()) { variant ->
+     def assetsDir = file("$buildDir/generated/assets/expo-constants/${variant.name}")
 -    def configMode = variant.buildType.name == "debug" || variant.buildType.name == "debugOptimized" ? "development" : "production"
--
--    def createConfigTask = tasks.register("create${variant.name.capitalize()}ExpoConfig", Exec) {
--      description = 'expo-constants: Create app.config.'
--
--      doFirst {
--        assetsDir.deleteDir()
--        assetsDir.mkdirs()
--      }
--
++    def configMode = variant.buildType == "debug" || variant.buildType == "debugOptimized" ? "development" : "production"
+ 
+     def createConfigTask = tasks.register("create${variant.name.capitalize()}ExpoConfig", Exec) {
+       description = 'expo-constants: Create app.config.'
+@@ -28,16 +48,10 @@ afterEvaluate {
+         assetsDir.mkdirs()
+       }
+ 
 -      // Mark the task as always out-of-date so it always runs - ie. regenerate app.config on every build
--      outputs.upToDateWhen { false }
+       outputs.upToDateWhen { false }
 -
 -      // Set up outputs so gradle can cache the result
--      outputs.dir assetsDir
+       outputs.dir assetsDir
 -
 -      // Switch to project root and generate the app config
--      workingDir projectRoot
--
+       workingDir projectRoot
+ 
 -      // The `false` argument turns the fingerprint embed off here: the task below owns it.
--      if (Os.isFamily(Os.FAMILY_WINDOWS)) {
--        commandLine("cmd", "/c", *nodeExecutableAndArgs, "$expoConstantsDir/scripts/getAppConfig.js", projectRoot, assetsDir, "android", "false", configMode)
--      } else {
--        commandLine(*nodeExecutableAndArgs, "$expoConstantsDir/scripts/getAppConfig.js", projectRoot, assetsDir, "android", "false", configMode)
--      }
--    }
--
+       if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+         commandLine("cmd", "/c", *nodeExecutableAndArgs, "$expoConstantsDir/scripts/getAppConfig.js", projectRoot, assetsDir, "android", "false", configMode)
+       } else {
+@@ -45,41 +59,16 @@ afterEvaluate {
+       }
+     }
+ 
 -    // Generate app.config at preBuild
 -    variant.preBuildProvider.configure { it.dependsOn(createConfigTask) }
 -
@@ -51,59 +75,40 @@ index 7911284..aa953c6 100644
 -    project.android.sourceSets.maybeCreate(variant.name).assets.srcDirs += assetsDir
 -  }
 -
-   def fingerprintAssetsDir = file("$buildDir/generated/assets/expo-constants-fingerprint")
- 
-   def createFingerprintTask = tasks.register('createExpoFingerprint', Exec) {
-@@ -62,7 +26,6 @@ afterEvaluate {
-       fingerprintAssetsDir.mkdirs()
-     }
- 
+-  def fingerprintAssetsDir = file("$buildDir/generated/assets/expo-constants-fingerprint")
+-
+-  def createFingerprintTask = tasks.register('createExpoFingerprint', Exec) {
+-    description = 'expo-constants: Embed the project fingerprint (app.fingerprint) in debug builds.'
+-
+-    doFirst {
+-      fingerprintAssetsDir.deleteDir()
+-      fingerprintAssetsDir.mkdirs()
+-    }
+-
 -    // The fingerprint hashes sources across the whole project, so always regenerate it
-     outputs.upToDateWhen { false }
-     outputs.dir fingerprintAssetsDir
- 
-@@ -75,11 +38,41 @@ afterEvaluate {
+-    outputs.upToDateWhen { false }
+-    outputs.dir fingerprintAssetsDir
+-
+-    workingDir projectRoot
+-
+-    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+-      commandLine("cmd", "/c", *nodeExecutableAndArgs, "$expoConstantsDir/scripts/createFingerprintFile.js", projectRoot, fingerprintAssetsDir, "android")
+-    } else {
+-      commandLine(*nodeExecutableAndArgs, "$expoConstantsDir/scripts/createFingerprintFile.js", projectRoot, fingerprintAssetsDir, "android")
++    tasks.named("${variant.name}PreBuild") {
++      dependsOn(createConfigTask)
      }
-   }
+-  }
++    android.sourceSets.maybeCreate(variant.name).assets.srcDirs += assetsDir
  
 -  project.android.libraryVariants.all { variant ->
 -    if (!variant.buildType.debuggable) {
 -      return
-+  androidComponents {
-+    onVariants(selector().all()) { variant ->
-+      def assetsDir = file("$buildDir/generated/assets/expo-constants/${variant.name}")
-+      def configMode = variant.buildType == "debug" || variant.buildType == "debugOptimized" ? "development" : "production"
-+
-+      def createConfigTask = tasks.register("create${variant.name.capitalize()}ExpoConfig", Exec) {
-+        description = 'expo-constants: Create app.config.'
-+
-+        doFirst {
-+          assetsDir.deleteDir()
-+          assetsDir.mkdirs()
-+        }
-+
-+        outputs.upToDateWhen { false }
-+        outputs.dir assetsDir
-+        workingDir projectRoot
-+
-+        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
-+          commandLine("cmd", "/c", *nodeExecutableAndArgs, "$expoConstantsDir/scripts/getAppConfig.js", projectRoot, assetsDir, "android", "false", configMode)
-+        } else {
-+          commandLine(*nodeExecutableAndArgs, "$expoConstantsDir/scripts/getAppConfig.js", projectRoot, assetsDir, "android", "false", configMode)
-+        }
-+      }
-+
++    if (variant.buildType == "debug" || variant.buildType == "debugOptimized") {
 +      tasks.named("${variant.name}PreBuild") {
-+        dependsOn(createConfigTask)
++        dependsOn(createFingerprintTask)
 +      }
-+      android.sourceSets.maybeCreate(variant.name).assets.srcDirs += assetsDir
-+
-+      if (variant.buildType == "debug" || variant.buildType == "debugOptimized") {
-+        tasks.named("${variant.name}PreBuild") {
-+          dependsOn(createFingerprintTask)
-+        }
-+        android.sourceSets.maybeCreate(variant.buildType).assets.srcDirs += fingerprintAssetsDir
-+      }
++      android.sourceSets.maybeCreate(variant.buildType).assets.srcDirs += fingerprintAssetsDir
      }
 -    variant.preBuildProvider.configure { it.dependsOn(createFingerprintTask) }
 -    project.android.sourceSets.maybeCreate(variant.buildType.name).assets.srcDirs += fingerprintAssetsDir
