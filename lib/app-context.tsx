@@ -12,7 +12,7 @@ import type {
   AuditEntry, AuditAction, StockPrediction, Supplier, Expense,
   Shift, DraftBill, Currency, Staff, Promotion, Stocktake, Attachment, SmartAlert,
   LicenseInfo, ActivationResult, LicensePlan,
-  TelecomCompany, SimCard, Bundle, SubAgent, DebtReminderSchedule, TelecomSale, SimType,
+  TelecomCompany, SimCard, Bundle, SubAgent, DebtReminderSchedule, TelecomSale, SimType, OperationType, PaymentStatus,
   AgentBundle, SimLocation, SimLocationStock, TelecomSupplier, Shipment, RechargeRequest, RechargeRequestStatus,
   BusinessHoursConfig, KeywordReply, PendingOperation, PendingOperationStatus, FreezeRequest, DebtEscalationState, EscalationPhase, SupportTicket, SupportTicketStatus, UnrecognizedMessage, UnrecognizedMessageStatus,
   TransferNotification, TransferReport, NameMapping, TransferNotificationStatus, TransferReportStatus,
