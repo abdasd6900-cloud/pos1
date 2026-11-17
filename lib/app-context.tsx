@@ -933,7 +933,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Poll sms_inbox_events for real-time SMS delivery from Android phone
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !session) return;
     const pollSmsEvents = async () => {
       try {
         // Atomically claim unprocessed rows to prevent race conditions across devices/tabs.
@@ -1017,7 +1017,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       if (smsEventPollRef.current) clearInterval(smsEventPollRef.current);
     };
-  }, [loaded]);
+  }, [loaded, session]);
 
   const syncPush = useCallback(<T,>(collection: SyncCollectionName, data: T) => {
     if (syncSkipPushRef.current.has(collection)) {
@@ -1081,7 +1081,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Poll sms_outbox for status updates on outbound messages with pending sendStatus
   // Uses a ref + stable interval so it doesn't tear down on every smsMessages change
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !session) return;
     let cancelled = false;
     const poll = async () => {
       const pendingEventIds = smsMessagesRef.current
@@ -1106,7 +1106,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     const interval = setInterval(() => void poll(), 15000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [loaded]);
+  }, [loaded, session]);
 
   useEffect(() => {
     if (!loaded || customerFiles.length === 0 || customerFilesBuildingRef.current) return;
