@@ -35,7 +35,7 @@ export default function TelecomPOSScreen() {
     addTelecomSale, updateTelecomSale, deleteTelecomSale, checkAutoRenewals,
     addCustomer, updateCustomer, recordPayment,
     addDebtReminder, activeShift, currentStaff, readOnlyMode,
-    agentBundles, logOutboundSms, updateSubAgent,
+    agentBundles, logOutboundSms, updateSubAgent, phoneNumbers,
   } = useApp();
   const { colors } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -129,6 +129,15 @@ export default function TelecomPOSScreen() {
     const interval = setInterval(() => checkAutoRenewals(), 3600000);
     return () => clearInterval(interval);
   }, [checkAutoRenewals]);
+
+  // Auto-fill serial number from phone numbers registry when simNumber matches
+  useEffect(() => {
+    if (!simNumber) return;
+    const match = phoneNumbers.find((p) => p.phoneNumber === simNumber);
+    if (match?.simSerialNumber && !serialNumber) {
+      setSerialNumber(match.simSerialNumber);
+    }
+  }, [simNumber, phoneNumbers, serialNumber]);
 
   // Screenshot paste listener — Ctrl+V anywhere on web triggers OCR and opens the sale form
   useEffect(() => {

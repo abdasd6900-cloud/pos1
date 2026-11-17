@@ -1,3 +1,17 @@
+export interface PhoneNumberEntry {
+  id: string;
+  phoneNumber: string;
+  simSerialNumber: string;
+  companyName: string;
+  subAgentName: string;
+  customerName: string;
+  customerPhone: string;
+  lastTransactionAt: number | null;
+  lastTransactionType: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type BusinessMode = 'retail' | 'telecom';
 
 export type SimType = 'plastic' | 'electronic';

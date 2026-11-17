@@ -17,6 +17,7 @@ import type {
   BusinessHoursConfig, KeywordReply, PendingOperation, PendingOperationStatus, FreezeRequest, DebtEscalationState, EscalationPhase, SupportTicket, SupportTicketStatus, UnrecognizedMessage, UnrecognizedMessageStatus,
   TransferNotification, TransferReport, NameMapping, TransferNotificationStatus, TransferReportStatus,
   SmsMessage, SmsMessageCategory, SmsMessageStatus, QuickReplyTemplate, ScheduledSms,
+  PhoneNumberEntry,
 } from '@/types';
 import { storage, type BackupData, DEFAULT_SETTINGS } from './storage';
 import { Platform } from 'react-native';
@@ -155,6 +156,11 @@ interface AppData {
   addScheduledMessage: (s: Omit<ScheduledSms, 'id' | 'createdAt'>) => ScheduledSms;
   deleteScheduledMessage: (id: string) => void;
   checkScheduledMessages: () => void;
+  phoneNumbers: PhoneNumberEntry[];
+  addPhoneNumber: (e: Omit<PhoneNumberEntry, 'id' | 'createdAt' | 'updatedAt'>) => PhoneNumberEntry;
+  updatePhoneNumber: (id: string, updates: Partial<PhoneNumberEntry>) => void;
+  deletePhoneNumber: (id: string) => void;
+  linkPhoneNumbersToTransactions: () => number;
   addRechargeRequest: (r: Omit<RechargeRequest, 'id' | 'createdAt'>) => RechargeRequest;
   updateRechargeRequest: (id: string, updates: Partial<RechargeRequest>) => void;
   deleteRechargeRequest: (id: string) => void;
@@ -371,6 +377,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [quickReplyTemplates, setQuickReplyTemplates] = useState<QuickReplyTemplate[]>([]);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledSms[]>([]);
   const [customerFiles, setCustomerFiles] = useState<CustomerFile[]>([]);
+  const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumberEntry[]>([]);
   const currentStaff = staff.find((s) => s.id === currentStaffId) ?? null;
   const syncSkipPushRef = useRef<Set<string>>(new Set());
   const pendingSyncPushRef = useRef<Map<SyncCollectionName, Record<string, unknown> | unknown[]>>(new Map());
@@ -390,7 +397,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (Platform.OS === 'web' && typeof window === 'undefined') { setLoaded(true); return; }
     (async () => {
       const s = await storage.getSettings();
-      const [p, c, t, a, sup, exp, sh, dr, cur, stf, prom, stkt, att, csi, lic, tc, sims, bdls, sags, drms, tsales, abundles, slocs, slocstock, tsups, shpmnts, rreqs, bhrs, kwreplies, pendops, freezereqs, suptickets, unrecmsgs, tnotifs, treports, nmappings, smstmp, pinned, blocked, archived, quickReplies, scheduled] = await Promise.all([
+      const [p, c, t, a, sup, exp, sh, dr, cur, stf, prom, stkt, att, csi, lic, tc, sims, bdls, sags, drms, tsales, abundles, slocs, slocstock, tsups, shpmnts, rreqs, bhrs, kwreplies, pendops, freezereqs, suptickets, unrecmsgs, tnotifs, treports, nmappings, smstmp, pinned, blocked, archived, quickReplies, scheduled, phoneNums] = await Promise.all([
         storage.getProducts(),
         storage.getCustomers(),
         storage.getTransactions(),
@@ -433,6 +440,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         storage.getArchivedConversations(),
         storage.getQuickReplyTemplates(),
         storage.getScheduledMessages(),
+        storage.getPhoneNumbers(),
       ]);
       setCustomers(c);
       setTransactions(t);
@@ -478,6 +486,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setArchivedConversations(archived);
       setQuickReplyTemplates(quickReplies);
       setScheduledMessages(scheduled);
+      setPhoneNumbers(phoneNums);
 
       (async () => {
         type RemoteData = Partial<Record<SyncCollectionName, Record<string, unknown> | unknown[]>>;
@@ -528,6 +537,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           mergeRemote(setNameMappings, remote.nameMappings as NameMapping[], storage.saveNameMappings);
           mergeRemote(setCustomerFiles, remote.customerFiles as CustomerFile[], storage.saveCustomerFiles);
           mergeRemote(setSmsMessages, remote.smsMessages as SmsMessage[], storage.saveSmsMessages);
+          mergeRemote(setPhoneNumbers, remote.phoneNumbers as PhoneNumberEntry[], storage.savePhoneNumbers);
         }
         const allSyncCollections: SyncCollectionName[] = [
           'products', 'customers', 'transactions', 'settings', 'auditLog',
@@ -538,7 +548,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           'simLocationStock', 'telecomSuppliers', 'shipments', 'rechargeRequests',
           'businessHours', 'keywordReplies', 'pendingOperations', 'freezeRequests',
           'supportTickets', 'unrecognizedMessages', 'transferNotifications',
-          'transferReports', 'nameMappings', 'customerFiles', 'smsMessages',
+          'transferReports', 'nameMappings', 'customerFiles', 'smsMessages', 'phoneNumbers',
         ];
         for (const c of allSyncCollections) {
           syncSkipPushRef.current.add(c);
@@ -589,6 +599,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             case 'nameMappings': mergeRemote(setNameMappings, data as NameMapping[], storage.saveNameMappings); break;
             case 'customerFiles': mergeRemote(setCustomerFiles, data as CustomerFile[], storage.saveCustomerFiles); break;
             case 'smsMessages': mergeRemote(setSmsMessages, data as SmsMessage[], storage.saveSmsMessages); break;
+            case 'phoneNumbers': mergeRemote(setPhoneNumbers, data as PhoneNumberEntry[], storage.savePhoneNumbers); break;
             case 'customerReplies': {
               const reply = data as { senderPhone?: string; senderName?: string; message?: string; timestamp?: number; channel?: string };
               if (reply && reply.senderPhone && reply.message) {
@@ -1058,6 +1069,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (loaded) syncPush('nameMappings', nameMappings); }, [nameMappings, loaded, syncPush]);
   useEffect(() => { if (loaded && customerFiles.length > 0) syncPush('customerFiles', customerFiles); }, [customerFiles, loaded, syncPush]);
   useEffect(() => { if (loaded) syncPush('smsMessages', smsMessages); }, [smsMessages, loaded, syncPush]);
+  useEffect(() => { if (loaded) syncPush('phoneNumbers', phoneNumbers); }, [phoneNumbers, loaded, syncPush]);
 
   // Keep smsMessagesRef in sync for use in polling without re-triggering the effect
   useEffect(() => { smsMessagesRef.current = smsMessages; }, [smsMessages]);
@@ -3534,6 +3546,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // ============ Phone Numbers ============
+  const addPhoneNumber: AppData['addPhoneNumber'] = useCallback((e) => {
+    const entry: PhoneNumberEntry = { ...e, id: storage.generateId(), createdAt: Date.now(), updatedAt: Date.now() };
+    setPhoneNumbers((prev) => { const next = [entry, ...prev]; storage.savePhoneNumbers(next); return next; });
+    return entry;
+  }, []);
+
+  const updatePhoneNumber: AppData['updatePhoneNumber'] = useCallback((id, updates) => {
+    setPhoneNumbers((prev) => {
+      const next = prev.map((e) => e.id === id ? { ...e, ...updates, updatedAt: Date.now() } : e);
+      storage.savePhoneNumbers(next);
+      return next;
+    });
+  }, []);
+
+  const deletePhoneNumber: AppData['deletePhoneNumber'] = useCallback((id) => {
+    setPhoneNumbers((prev) => { const next = prev.filter((e) => e.id !== id); storage.savePhoneNumbers(next); return next; });
+  }, []);
+
+  const linkPhoneNumbersToTransactions: AppData['linkPhoneNumbersToTransactions'] = useCallback(() => {
+    let linkedCount = 0;
+    setPhoneNumbers((prev) => {
+      const next = prev.map((entry) => {
+        if (entry.customerName && entry.customerPhone) return entry;
+        const match = telecomSales.find((s) => s.simNumber === entry.phoneNumber || s.customerPhone === entry.phoneNumber);
+        if (match) {
+          linkedCount++;
+          return {
+            ...entry,
+            customerName: match.customerName,
+            customerPhone: match.customerPhone,
+            companyName: entry.companyName || match.companyName,
+            subAgentName: entry.subAgentName || match.subAgentName,
+            lastTransactionAt: match.createdAt,
+            lastTransactionType: match.operationType,
+            updatedAt: Date.now(),
+          };
+        }
+        return entry;
+      });
+      storage.savePhoneNumbers(next);
+      return next;
+    });
+    return linkedCount;
+  }, [telecomSales]);
+
   // Poll for scheduled messages every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => checkScheduledMessages(), 30000);
@@ -3776,6 +3834,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addScheduledMessage,
         deleteScheduledMessage,
         checkScheduledMessages,
+        phoneNumbers,
+        addPhoneNumber,
+        updatePhoneNumber,
+        deletePhoneNumber,
+        linkPhoneNumbersToTransactions,
         addSupportTicket,
         updateSupportTicket,
         deleteSupportTicket,

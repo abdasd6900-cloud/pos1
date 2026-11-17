@@ -41,6 +41,7 @@ const pageTitles: Record<string, string> = {
   'business-hours': 'أوقات العمل',
   'pos-retail': 'البيع بالتجزئة',
   'pos-telecom': 'بيع الاتصالات',
+  numbers: 'الأرقام',
   admin: 'لوحة المدير',
 };
 
@@ -189,6 +190,7 @@ export default function TabLayout() {
         <Tabs.Screen name="business-hours" options={hiddenScreen} />
         <Tabs.Screen name="pos-retail" options={hiddenScreen} />
         <Tabs.Screen name="pos-telecom" options={hiddenScreen} />
+        <Tabs.Screen name="numbers" options={hiddenScreen} />
         <Tabs.Screen name="admin" options={hiddenScreen} />
         </Tabs>
       </View>

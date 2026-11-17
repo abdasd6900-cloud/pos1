@@ -43,7 +43,8 @@ export type SyncCollectionName =
   | 'transferReports'
   | 'nameMappings'
   | 'customerFiles'
-  | 'smsMessages';
+  | 'smsMessages'
+  | 'phoneNumbers';
 
 type SyncData = Record<string, unknown> | unknown[];
 
@@ -144,7 +145,7 @@ function isSyncCollectionName(value: string): value is SyncCollectionName {
     'telecomSuppliers', 'shipments', 'rechargeRequests',
     'businessHours', 'keywordReplies', 'pendingOperations',
     'freezeRequests', 'customerReplies', 'supportTickets',
-    'unrecognizedMessages', 'transferNotifications', 'transferReports', 'nameMappings', 'customerFiles', 'smsMessages',
+    'unrecognizedMessages', 'transferNotifications', 'transferReports', 'nameMappings', 'customerFiles', 'smsMessages', 'phoneNumbers',
   ].includes(value);
 }
 

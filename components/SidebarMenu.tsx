@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Clock3,
   ContactRound,
+  Hash,
   KeyRound,
   MessageSquare,
   PackageSearch,
@@ -53,6 +54,7 @@ export function SidebarMenu({ visible, onClose, businessMode, isAdmin, storeName
     if (businessMode === 'telecom') {
       common[0] = { label: 'مخزون الشرائح', route: 'inventory', icon: PackageSearch };
       common.push(
+        { label: 'الأرقام', route: 'numbers', icon: Hash },
         { label: 'الشحن', route: 'recharge', icon: BatteryCharging },
         { label: 'الرسائل', route: 'messages', icon: MessageSquare },
         { label: 'الموردون', route: 'suppliers', icon: Truck },
