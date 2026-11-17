@@ -2187,13 +2187,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const sale = telecomSales.find((s) => s.id === id);
     setTelecomSales((prev) => { const next = prev.filter((s) => s.id !== id); storage.saveTelecomSales(next); return next; });
 
-    if (sale && sale.customerId) {
-      const debtReversal = -(sale.debtChange ?? 0);
+    if (sale) {
+      const customer = sale.customerId
+        ? customers.find((c) => c.id === sale.customerId)
+        : customers.find((c) => c.phone === sale.customerPhone || c.name === sale.customerName);
+      const debtReversal = sale.operationType === 'cancelled' ? 0 : -(sale.remaining ?? sale.debtChange ?? 0);
       const balanceRefund = sale.paymentMethod === 'balance' ? sale.paid : 0;
 
-      if (debtReversal !== 0 || balanceRefund > 0) {
+      if (customer && (debtReversal !== 0 || balanceRefund > 0)) {
         setCustomers((prev) => {
-          const next = prev.map((c) => c.id === sale.customerId ? {
+          const next = prev.map((c) => c.id === customer.id ? {
             ...c,
             debt: Math.max(0, c.debt + debtReversal),
             balance: c.balance + balanceRefund,
@@ -2224,7 +2227,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     addAuditEntry('delete', 'telecom_sale', id, `حذف معاملة اتصالات - ${sale?.customerName ?? ''}`);
-  }, [telecomSales, addAuditEntry]);
+  }, [telecomSales, customers, addAuditEntry]);
 
   const cancelTelecomSale: AppData['cancelTelecomSale'] = useCallback((id) => {
     const sale = telecomSales.find((s) => s.id === id);
@@ -2305,32 +2308,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const editTelecomSalePrice: AppData['editTelecomSalePrice'] = useCallback((id, newSalePrice) => {
     const sale = telecomSales.find((s) => s.id === id);
-    if (!sale) return;
+    if (!sale || newSalePrice <= 0) return;
     const oldPrice = sale.salePrice;
     const priceDiff = newSalePrice - oldPrice;
+    const oldRemaining = Math.max(0, sale.remaining ?? sale.total - sale.paid);
+    const newRemaining = Math.max(0, newSalePrice - sale.paid);
+    const debtDiff = newRemaining - oldRemaining;
     const now = Date.now();
-    const newTotal = newSalePrice;
-    const newRemaining = Math.max(0, newTotal - sale.paid);
 
     setTelecomSales((prev) => {
       const next = prev.map((s) => s.id === id ? {
         ...s,
         salePrice: newSalePrice,
-        total: newTotal,
+        total: newSalePrice,
         remaining: newRemaining,
-        debtChange: s.debtChange + priceDiff,
+        debtChange: (s.debtChange ?? 0) + debtDiff,
         customerBalanceAfter: (s.customerBalanceAfter ?? 0) + priceDiff,
       } : s);
       storage.saveTelecomSales(next);
       return next;
     });
 
-    // Adjust customer debt by the price difference
-    if (sale.customerId && priceDiff !== 0) {
+    const customer = sale.customerId
+      ? customers.find((c) => c.id === sale.customerId)
+      : customers.find((c) => c.phone === sale.customerPhone || c.name === sale.customerName);
+    if (customer && debtDiff !== 0) {
       setCustomers((prev) => {
-        const next = prev.map((c) => c.id === sale.customerId ? {
+        const next = prev.map((c) => c.id === customer.id ? {
           ...c,
-          debt: Math.max(0, c.debt + priceDiff),
+          debt: Math.max(0, c.debt + debtDiff),
           updatedAt: now,
         } : c);
         storage.saveCustomers(next);
@@ -2338,8 +2344,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    addAuditEntry('price_change', 'telecom_sale', id, `تعديل سعر: ${oldPrice} → ${newSalePrice} (فرق ${priceDiff >= 0 ? '+' : ''}${priceDiff})`);
-  }, [telecomSales, addAuditEntry]);
+    addAuditEntry('price_change', 'telecom_sale', id, `تعديل سعر: ${oldPrice} → ${newSalePrice} (فرق الدين ${debtDiff >= 0 ? '+' : ''}${debtDiff})`);
+  }, [telecomSales, customers, addAuditEntry]);
 
   const collectTelecomSaleDebt: AppData['collectTelecomSaleDebt'] = useCallback((id, amount) => {
     const sale = telecomSales.find((s) => s.id === id);
