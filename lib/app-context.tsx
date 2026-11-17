@@ -1753,9 +1753,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [transactions, customers, settings, currentStaffId, currentStaff, addAuditEntry]);
 
   const deleteTransaction: AppData['deleteTransaction'] = useCallback((id) => {
+    const txn = transactions.find((t) => t.id === id);
     setTransactions((prev) => { const next = prev.filter((t) => t.id !== id); storage.saveTransactions(next); return next; });
-    addAuditEntry('delete', 'transaction', id, 'حذف معاملة');
-  }, [addAuditEntry]);
+
+    if (txn && txn.customerId) {
+      const debtReversal = -(txn.debtChange ?? 0);
+      const balanceRefund = txn.paymentMethod === 'balance' ? txn.paid : 0;
+
+      if (debtReversal !== 0 || balanceRefund > 0) {
+        setCustomers((prev) => {
+          const next = prev.map((c) => c.id === txn.customerId ? {
+            ...c,
+            debt: Math.max(0, c.debt + debtReversal),
+            balance: c.balance + balanceRefund,
+            updatedAt: Date.now(),
+          } : c);
+          storage.saveCustomers(next);
+          return next;
+        });
+      }
+    }
+
+    addAuditEntry('delete', 'transaction', id, `حذف معاملة - ${txn?.customerName ?? ''}`);
+  }, [transactions, addAuditEntry]);
 
   // ============ Expenses ============
   const addExpense: AppData['addExpense'] = useCallback((amount, category, description) => {
@@ -2136,9 +2156,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [addAuditEntry]);
 
   const deleteTelecomSale: AppData['deleteTelecomSale'] = useCallback((id) => {
+    const sale = telecomSales.find((s) => s.id === id);
     setTelecomSales((prev) => { const next = prev.filter((s) => s.id !== id); storage.saveTelecomSales(next); return next; });
-    addAuditEntry('delete', 'telecom_sale', id, 'حذف معاملة اتصالات');
-  }, [addAuditEntry]);
+
+    if (sale && sale.customerId) {
+      const debtReversal = -(sale.debtChange ?? 0);
+      const balanceRefund = sale.paymentMethod === 'balance' ? sale.paid : 0;
+
+      if (debtReversal !== 0 || balanceRefund > 0) {
+        setCustomers((prev) => {
+          const next = prev.map((c) => c.id === sale.customerId ? {
+            ...c,
+            debt: Math.max(0, c.debt + debtReversal),
+            balance: c.balance + balanceRefund,
+            updatedAt: Date.now(),
+          } : c);
+          storage.saveCustomers(next);
+          return next;
+        });
+      }
+    }
+
+    // Restore sub-agent balance
+    if (sale && sale.subAgentId) {
+      setSubAgents((prev) => {
+        const next = prev.map((a) => a.id === sale.subAgentId ? { ...a, balance: a.balance + sale.cost, updatedAt: Date.now() } : a);
+        storage.saveSubAgents(next);
+        return next;
+      });
+    }
+
+    // Restore sim stock if it was a sell_sim
+    if (sale && sale.mode === 'sell_sim' && sale.simId) {
+      setSimCards((prev) => {
+        const next = prev.map((s2) => s2.id === sale.simId ? { ...s2, stock: s2.stock + 1, updatedAt: Date.now() } : s2);
+        storage.saveSimCards(next);
+        return next;
+      });
+    }
+
+    addAuditEntry('delete', 'telecom_sale', id, `حذف معاملة اتصالات - ${sale?.customerName ?? ''}`);
+  }, [telecomSales, addAuditEntry]);
 
   const cancelTelecomSale: AppData['cancelTelecomSale'] = useCallback((id) => {
     const sale = telecomSales.find((s) => s.id === id);
