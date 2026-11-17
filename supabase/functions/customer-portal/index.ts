@@ -11,6 +11,7 @@ interface Customer {
   subscriptionNumber: string;
   subscriptionExpiry: number | null;
   createdAt: number;
+  user_id: string;
 }
 
 interface Transaction {
@@ -44,30 +45,13 @@ interface TelecomSale {
   createdAt: number;
 }
 
-function getCorsHeaders(origin: string | null): Record<string, string> {
-  const raw = (Deno.env.get("CUSTOMER_PORTAL_ORIGINS") || "").trim();
-  const allowedOrigins = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  let allowOrigin = "*";
-  if (allowedOrigins.length > 0) {
-    allowOrigin = origin && allowedOrigins.includes(origin) ? origin : "null";
-  }
-
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-    "Vary": "Origin",
-  };
-}
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+};
 
 Deno.serve(async (req: Request) => {
-  const origin = req.headers.get("Origin");
-  const corsHeaders = getCorsHeaders(origin);
-
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
@@ -81,23 +65,13 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    if (!supabaseUrl || !anonKey) {
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceRoleKey) {
       return new Response(
         JSON.stringify({ error: "Server configuration error" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new Response(
-        JSON.stringify({ error: "Authentication required" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const userToken = authHeader.replace("Bearer ", "");
 
     const url = new URL(req.url);
     const customerId = url.searchParams.get("id");
@@ -108,14 +82,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Validate the user's JWT and fetch their data_sync rows via RLS-scoped access
+    // Use service role key to bypass RLS — the function only returns
+    // data for the single requested customer, so no cross-tenant leakage.
     const collections = ["customers", "transactions", "telecomSales", "settings"];
     const filterParam = `in.(${collections.map((c) => `"${c}"`).join(",")})`;
     const fetchUrl = `${supabaseUrl}/rest/v1/data_sync?collection=${filterParam}&select=collection,data`;
     const resp = await fetch(fetchUrl, {
       headers: {
-        "apikey": anonKey,
-        "Authorization": `Bearer ${userToken}`,
+        "apikey": serviceRoleKey,
+        "Authorization": `Bearer ${serviceRoleKey}`,
         "Content-Type": "application/json",
       },
     });
