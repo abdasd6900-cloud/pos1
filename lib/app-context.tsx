@@ -394,6 +394,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!session) {
+      setLoaded(false);
+      return;
+    }
     if (Platform.OS === 'web' && typeof window === 'undefined') { setLoaded(true); return; }
     (async () => {
       const s = await storage.getSettings();
@@ -925,7 +929,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       syncUnsubscribeRef.current?.();
     };
-  }, []);
+  }, [session]);
 
   // Poll sms_inbox_events for real-time SMS delivery from Android phone
   useEffect(() => {
