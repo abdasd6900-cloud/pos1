@@ -40,6 +40,7 @@ export function useIncomingSms() {
   const [queue, setQueue] = useState<IncomingSms[]>([]);
 
   const pollForNewEvents = useCallback(async () => {
+    if (!session) return;
     try {
       const { data, error } = await supabase
         .from('sms_inbox_events')
@@ -105,7 +106,7 @@ export function useIncomingSms() {
     } catch {
       // ignore polling errors
     }
-  }, []);
+  }, [session]);
 
   // Also set up realtime subscription for instant delivery
   useEffect(() => {

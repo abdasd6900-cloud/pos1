@@ -987,14 +987,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        if (newIds.length > 0) {
-          // Rows already marked processed by claim_sms_inbox_events RPC, but ensure
-          // processed_at is set (RPC sets it, this is a safety net for older rows).
-          await supabase
-            .from('sms_inbox_events')
-            .update({ processed: true, processed_at: new Date().toISOString() })
-            .in('id', newIds);
-        }
+        // Rows are already marked processed by the claim_sms_inbox_events RPC.
 
         // Trim seen IDs
         if (smsEventSeenIdsRef.current.size > 500) {
