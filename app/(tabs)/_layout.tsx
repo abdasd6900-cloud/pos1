@@ -1,5 +1,5 @@
 import { Tabs, usePathname } from 'expo-router';
-import { Grid2X2, ShoppingCart, Timer, Menu } from 'lucide-react-native';
+import { Grid2X2, ShoppingCart, Timer, Menu, Hash } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useState } from 'react';
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs/types';
@@ -12,13 +12,15 @@ import { ConnectionIndicator } from '@/components/ConnectionIndicator';
 import { useApp } from '@/lib/app-context';
 import { useAuth } from '@/lib/auth-context';
 
-const visibleRoutes = ['index', 'pos', 'pending'] as const;
+const baseRoutes = ['index', 'pos', 'pending'] as const;
+const telecomExtraRoutes = ['numbers'] as const;
 
-type VisibleRoute = (typeof visibleRoutes)[number];
+type VisibleRoute = (typeof baseRoutes)[number] | (typeof telecomExtraRoutes)[number];
 
 function TabIcon({ routeName, color }: { routeName: VisibleRoute; color: string }) {
   if (routeName === 'index') return <Grid2X2 size={24} color={color} strokeWidth={2} />;
   if (routeName === 'pos') return <ShoppingCart size={24} color={color} strokeWidth={2} />;
+  if (routeName === 'numbers') return <Hash size={24} color={color} strokeWidth={2} />;
   return <Timer size={24} color={color} strokeWidth={2} />;
 }
 
@@ -70,11 +72,19 @@ function CustomTabBar({
   navigateToTab,
   colors,
   onMenuPress,
-}: BottomTabBarProps & { colors: Palette; onMenuPress: () => void }) {
+  visibleRoutes,
+}: BottomTabBarProps & { colors: Palette; onMenuPress: () => void; visibleRoutes: readonly string[] }) {
   const insets = useSafeAreaInsets();
   const routes = visibleRoutes
     .map((name) => state.routes.find((route) => route.name === name))
     .filter((route): route is (typeof state.routes)[number] => Boolean(route));
+
+  const tabLabels: Record<string, string> = {
+    index: 'الرئيسية',
+    pos: 'البيع',
+    pending: 'الانتظار',
+    numbers: 'الأرقام',
+  };
 
   return (
     <View
@@ -95,7 +105,7 @@ function CustomTabBar({
         const descriptor = descriptors[route.key];
         const isFocused = state.index === state.routes.findIndex((item) => item.key === route.key);
         const color = isFocused ? colors.tabActive : colors.tabInactive;
-        const label = descriptor.options.title ?? route.name;
+        const label = tabLabels[routeName] ?? descriptor.options.title ?? route.name;
 
         const onPress = () => {
           const event = emitter.emit({
@@ -141,6 +151,10 @@ export default function TabLayout() {
   const { profile } = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
 
+  const visibleRoutes = settings.businessMode === 'telecom'
+    ? [...baseRoutes, ...telecomExtraRoutes]
+    : [...baseRoutes];
+
   const hiddenScreen = {
     tabBarButton: () => null,
     headerShown: false,
@@ -170,7 +184,7 @@ export default function TabLayout() {
               }
             : {}),
         }}
-        tabBar={isWeb ? () => null : (props) => <CustomTabBar {...props} colors={colors} onMenuPress={() => setMenuVisible(true)} />}
+        tabBar={isWeb ? () => null : (props) => <CustomTabBar {...props} colors={colors} onMenuPress={() => setMenuVisible(true)} visibleRoutes={visibleRoutes} />}
       >
         <Tabs.Screen name="index" options={{ title: 'الرئيسية' }} />
         <Tabs.Screen name="pos" options={{ title: 'البيع' }} />
@@ -190,7 +204,7 @@ export default function TabLayout() {
         <Tabs.Screen name="business-hours" options={hiddenScreen} />
         <Tabs.Screen name="pos-retail" options={hiddenScreen} />
         <Tabs.Screen name="pos-telecom" options={hiddenScreen} />
-        <Tabs.Screen name="numbers" options={hiddenScreen} />
+        <Tabs.Screen name="numbers" options={settings.businessMode === 'telecom' ? { title: 'الأرقام' } : hiddenScreen} />
         <Tabs.Screen name="admin" options={hiddenScreen} />
         </Tabs>
       </View>
