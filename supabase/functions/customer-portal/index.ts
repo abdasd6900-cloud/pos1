@@ -45,14 +45,15 @@ interface TelecomSale {
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigins = (Deno.env.get("CUSTOMER_PORTAL_ORIGINS") || "")
+  const raw = (Deno.env.get("CUSTOMER_PORTAL_ORIGINS") || "").trim();
+  const allowedOrigins = raw
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
 
-  let allowOrigin = "null";
-  if (origin && allowedOrigins.includes(origin)) {
-    allowOrigin = origin;
+  let allowOrigin = "*";
+  if (allowedOrigins.length > 0) {
+    allowOrigin = origin && allowedOrigins.includes(origin) ? origin : "null";
   }
 
   return {
