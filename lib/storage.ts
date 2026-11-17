@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Product, Customer, Transaction, Settings, AuditEntry, Supplier, Expense, Shift, DraftBill, Currency, Staff, Promotion, Stocktake, Attachment, LicenseInfo, TelecomCompany, SimCard, Bundle, SubAgent, DebtReminderSchedule, TelecomSale, AgentBundle, SimLocation, SimLocationStock, TelecomSupplier, Shipment, RechargeRequest, BusinessHoursConfig, KeywordReply, PendingOperation, FreezeRequest, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport, NameMapping, SmsMessage, QuickReplyTemplate, ScheduledSms, PhoneNumberEntry, WalletTransaction } from '@/types';
+import type { Product, Customer, Transaction, Settings, AuditEntry, Supplier, Expense, Shift, DraftBill, Currency, Staff, Promotion, Stocktake, Attachment, LicenseInfo, TelecomCompany, SimCard, Bundle, SubAgent, DebtReminderSchedule, TelecomSale, AgentBundle, SimLocation, SimLocationStock, TelecomSupplier, Shipment, RechargeRequest, BusinessHoursConfig, KeywordReply, PendingOperation, FreezeRequest, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport, NameMapping, SmsMessage, QuickReplyTemplate, ScheduledSms, PhoneNumberEntry, WalletTransaction, CompanyBalanceTxn } from '@/types';
 import type { CustomerFile } from './customer-files';
 import { DEFAULT_SMS_TEMPLATE, DEFAULT_CURRENCIES, DEFAULT_TELECOM_COMPANIES, DEFAULT_TELECOM_BUNDLES, DEFAULT_AUTO_REPLY_TEMPLATES } from '@/types';
 import { createDefaultSchedule } from './business-hours';
@@ -52,6 +52,7 @@ const KEYS = {
   SCHEDULED_MESSAGES: 'sahab_scheduled_messages',
   PHONE_NUMBERS: 'sahab_phone_numbers',
   WALLET_TXNS: 'sahab_wallet_transactions',
+  COMPANY_BALANCE_TXNS: 'sahab_company_balance_txns',
 } as const;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -316,6 +317,9 @@ export const storage = {
 
   getWalletTxns: (): Promise<WalletTransaction[]> => load<WalletTransaction[]>(KEYS.WALLET_TXNS, []),
   saveWalletTxns: (txns: WalletTransaction[]): Promise<void> => save(KEYS.WALLET_TXNS, txns),
+
+  getCompanyBalanceTxns: (): Promise<CompanyBalanceTxn[]> => load<CompanyBalanceTxn[]>(KEYS.COMPANY_BALANCE_TXNS, []),
+  saveCompanyBalanceTxns: (txns: CompanyBalanceTxn[]): Promise<void> => save(KEYS.COMPANY_BALANCE_TXNS, txns),
 
   generateId,
 };

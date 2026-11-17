@@ -401,6 +401,30 @@ export const WALLET_TYPES: WalletTypeDef[] = [
 
 export const ELECTRONIC_WALLET_TYPES = WALLET_TYPES.filter((w) => w.id !== 'cash');
 
+// ============ Recharge Company Balances ============
+export type RechargeCompanyId = 'sky' | 'layan' | 'areen';
+
+export interface RechargeCompanyDef {
+  id: RechargeCompanyId;
+  name: string;
+  color: string;
+}
+
+export const RECHARGE_COMPANIES: RechargeCompanyDef[] = [
+  { id: 'sky', name: 'سكاي', color: '#1565C0' },
+  { id: 'layan', name: 'ليان', color: '#E65100' },
+  { id: 'areen', name: 'أرين', color: '#2E7D32' },
+];
+
+export interface CompanyBalanceTxn {
+  id: string;
+  companyId: RechargeCompanyId;
+  type: 'recharge_in' | 'recharge_out' | 'adjustment';
+  amount: number;
+  description: string;
+  createdAt: number;
+}
+
 export type WalletTxnType = 'income' | 'expense' | 'transfer_in' | 'transfer_out' | 'supplier_payment' | 'sale' | 'adjustment';
 
 export interface WalletTransaction {

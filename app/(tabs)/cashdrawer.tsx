@@ -3,12 +3,16 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   Wallet, Plus, Trash2, TrendingUp, TrendingDown,
   ArrowRightLeft, Banknote, Building2, Smartphone, Store,
-  Receipt, ChevronDown, ChevronUp, Settings2, Check,
+  Receipt, Settings2, Check, Cloud, Zap,
 } from 'lucide-react-native';
 import { useApp } from '@/lib/app-context';
 import { useTheme } from '@/lib/theme-context';
 import { formatCurrency, formatDateTime, isToday } from '@/lib/format';
-import { EXPENSE_CATEGORIES, WALLET_TYPES, ELECTRONIC_WALLET_TYPES, type WalletType, type WalletTypeDef, type WalletTxnType } from '@/types';
+import {
+  EXPENSE_CATEGORIES, WALLET_TYPES, ELECTRONIC_WALLET_TYPES,
+  RECHARGE_COMPANIES,
+  type WalletType, type WalletTxnType, type RechargeCompanyId,
+} from '@/types';
 import { BaseModal } from '@/components/BaseModal';
 import { EmptyState } from '@/components/EmptyState';
 
@@ -21,6 +25,12 @@ const WALLET_ICONS: Record<WalletType, React.ReactNode> = {
   jawwal_pay: <Smartphone size={20} color="#FFFFFF" strokeWidth={2} />,
   jawwal_pay_merchant: <Store size={20} color="#FFFFFF" strokeWidth={2} />,
   malchat: <Wallet size={20} color="#FFFFFF" strokeWidth={2} />,
+};
+
+const COMPANY_ICONS: Record<RechargeCompanyId, React.ReactNode> = {
+  sky: <Cloud size={18} color="#FFFFFF" strokeWidth={2} />,
+  layan: <Zap size={18} color="#FFFFFF" strokeWidth={2} />,
+  areen: <Building2 size={18} color="#FFFFFF" strokeWidth={2} />,
 };
 
 const TXN_TYPE_LABELS: Record<WalletTxnType, string> = {
@@ -48,6 +58,8 @@ export default function CashDrawerScreen() {
     walletTxns, getWalletBalance, getTotalWalletsBalance,
     addExpense, deleteExpense, expenses,
     transferBetweenWallets, adjustWalletBalance, deleteWalletTransaction,
+    companyBalanceTxns, getCompanyBalance, getTotalCompaniesBalance,
+    addCompanyBalanceTxn, deleteCompanyBalanceTxn,
     settings,
   } = useApp();
   const { colors } = useTheme();
@@ -57,6 +69,9 @@ export default function CashDrawerScreen() {
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyWallet, setHistoryWallet] = useState<WalletType | 'all'>('all');
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [showCompanyHistoryModal, setShowCompanyHistoryModal] = useState(false);
+  const [companyHistoryFilter, setCompanyHistoryFilter] = useState<RechargeCompanyId | 'all'>('all');
 
   // Transfer state
   const [transferFrom, setTransferFrom] = useState<WalletType>('cash');
@@ -75,9 +90,16 @@ export default function CashDrawerScreen() {
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustNote, setAdjustNote] = useState('');
 
+  // Company balance state
+  const [companySelected, setCompanySelected] = useState<RechargeCompanyId>('sky');
+  const [companyTxnType, setCompanyTxnType] = useState<'recharge_in' | 'recharge_out'>('recharge_in');
+  const [companyAmount, setCompanyAmount] = useState('');
+  const [companyNote, setCompanyNote] = useState('');
+
   const totalBalance = getTotalWalletsBalance();
   const cashBalance = getWalletBalance('cash');
   const electronicTotal = ELECTRONIC_WALLET_TYPES.reduce((sum, w) => sum + getWalletBalance(w.id), 0);
+  const totalCompaniesBalance = getTotalCompaniesBalance();
 
   const todayWalletTxns = useMemo(() => {
     return walletTxns.filter((w) => isToday(w.createdAt));
@@ -91,6 +113,11 @@ export default function CashDrawerScreen() {
     if (historyWallet === 'all') return walletTxns;
     return walletTxns.filter((w) => w.walletType === historyWallet);
   }, [walletTxns, historyWallet]);
+
+  const filteredCompanyHistory = useMemo(() => {
+    if (companyHistoryFilter === 'all') return companyBalanceTxns;
+    return companyBalanceTxns.filter((t) => t.companyId === companyHistoryFilter);
+  }, [companyBalanceTxns, companyHistoryFilter]);
 
   const handleTransfer = useCallback(() => {
     const amount = parseFloat(transferAmount) || 0;
@@ -117,6 +144,20 @@ export default function CashDrawerScreen() {
     setAdjustNote('');
     setShowAdjustModal(false);
   }, [adjustWallet, adjustAmount, adjustNote, adjustWalletBalance]);
+
+  const handleAddCompanyTxn = useCallback(() => {
+    const amount = parseFloat(companyAmount) || 0;
+    if (amount <= 0) return;
+    addCompanyBalanceTxn({
+      companyId: companySelected,
+      type: companyTxnType,
+      amount,
+      description: companyNote.trim(),
+    });
+    setCompanyAmount('');
+    setCompanyNote('');
+    setShowCompanyModal(false);
+  }, [companySelected, companyTxnType, companyAmount, companyNote, addCompanyBalanceTxn]);
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.bg }]} contentContainerStyle={{ paddingBottom: 32 }}>
@@ -145,6 +186,11 @@ export default function CashDrawerScreen() {
               <Smartphone size={16} color="#FFFFFFCC" strokeWidth={2} />
               <Text style={styles.heroBreakdownLabel}>المحافظ</Text>
               <Text style={styles.heroBreakdownValue}>{formatCurrency(electronicTotal, settings.currency)}</Text>
+            </View>
+            <View style={styles.heroBreakdownItem}>
+              <Cloud size={16} color="#FFFFFFCC" strokeWidth={2} />
+              <Text style={styles.heroBreakdownLabel}>الشركات</Text>
+              <Text style={styles.heroBreakdownValue}>{formatCurrency(totalCompaniesBalance, settings.currency)}</Text>
             </View>
           </View>
         </View>
@@ -184,6 +230,17 @@ export default function CashDrawerScreen() {
               <Settings2 size={20} color={colors.info} strokeWidth={2} />
             </View>
             <Text style={[styles.actionLabel, { color: colors.text }]}>تسوية رصيد</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setShowCompanyModal(true)}
+            style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: colors.warning + '18' }]}>
+              <Cloud size={20} color={colors.warning} strokeWidth={2} />
+            </View>
+            <Text style={[styles.actionLabel, { color: colors.text }]}>رصيد شركة</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -248,6 +305,53 @@ export default function CashDrawerScreen() {
             <Text style={[styles.summaryTotalLabel, { color: colors.text }]}>مجموع المحافظ</Text>
             <Text style={[styles.summaryTotalValue, { color: colors.primary }]}>
               {formatCurrency(electronicTotal, settings.currency)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Recharge Company Balances Summary */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>أرصدة الشركات (سكاي - ليان - أرين)</Text>
+          <TouchableOpacity
+            onPress={() => { setCompanyHistoryFilter('all'); setShowCompanyHistoryModal(true); }}
+            style={[styles.seeAllBtn, { backgroundColor: colors.warning + '15' }]}
+          >
+            <Text style={[styles.seeAllText, { color: colors.warning }]}>السجل</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.summaryHeader}>
+            <Cloud size={18} color={colors.warning} strokeWidth={2} />
+            <Text style={[styles.summaryTitle, { color: colors.text }]}>ملخص أرصدة الشركات</Text>
+          </View>
+          {RECHARGE_COMPANIES.map((c, i) => {
+            const balance = getCompanyBalance(c.id);
+            return (
+              <View
+                key={c.id}
+                style={[
+                  styles.summaryRow,
+                  i < RECHARGE_COMPANIES.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                ]}
+              >
+                <View style={styles.summaryRowLeft}>
+                  <View style={[styles.companyIconSmall, { backgroundColor: c.color }]}>
+                    {COMPANY_ICONS[c.id]}
+                  </View>
+                  <Text style={[styles.summaryRowName, { color: colors.text }]}>{c.name}</Text>
+                </View>
+                <Text style={[styles.summaryRowValue, { color: balance < 0 ? colors.danger : colors.text }]}>
+                  {formatCurrency(balance, settings.currency)}
+                </Text>
+              </View>
+            );
+          })}
+          <View style={[styles.summaryTotalRow, { borderTopColor: colors.border }]}>
+            <Text style={[styles.summaryTotalLabel, { color: colors.text }]}>إجمالي أرصدة الشركات</Text>
+            <Text style={[styles.summaryTotalValue, { color: colors.warning }]}>
+              {formatCurrency(totalCompaniesBalance, settings.currency)}
             </Text>
           </View>
         </View>
@@ -474,7 +578,84 @@ export default function CashDrawerScreen() {
         />
       </BaseModal>
 
-      {/* Full History Modal */}
+      {/* Company Balance Modal */}
+      <BaseModal
+        visible={showCompanyModal}
+        onClose={() => setShowCompanyModal(false)}
+        title="رصيد الشركات"
+        footer={
+          <TouchableOpacity onPress={handleAddCompanyTxn} style={[styles.saveBtn, { backgroundColor: colors.warning }]} activeOpacity={0.7}>
+            <Text style={styles.saveBtnText}>تأكيد العملية</Text>
+          </TouchableOpacity>
+        }
+      >
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>الشركة</Text>
+        <View style={styles.companySelectorRow}>
+          {RECHARGE_COMPANIES.map((c) => (
+            <TouchableOpacity
+              key={c.id}
+              onPress={() => setCompanySelected(c.id)}
+              style={[
+                styles.companyChip,
+                {
+                  backgroundColor: companySelected === c.id ? c.color : colors.surfaceAlt,
+                  borderColor: companySelected === c.id ? c.color : colors.border,
+                },
+              ]}
+            >
+              <View style={[styles.companyChipIcon, { backgroundColor: companySelected === c.id ? '#FFFFFF20' : c.color + '15' }]}>
+                {COMPANY_ICONS[c.id]}
+              </View>
+              <Text style={[styles.companyChipText, { color: companySelected === c.id ? '#FFFFFF' : colors.text }]}>{c.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={[styles.currentBalanceBox, { backgroundColor: colors.warning + '12', marginTop: 12 }]}>
+          <Text style={[styles.currentBalanceLabel, { color: colors.textSecondary }]}>الرصيد الحالي:</Text>
+          <Text style={[styles.currentBalanceValue, { color: colors.warning }]}>
+            {formatCurrency(getCompanyBalance(companySelected), settings.currency)}
+          </Text>
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>نوع العملية</Text>
+        <View style={styles.companyTypeRow}>
+          <TouchableOpacity
+            onPress={() => setCompanyTxnType('recharge_in')}
+            style={[styles.companyTypeBtn, { backgroundColor: companyTxnType === 'recharge_in' ? colors.success : colors.surfaceAlt, borderColor: companyTxnType === 'recharge_in' ? colors.success : colors.border }]}
+          >
+            <TrendingUp size={16} color={companyTxnType === 'recharge_in' ? '#FFFFFF' : colors.success} strokeWidth={2} />
+            <Text style={[styles.companyTypeText, { color: companyTxnType === 'recharge_in' ? '#FFFFFF' : colors.text }]}>شحن رصيد</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setCompanyTxnType('recharge_out')}
+            style={[styles.companyTypeBtn, { backgroundColor: companyTxnType === 'recharge_out' ? colors.danger : colors.surfaceAlt, borderColor: companyTxnType === 'recharge_out' ? colors.danger : colors.border }]}
+          >
+            <TrendingDown size={16} color={companyTxnType === 'recharge_out' ? '#FFFFFF' : colors.danger} strokeWidth={2} />
+            <Text style={[styles.companyTypeText, { color: companyTxnType === 'recharge_out' ? '#FFFFFF' : colors.text }]}>خصم / استخدام</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>المبلغ ({settings.currency})</Text>
+        <TextInput
+          value={companyAmount}
+          onChangeText={setCompanyAmount}
+          placeholder="0.00"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="numeric"
+          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 22, fontWeight: '700', textAlign: 'center' }]}
+        />
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>ملاحظة (اختياري)</Text>
+        <TextInput
+          value={companyNote}
+          onChangeText={setCompanyNote}
+          placeholder="تفاصيل العملية..."
+          placeholderTextColor={colors.textMuted}
+          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]}
+        />
+      </BaseModal>
+
+      {/* Full Wallet History Modal */}
       <BaseModal
         visible={showHistoryModal}
         onClose={() => setShowHistoryModal(false)}
@@ -524,6 +705,69 @@ export default function CashDrawerScreen() {
             }}
             ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.border }} />}
           />
+        </View>
+      </BaseModal>
+
+      {/* Company Balance History Modal */}
+      <BaseModal
+        visible={showCompanyHistoryModal}
+        onClose={() => setShowCompanyHistoryModal(false)}
+        title="سجل أرصدة الشركات"
+      >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginBottom: 12 }}>
+          <TouchableOpacity
+            onPress={() => setCompanyHistoryFilter('all')}
+            style={[styles.filterChip, { backgroundColor: companyHistoryFilter === 'all' ? colors.warning : colors.surfaceAlt }]}
+          >
+            <Text style={[styles.filterText, { color: companyHistoryFilter === 'all' ? '#FFFFFF' : colors.text }]}>الكل</Text>
+          </TouchableOpacity>
+          {RECHARGE_COMPANIES.map((c) => (
+            <TouchableOpacity
+              key={c.id}
+              onPress={() => setCompanyHistoryFilter(c.id)}
+              style={[styles.filterChip, { backgroundColor: companyHistoryFilter === c.id ? c.color : colors.surfaceAlt }]}
+            >
+              <Text style={[styles.filterText, { color: companyHistoryFilter === c.id ? '#FFFFFF' : colors.text }]}>{c.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <View style={{ maxHeight: 400 }}>
+          {filteredCompanyHistory.length === 0 ? (
+            <EmptyState
+              icon={<Cloud size={32} color={colors.textMuted} strokeWidth={2} />}
+              title="لا توجد عمليات"
+              subtitle="ستظهر هنا عمليات الشحن والخصم"
+            />
+          ) : (
+            <FlatList
+              data={filteredCompanyHistory.slice(0, 100)}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => {
+                const cDef = RECHARGE_COMPANIES.find((c) => c.id === item.companyId);
+                const isIncome = item.type === 'recharge_in';
+                const isAdjust = item.type === 'adjustment';
+                return (
+                  <View style={[styles.historyRow, { borderBottomColor: colors.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.historyType, { color: colors.text }]}>
+                        {isIncome ? 'شحن رصيد' : isAdjust ? 'تسوية' : 'خصم / استخدام'}
+                      </Text>
+                      <Text style={[styles.historyWallet, { color: colors.textMuted }]}>{cDef?.name}</Text>
+                      {item.description ? <Text style={[styles.historyDesc, { color: colors.textMuted }]} numberOfLines={1}>{item.description}</Text> : null}
+                      <Text style={[styles.historyTime, { color: colors.textMuted }]}>{formatDateTime(item.createdAt)}</Text>
+                    </View>
+                    <Text style={[styles.historyAmount, { color: isIncome ? colors.success : isAdjust ? colors.info : colors.danger }]}>
+                      {isIncome ? '+' : isAdjust ? '+' : '-'}{formatCurrency(item.amount, settings.currency)}
+                    </Text>
+                    <TouchableOpacity onPress={() => deleteCompanyBalanceTxn(item.id)} style={styles.deleteBtn}>
+                      <Trash2 size={14} color={colors.textMuted} strokeWidth={2} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
+              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.border }} />}
+            />
+          )}
         </View>
       </BaseModal>
     </ScrollView>
@@ -577,14 +821,14 @@ const styles = StyleSheet.create({
   heroLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '600', fontFamily: 'Cairo-SemiBold' },
   heroValue: { color: '#FFFFFF', fontSize: 32, fontWeight: '700', fontFamily: 'Cairo-Bold', marginTop: 8 },
   heroDivider: { height: 1, backgroundColor: '#FFFFFF30', marginVertical: 16 },
-  heroBreakdown: { flexDirection: 'row', gap: 16 },
+  heroBreakdown: { flexDirection: 'row', gap: 12 },
   heroBreakdownItem: { flex: 1, gap: 4 },
-  heroBreakdownLabel: { color: '#FFFFFFCC', fontSize: 12, fontFamily: 'Cairo-Regular' },
-  heroBreakdownValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  heroBreakdownLabel: { color: '#FFFFFFCC', fontSize: 11, fontFamily: 'Cairo-Regular' },
+  heroBreakdownValue: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold' },
 
   // Action buttons
-  actionRow: { flexDirection: 'row', gap: 10 },
-  actionBtn: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1 },
+  actionRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  actionBtn: { width: '48%', alignItems: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1 },
   actionIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   actionLabel: { fontSize: 12, fontWeight: '600', fontFamily: 'Cairo-SemiBold', textAlign: 'center' },
 
@@ -604,6 +848,7 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
   summaryRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryDot: { width: 10, height: 10, borderRadius: 5 },
+  companyIconSmall: { width: 24, height: 24, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   summaryRowName: { fontSize: 14, fontWeight: '500' },
   summaryRowValue: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold' },
   summaryTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14, marginTop: 4, borderTopWidth: 2 },
@@ -654,4 +899,15 @@ const styles = StyleSheet.create({
   currentBalanceBox: { borderRadius: 12, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   currentBalanceLabel: { fontSize: 13 },
   currentBalanceValue: { fontSize: 18, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+
+  // Company selector
+  companySelectorRow: { flexDirection: 'row', gap: 10 },
+  companyChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, flex: 1, justifyContent: 'center' },
+  companyChipIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  companyChipText: { fontSize: 13, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+
+  // Company type buttons
+  companyTypeRow: { flexDirection: 'row', gap: 10 },
+  companyTypeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
+  companyTypeText: { fontSize: 13, fontWeight: '600' },
 });

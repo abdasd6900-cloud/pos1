@@ -18,8 +18,9 @@ import type {
   TransferNotification, TransferReport, NameMapping, TransferNotificationStatus, TransferReportStatus,
   SmsMessage, SmsMessageCategory, SmsMessageStatus, QuickReplyTemplate, ScheduledSms,
   PhoneNumberEntry, WalletTransaction, WalletType, WalletTxnType,
+  CompanyBalanceTxn, RechargeCompanyId,
 } from '@/types';
-import { WALLET_TYPES, ELECTRONIC_WALLET_TYPES } from '@/types';
+import { WALLET_TYPES, ELECTRONIC_WALLET_TYPES, RECHARGE_COMPANIES } from '@/types';
 import { storage, type BackupData, DEFAULT_SETTINGS } from './storage';
 import { Platform } from 'react-native';
 import { DEFAULT_BUSINESS_HOURS } from './storage';
@@ -254,6 +255,13 @@ interface AppData {
   deleteWalletTransaction: (id: string) => void;
   recordSupplierWalletPayment: (supplierId: string, amount: number, walletType: WalletType) => Transaction;
 
+  // Recharge company balances
+  companyBalanceTxns: CompanyBalanceTxn[];
+  getCompanyBalance: (companyId: RechargeCompanyId) => number;
+  getTotalCompaniesBalance: () => number;
+  addCompanyBalanceTxn: (t: Omit<CompanyBalanceTxn, 'id' | 'createdAt'>) => CompanyBalanceTxn;
+  deleteCompanyBalanceTxn: (id: string) => void;
+
   openShift: (openingCash: number) => Shift;
   closeShift: (closingCash: number) => Shift | null;
 
@@ -354,6 +362,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [walletTxns, setWalletTxns] = useState<WalletTransaction[]>([]);
+  const [companyBalanceTxns, setCompanyBalanceTxns] = useState<CompanyBalanceTxn[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [drafts, setDrafts] = useState<DraftBill[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -418,7 +427,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (Platform.OS === 'web' && typeof window === 'undefined') { setLoaded(true); return; }
     (async () => {
       const s = await storage.getSettings();
-      const [p, c, t, a, sup, exp, sh, dr, cur, stf, prom, stkt, att, csi, lic, tc, sims, bdls, sags, drms, tsales, abundles, slocs, slocstock, tsups, shpmnts, rreqs, bhrs, kwreplies, pendops, freezereqs, suptickets, unrecmsgs, tnotifs, treports, nmappings, smstmp, pinned, blocked, archived, quickReplies, scheduled, phoneNums, wtxns] = await Promise.all([
+      const [p, c, t, a, sup, exp, sh, dr, cur, stf, prom, stkt, att, csi, lic, tc, sims, bdls, sags, drms, tsales, abundles, slocs, slocstock, tsups, shpmnts, rreqs, bhrs, kwreplies, pendops, freezereqs, suptickets, unrecmsgs, tnotifs, treports, nmappings, smstmp, pinned, blocked, archived, quickReplies, scheduled, phoneNums, wtxns, cbtxns] = await Promise.all([
         storage.getProducts(),
         storage.getCustomers(),
         storage.getTransactions(),
@@ -463,6 +472,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         storage.getScheduledMessages(),
         storage.getPhoneNumbers(),
         storage.getWalletTxns(),
+        storage.getCompanyBalanceTxns(),
       ]);
       setCustomers(c);
       setTransactions(t);
@@ -510,6 +520,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setScheduledMessages(scheduled);
       setPhoneNumbers(phoneNums);
       setWalletTxns(wtxns);
+      setCompanyBalanceTxns(cbtxns);
 
       (async () => {
         type RemoteData = Partial<Record<SyncCollectionName, Record<string, unknown> | unknown[]>>;
@@ -1985,6 +1996,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addAuditEntry('supplier_payment', 'supplier', txn.id, `تسديد للمورد ${amount} من ${WALLET_TYPES.find((w) => w.id === walletType)?.name ?? walletType} - ${supplier?.name ?? ''}`);
     return txn;
   }, [suppliers, settings, currentStaffId, currentStaff, addAuditEntry]);
+
+  // ============ Recharge Company Balances ============
+  const getCompanyBalance: AppData['getCompanyBalance'] = useCallback((companyId) => {
+    return companyBalanceTxns
+      .filter((t) => t.companyId === companyId)
+      .reduce((sum, t) => {
+        if (t.type === 'recharge_in') return sum + t.amount;
+        if (t.type === 'recharge_out') return sum - t.amount;
+        if (t.type === 'adjustment') return sum + t.amount;
+        return sum;
+      }, 0);
+  }, [companyBalanceTxns]);
+
+  const getTotalCompaniesBalance: AppData['getTotalCompaniesBalance'] = useCallback(() => {
+    return RECHARGE_COMPANIES.reduce((sum, c) => sum + getCompanyBalance(c.id), 0);
+  }, [getCompanyBalance]);
+
+  const addCompanyBalanceTxn: AppData['addCompanyBalanceTxn'] = useCallback((t) => {
+    const txn: CompanyBalanceTxn = { ...t, id: storage.generateId(), createdAt: Date.now() };
+    setCompanyBalanceTxns((prev) => { const next = [txn, ...prev]; storage.saveCompanyBalanceTxns(next); return next; });
+    const companyName = RECHARGE_COMPANIES.find((c) => c.id === t.companyId)?.name ?? t.companyId;
+    addAuditEntry('update', 'company_balance', '', `${t.type === 'recharge_in' ? 'شحن رصيد' : t.type === 'recharge_out' ? 'خصم رصيد' : 'تسوية'} ${companyName}: ${t.amount}`);
+    return txn;
+  }, [addAuditEntry]);
+
+  const deleteCompanyBalanceTxn: AppData['deleteCompanyBalanceTxn'] = useCallback((id) => {
+    setCompanyBalanceTxns((prev) => { const next = prev.filter((t) => t.id !== id); storage.saveCompanyBalanceTxns(next); return next; });
+  }, []);
 
   // ============ Shifts ============
   const openShift: AppData['openShift'] = useCallback((openingCash) => {
@@ -4303,6 +4342,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         adjustWalletBalance,
         deleteWalletTransaction,
         recordSupplierWalletPayment,
+        companyBalanceTxns,
+        getCompanyBalance,
+        getTotalCompaniesBalance,
+        addCompanyBalanceTxn,
+        deleteCompanyBalanceTxn,
         openShift,
         closeShift,
         saveDraft,
