@@ -9,6 +9,7 @@ import {
   Clock3,
   ContactRound,
   Grid2X2,
+  Hash,
   KeyRound,
   MessageSquare,
   MoreHorizontal,
@@ -78,6 +79,7 @@ function WebTopBarInner() {
     if (settings.businessMode === 'telecom') {
       common[0] = { label: 'مخزون الشرائح', route: 'inventory', icon: PackageSearch };
       common.push(
+        { label: 'الأرقام', route: 'numbers', icon: Hash },
         { label: 'الشحن', route: 'recharge', icon: BatteryCharging },
         { label: 'الموردون', route: 'suppliers', icon: Truck },
         { label: 'العروض', route: 'promotions', icon: Percent },
