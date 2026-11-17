@@ -109,7 +109,43 @@ android/app/build/outputs/apk/debug/app-debug.apk
 
 ---
 
-### الطريقة الثانية: بناء عبر سحابة EAS
+### الطريقة الثانية: بناء تلقائي عبر GitHub Actions (موصى بها للإنتاج)
+
+يحتوي المشروع على ملف workflow جاهز في `.github/workflows/build-apk.yml`. عند رفع الكود إلى فرع `main` أو `master` على GitHub، يبدأ البناء تلقائياً وينتج ملف APK جاهز للتحميل.
+
+#### المتطلبات
+- مستودع على GitHub
+- إضافة Secretين في إعدادات المستودع (Settings → Secrets and variables → Actions → New repository secret):
+
+| اسم الـ Secret | القيمة |
+|----------------|--------|
+| `EXPO_PUBLIC_SUPABASE_URL` | رابط Supabase (موجود في ملف `.env` محلياً) |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | مفتاح Supabase العام (موجود في ملف `.env` محلياً) |
+
+#### كيفية إضافة الـ Secrets
+1. اذهب إلى صفحة المستودع على GitHub
+2. Settings → Secrets and variables → Actions
+3. اضغط "New repository secret"
+4. أضف الاسم والقيمة لكل من المتغيرين أعلاه
+
+#### تشغيل البناء
+- **تلقائياً**: عند رفع أي تعديل على فرع `main` أو `master`
+- **يدوياً**: اذهب إلى تبويب Actions في المستودع، اختر "Build Android APK"، ثم "Run workflow"
+
+#### تحميل الـ APK
+1. اذهب إلى تبويب Actions في المستودع
+2. افتح أحدث تشغيل ناجح
+3. في أسفل الصفحة، ستجد قسم "Artifacts" يحتوي على `Sahab-POS-APK`
+4. اضغط عليه لتحميل ملف APK
+
+#### ملاحظات
+- الـ APK يُوقّع حالياً بـ debug keystore (كافٍ للاستخدام الداخلي)
+- لإنتاج APK موقّع بمفتاح إنتاج، أضف keystore كـ Secret وعدّل `android/app/build.gradle` لقراءته
+- مدة احتفاظ GitHub بالـ artifact: 30 يوماً
+
+---
+
+### الطريقة الثالثة: بناء عبر سحابة EAS
 
 استخدم هذه الطريقة إذا كان لديك اشتراك مدفوع في Expo.
 
