@@ -490,6 +490,12 @@ export function TelecomInventory() {
             renderItem={({ item }) => {
               const agent = subAgents.find((a) => a.id === item.subAgentId);
               const supplier = suppliers.find((s) => s.id === item.supplierId);
+              const agentCompanies = agent
+                ? telecomCompanies.filter((c) => agent.companyIds.includes(c.id))
+                : [];
+              const companyLabel = agentCompanies.length > 0
+                ? agentCompanies.map((c) => c.name).join('، ')
+                : 'بدون شركة';
               return (
                 <View style={[styles.card, { backgroundColor: colors.surface }]}>
                   <View style={styles.cardHeader}>
@@ -498,10 +504,10 @@ export function TelecomInventory() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={1}>
-                        {supplier?.name ?? item.supplierName}
+                        {companyLabel}
                       </Text>
                       <Text style={[styles.cardCompany, { color: colors.textMuted }]}>
-                        إلى: {agent?.name ?? item.subAgentName}
+                        المورد: {supplier?.name ?? item.supplierName} - الوكيل: {agent?.name ?? item.subAgentName}
                       </Text>
                     </View>
                     <TouchableOpacity onPress={() => setDeleteShipmentTarget(item)} style={[styles.iconBtn, { backgroundColor: colors.danger + '15' }]}>
