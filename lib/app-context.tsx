@@ -2375,13 +2375,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [addAuditEntry, settings]);
 
   const updateTelecomSale: AppData['updateTelecomSale'] = useCallback((id, updates) => {
+    const oldSale = telecomSales.find((s) => s.id === id);
+    const now = Date.now();
+
+    // Reverse old debt from old customer, then apply new debt to new customer.
+    if (oldSale && (updates.debtChange !== undefined || updates.customerId !== undefined || updates.remaining !== undefined || updates.paid !== undefined)) {
+      const oldDebtChange = oldSale.debtChange ?? 0;
+      const newDebtChange = updates.debtChange ?? oldDebtChange;
+      const oldCustomerId = oldSale.customerId;
+      const newCustomerId = updates.customerId ?? oldCustomerId;
+      const oldOperationType = oldSale.operationType;
+      const newOperationType = updates.operationType ?? oldOperationType;
+
+      // Only adjust debt for non-cancelled sales
+      if (oldOperationType !== 'cancelled' && newOperationType !== 'cancelled') {
+        // Reverse old debt from old customer
+        if (oldCustomerId && oldDebtChange !== 0) {
+          setCustomers((prev) => {
+            const next = prev.map((c) => c.id === oldCustomerId ? { ...c, debt: Math.max(0, c.debt - oldDebtChange), updatedAt: now } : c);
+            storage.saveCustomers(next);
+            return next;
+          });
+        }
+        // Apply new debt to new customer
+        if (newCustomerId && newDebtChange !== 0) {
+          setCustomers((prev) => {
+            const next = prev.map((c) => c.id === newCustomerId ? { ...c, debt: Math.max(0, c.debt + newDebtChange), updatedAt: now } : c);
+            storage.saveCustomers(next);
+            return next;
+          });
+        }
+      }
+    }
+
     setTelecomSales((prev) => {
       const next = prev.map((s) => s.id === id ? { ...s, ...updates } : s);
       storage.saveTelecomSales(next);
       return next;
     });
     addAuditEntry('update', 'telecom_sale', id, 'تعديل معاملة اتصالات');
-  }, [addAuditEntry]);
+  }, [telecomSales, addAuditEntry]);
 
   const deleteTelecomSale: AppData['deleteTelecomSale'] = useCallback((id) => {
     const sale = telecomSales.find((s) => s.id === id);

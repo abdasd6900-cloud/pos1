@@ -1368,19 +1368,37 @@ export default function TelecomPOSScreen() {
   const handleCheckout = useCallback(() => {
     if (!canSubmit || !selectedCompany || !selectedSubAgent) return;
 
+    const normalizedPhone = normalizePhoneNumber(customerPhone.trim());
     let customerId = selectedCustomer?.id ?? null;
-    if (!customerId && customerName.trim() && customerPhone.trim()) {
-      const newCustomer = addCustomer({
-        name: customerName.trim(),
-        phone: normalizePhoneNumber(customerPhone.trim()),
-        tier: 'regular',
-        creditLimit: 1000,
-        discountPercent: 0,
-        notes: '',
-        subscriptionNumber: '',
-        subscriptionExpiry: null,
-      });
-      customerId = newCustomer.id;
+
+    // On edit, the user may have changed the name/phone to a different person.
+    // If the entered name/phone no longer matches the selected customer, find or create the correct one.
+    if (customerName.trim() && normalizedPhone) {
+      const selectedName = selectedCustomer?.name.trim().toLowerCase();
+      const selectedPhone = selectedCustomer ? normalizePhoneNumber(selectedCustomer.phone) : '';
+      const nameChanged = selectedName !== customerName.trim().toLowerCase();
+      const phoneChanged = selectedPhone !== normalizedPhone;
+      if (!customerId || nameChanged || phoneChanged) {
+        const existing = customers.find((c) =>
+          c.name.trim().toLowerCase() === customerName.trim().toLowerCase() &&
+          normalizePhoneNumber(c.phone) === normalizedPhone
+        );
+        if (existing) {
+          customerId = existing.id;
+        } else {
+          const newCustomer = addCustomer({
+            name: customerName.trim(),
+            phone: normalizedPhone,
+            tier: 'regular',
+            creditLimit: 1000,
+            discountPercent: 0,
+            notes: '',
+            subscriptionNumber: '',
+            subscriptionExpiry: null,
+          });
+          customerId = newCustomer.id;
+        }
+      }
     }
 
     const effectivePaid = paymentMethod === 'balance' && selectedCustomer
@@ -1394,6 +1412,7 @@ export default function TelecomPOSScreen() {
     const saleSimType: SimType | null = simOption === 'plastic' ? 'plastic' : simOption === 'barcode' ? 'electronic' : null;
 
     if (editingSaleId) {
+      const balanceBefore = customerId ? (customers.find((c) => c.id === customerId)?.debt ?? 0) : 0;
       updateTelecomSale(editingSaleId, {
         mode: 'sell_sim',
         operationType: saleOperationType,
@@ -1425,6 +1444,8 @@ export default function TelecomPOSScreen() {
         reminderDate: reminderDate ? new Date(reminderDate).getTime() : null,
         debtChange,
         carryoverDays: 0,
+        customerBalanceBefore: balanceBefore,
+        customerBalanceAfter: balanceBefore + debtChange,
         notes: notes.trim(),
       });
       setEditingSaleId(null);
