@@ -288,9 +288,22 @@ export default function TelecomPOSScreen() {
   const autoTotal = bundleSalePrice + simSurcharge;
   const salePriceVal = parseFloat(salePriceOverride) || 0;
   const total = salePriceVal > 0 ? salePriceVal : autoTotal;
-  const bundleCost = chargeDuration === 'offer'
-    ? (selectedBundle?.cost ?? 0)
-    : (selectedBundle?.cost ?? 0);
+  const monthlyCost = selectedBundle?.cost ?? 0;
+  const bundleCost = useMemo(() => {
+    if (!selectedBundle) return 0;
+    if (isOfferBundle) return selectedBundle.prices?.['3_months'] != null ? (selectedBundle.cost ?? 0) : 0;
+    if (chargeDuration === 'offer') return selectedBundle.cost ?? 0;
+    if (chargeDuration === 'month') return monthlyCost;
+    switch (chargeDuration) {
+      case '3_days': return Math.round((monthlyCost / 30 * 3) * 100) / 100;
+      case 'week': return Math.round((monthlyCost / 30 * 7) * 100) / 100;
+      case '2_weeks': return Math.round((monthlyCost / 30 * 14) * 100) / 100;
+      case '3_weeks': return Math.round((monthlyCost / 30 * 21) * 100) / 100;
+      case '2_months': return monthlyCost * 2;
+      case '3_months': return monthlyCost * 3;
+      default: return monthlyCost;
+    }
+  }, [chargeDuration, isOfferBundle, monthlyCost, selectedBundle]);
   const totalCost = bundleCost + simCostVal;
 
   const paid = paymentStatus === 'paid_full' ? total : paymentStatus === 'paid_partial' ? (parseFloat(paidAmount) || 0) : 0;
