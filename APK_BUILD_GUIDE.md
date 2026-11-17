@@ -114,19 +114,8 @@ android/app/build/outputs/apk/debug/app-debug.apk
 يحتوي المشروع على ملف workflow جاهز في `.github/workflows/build-apk.yml`. عند رفع الكود إلى فرع `main` أو `master` على GitHub، يبدأ البناء تلقائياً وينتج ملف APK جاهز للتحميل.
 
 #### المتطلبات
-- مستودع على GitHub
-- إضافة Secretين في إعدادات المستودع (Settings → Secrets and variables → Actions → New repository secret):
-
-| اسم الـ Secret | القيمة |
-|----------------|--------|
-| `EXPO_PUBLIC_SUPABASE_URL` | رابط Supabase (موجود في ملف `.env` محلياً) |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | مفتاح Supabase العام (موجود في ملف `.env` محلياً) |
-
-#### كيفية إضافة الـ Secrets
-1. اذهب إلى صفحة المستودع على GitHub
-2. Settings → Secrets and variables → Actions
-3. اضغط "New repository secret"
-4. أضف الاسم والقيمة لكل من المتغيرين أعلاه
+- مستودع على GitHub فقط — لا حاجة لأي إعدادات إضافية
+- متغيرات Supabase مضمنة مباشرة في ملف البناء، فلا تحتاج لإضافة أي Secrets
 
 #### تشغيل البناء
 - **تلقائياً**: عند رفع أي تعديل على فرع `main` أو `master`
