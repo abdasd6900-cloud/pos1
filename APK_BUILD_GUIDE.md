@@ -156,6 +156,7 @@ eas build:list --platform android --status finished
 | POST_NOTIFICATIONS | عرض تنبيهات الرسائل على Android 13+ |
 | FOREGROUND_SERVICE | تشغيل بوابة SMS في الخلفية |
 | FOREGROUND_SERVICE_DATA_SYNC | نوع خدمة المزامنة |
+| FOREGROUND_SERVICE_SPECIAL_USE | متطلوب لخدمات المزامنة على Android 14+ |
 | RECEIVE_BOOT_COMPLETED | إعادة تشغيل البوابة بعد إقلاع الجهاز |
 | READ_PHONE_STATE | معرفة حالة المكالمات الواردة |
 | ANSWER_PHONE_CALLS | الرد على المكالمات |
@@ -194,3 +195,13 @@ eas build:list --platform android --status finished
 ### مكالمات لا تُفلتر (Call Screening)
 - تأكد أن `CallScreeningService` مذكور في `mergeManifest` داخل `withSmsNative.js`
 - امنح التطبيق دور «تطبيق تصفية المكالمات» من إعدادات الأندرويد
+
+### Gradle Sync يفشل في Android Studio
+- تأكد أن `local.properties` يشير إلى مسار Android SDK الصحيح على جهازك
+- تأكد أن JDK 17 مثبت ومُحدد في Project Structure
+- إذا فشل `gradlew`، امنحه صلاحية التنفيذ: `chmod +x android/gradlew`
+- إصدار Gradle المطلوب: 9.4.1 (محدد في `gradle-wrapper.properties`)
+
+### @expo/cli غير موجود
+- إذا ظهر خطأ بعدم العثور على `@expo/cli`، شغّل `npm install` في جذر المشروع لإكمال تثبيت الحزم
+- `@expo/cli` يأتي كـ dependency ضمني من حزمة `expo` — لا تحتاج لإضافته يدوياً
