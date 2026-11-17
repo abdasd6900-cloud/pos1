@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
 
 export type ConnectionSide = 'android' | 'web';
 export type ConnectionStatus = 'online' | 'offline' | 'unknown';
@@ -25,6 +26,7 @@ function isStale(lastSeen: string | null): boolean {
 }
 
 export function useConnectionStatus() {
+  const { session } = useAuth();
   const [info, setInfo] = useState<ConnectionInfo>({
     androidOnline: false,
     webOnline: false,
@@ -96,6 +98,7 @@ export function useConnectionStatus() {
   }, []);
 
   useEffect(() => {
+    if (!session) return;
     void sendHeartbeat();
     void checkConnections();
 
@@ -111,7 +114,7 @@ export function useConnectionStatus() {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [sendHeartbeat, checkConnections]);
+  }, [sendHeartbeat, checkConnections, session]);
 
   return { info, selfStatus, refresh: checkConnections };
 }
