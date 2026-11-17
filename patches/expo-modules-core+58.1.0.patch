@@ -1,0 +1,25 @@
+diff --git a/node_modules/expo-modules-core/android/build.gradle b/node_modules/expo-modules-core/android/build.gradle
+index 6d9ca64..cbc0bb1 100644
+--- a/node_modules/expo-modules-core/android/build.gradle
++++ b/node_modules/expo-modules-core/android/build.gradle
+@@ -606,7 +606,19 @@ abstract class PrebuiltSourceHashValueSource implements ValueSource<String, Preb
+   }
+ }
+ 
+-def stripBinary = PrebuiltNativeLibs.findLlvmStrip(android.ndkDirectory)
++def ndkDir = null
++if (android.hasProperty('ndkDirectory') && android.ndkDirectory != null) {
++  ndkDir = android.ndkDirectory
++} else {
++  def ndkRoot = new File(android.sdkDirectory, "ndk")
++  if (ndkRoot.exists()) {
++    def ndkDirs = ndkRoot.listFiles()?.findAll { it.isDirectory() }?.sort()
++    if (ndkDirs != null && ndkDirs.size() > 0) {
++      ndkDir = ndkDirs.last()
++    }
++  }
++}
++def stripBinary = PrebuiltNativeLibs.findLlvmStrip(ndkDir)
+ def cacheStagingDir = layout.buildDirectory.dir("tmp/cache-prebuilt-natives").get().asFile
+ def variantDescriptors = prebuiltVariants.collect { variant ->
+   def variantCap = variant.capitalize()
