@@ -111,8 +111,52 @@ export default function NumbersScreen() {
     closeForm();
   };
 
+  const mergedNumbers = useMemo(() => {
+    const byPhone = new Map<string, PhoneNumberEntry & { bundleName?: string; operationType?: string }>();
+    // Start with manually-added entries
+    for (const e of phoneNumbers) {
+      byPhone.set(e.phoneNumber, { ...e });
+    }
+    // Merge in numbers from telecom sales that aren't already added
+    for (const s of telecomSales) {
+      if (!s.simNumber) continue;
+      const existing = byPhone.get(s.simNumber);
+      if (existing) {
+        // Enrich with sale data if missing
+        if (!existing.companyName) existing.companyName = s.companyName;
+        if (!existing.subAgentName) existing.subAgentName = s.subAgentName;
+        if (!existing.customerName) existing.customerName = s.customerName;
+        if (!existing.customerPhone) existing.customerPhone = s.customerPhone;
+        if (!existing.simSerialNumber) existing.simSerialNumber = s.serialNumber || '';
+        existing.bundleName = s.bundleName || existing.bundleName;
+        // Update last transaction if this sale is newer
+        if (!existing.lastTransactionAt || s.createdAt > existing.lastTransactionAt) {
+          existing.lastTransactionAt = s.createdAt;
+          existing.lastTransactionType = s.operationType;
+          existing.bundleName = s.bundleName || existing.bundleName;
+        }
+      } else {
+        byPhone.set(s.simNumber, {
+          id: `sale-${s.id}`,
+          phoneNumber: s.simNumber,
+          simSerialNumber: s.serialNumber || '',
+          companyName: s.companyName,
+          subAgentName: s.subAgentName,
+          customerName: s.customerName,
+          customerPhone: s.customerPhone,
+          lastTransactionAt: s.createdAt,
+          lastTransactionType: s.operationType,
+          bundleName: s.bundleName || '',
+          createdAt: s.createdAt,
+          updatedAt: s.createdAt,
+        });
+      }
+    }
+    return Array.from(byPhone.values());
+  }, [phoneNumbers, telecomSales]);
+
   const filtered = useMemo(() => {
-    let result = phoneNumbers;
+    let result = mergedNumbers;
     const q = search.trim().toLowerCase();
     if (q) {
       result = result.filter((e) =>
@@ -121,7 +165,8 @@ export default function NumbersScreen() {
         e.companyName.toLowerCase().includes(q) ||
         e.subAgentName.toLowerCase().includes(q) ||
         e.customerName.toLowerCase().includes(q) ||
-        e.customerPhone.toLowerCase().includes(q)
+        e.customerPhone.toLowerCase().includes(q) ||
+        (e.bundleName ?? '').toLowerCase().includes(q)
       );
     }
     const sorted = [...result];
@@ -132,7 +177,7 @@ export default function NumbersScreen() {
       default: sorted.sort((a, b) => b.createdAt - a.createdAt);
     }
     return sorted;
-  }, [phoneNumbers, search, sortKey]);
+  }, [mergedNumbers, search, sortKey]);
 
   const sortLabels: Record<SortKey, string> = {
     newest: 'الأحدث',
@@ -144,11 +189,12 @@ export default function NumbersScreen() {
 
   const handleExportFull = useCallback(() => {
     const ws = XLSX.utils.json_to_sheet(
-      phoneNumbers.map((e) => ({
+      mergedNumbers.map((e) => ({
         'رقم الهاتف': e.phoneNumber,
         'رقم الشريحة': e.simSerialNumber,
         'الشركة': e.companyName,
         'الوكيل': e.subAgentName,
+        'الحزمة': e.bundleName || '',
         'اسم الزبون': e.customerName,
         'رقم الزبون': e.customerPhone,
         'آخر معاملة': e.lastTransactionAt ? formatDateTime(e.lastTransactionAt) : '',
@@ -157,7 +203,7 @@ export default function NumbersScreen() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'الأرقام');
     void exportXlsx(wb, 'كشف_الأرقام.xlsx');
-  }, [phoneNumbers]);
+  }, [mergedNumbers]);
 
   const handleExportTemplate = useCallback(() => {
     const ws = XLSX.utils.json_to_sheet([
@@ -267,7 +313,9 @@ export default function NumbersScreen() {
     setTimeout(() => setLinkResult(null), 3000);
   };
 
-  const handleDelete = (entry: PhoneNumberEntry) => {
+  const handleDelete = (entry: PhoneNumberEntry & { bundleName?: string }) => {
+    // Only allow deleting manually-added entries (not sale-derived ones)
+    if (entry.id.startsWith('sale-')) return;
     if (Platform.OS === 'web') {
       if (window.confirm(`حذف الرقم ${entry.phoneNumber}؟`)) {
         deletePhoneNumber(entry.id);
@@ -394,6 +442,7 @@ export default function NumbersScreen() {
             <Text style={[styles.colHeader, styles.colSim, { color: colors.textSecondary, borderLeftColor: colors.border }]}>رقم الشريحة</Text>
             <Text style={[styles.colHeader, styles.colCompany, { color: colors.textSecondary, borderLeftColor: colors.border }]}>الشركة</Text>
             <Text style={[styles.colHeader, styles.colAgent, { color: colors.textSecondary, borderLeftColor: colors.border }]}>الوكيل</Text>
+            <Text style={[styles.colHeader, styles.colBundle, { color: colors.textSecondary, borderLeftColor: colors.border }]}>الحزمة</Text>
             <Text style={[styles.colHeader, styles.colCustomer, { color: colors.textSecondary, borderLeftColor: colors.border }]}>اسم الزبون</Text>
             <Text style={[styles.colHeader, styles.colPhone, { color: colors.textSecondary, borderLeftColor: colors.border }]}>رقم الزبون</Text>
             <Text style={[styles.colHeader, styles.colLastTxn, { color: colors.textSecondary, borderLeftColor: colors.border }]}>آخر معاملة</Text>
@@ -405,17 +454,22 @@ export default function NumbersScreen() {
               <Text style={[styles.colBody, styles.colSim, { color: colors.textSecondary, borderLeftColor: colors.border }]}>{entry.simSerialNumber || '-'}</Text>
               <Text style={[styles.colBody, styles.colCompany, { color: colors.text, borderLeftColor: colors.border }]}>{entry.companyName || '-'}</Text>
               <Text style={[styles.colBody, styles.colAgent, { color: colors.textSecondary, borderLeftColor: colors.border }]}>{entry.subAgentName || '-'}</Text>
+              <Text style={[styles.colBody, styles.colBundle, { color: colors.textSecondary, borderLeftColor: colors.border }]}>{entry.bundleName || '-'}</Text>
               <Text style={[styles.colBody, styles.colCustomer, { color: colors.text, borderLeftColor: colors.border }]}>{entry.customerName || '-'}</Text>
               <Text style={[styles.colBody, styles.colPhone, { color: colors.textSecondary, borderLeftColor: colors.border }]}>{entry.customerPhone || '-'}</Text>
               <Text style={[styles.colBody, styles.colLastTxn, { color: colors.textMuted, borderLeftColor: colors.border }]} numberOfLines={1}>{lastTransactionLabel(entry)}</Text>
               <View style={[styles.colBody, styles.colActions, { borderLeftColor: colors.border }]}>
                 <View style={styles.rowActions}>
-                  <TouchableOpacity onPress={() => openEditForm(entry)} style={styles.iconBtn}>
-                    <Pencil size={16} color={colors.accent} strokeWidth={2} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(entry)} style={styles.iconBtn}>
-                    <Trash2 size={16} color={colors.danger} strokeWidth={2} />
-                  </TouchableOpacity>
+                  {!entry.id.startsWith('sale-') && (
+                    <TouchableOpacity onPress={() => openEditForm(entry)} style={styles.iconBtn}>
+                      <Pencil size={16} color={colors.accent} strokeWidth={2} />
+                    </TouchableOpacity>
+                  )}
+                  {!entry.id.startsWith('sale-') && (
+                    <TouchableOpacity onPress={() => handleDelete(entry)} style={styles.iconBtn}>
+                      <Trash2 size={16} color={colors.danger} strokeWidth={2} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </View>
@@ -431,17 +485,22 @@ export default function NumbersScreen() {
                   <Text style={[styles.cardPhone, { color: colors.text }]}>{entry.phoneNumber}</Text>
                 </View>
                 <View style={styles.rowActions}>
-                  <TouchableOpacity onPress={() => openEditForm(entry)} style={styles.iconBtn}>
-                    <Pencil size={16} color={colors.accent} strokeWidth={2} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(entry)} style={styles.iconBtn}>
-                    <Trash2 size={16} color={colors.danger} strokeWidth={2} />
-                  </TouchableOpacity>
+                  {!entry.id.startsWith('sale-') && (
+                    <TouchableOpacity onPress={() => openEditForm(entry)} style={styles.iconBtn}>
+                      <Pencil size={16} color={colors.accent} strokeWidth={2} />
+                    </TouchableOpacity>
+                  )}
+                  {!entry.id.startsWith('sale-') && (
+                    <TouchableOpacity onPress={() => handleDelete(entry)} style={styles.iconBtn}>
+                      <Trash2 size={16} color={colors.danger} strokeWidth={2} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
               <View style={styles.cardBody}>
                 <CardRow icon={<CreditCard size={14} color={colors.textMuted} strokeWidth={2} />} label="الشريحة" value={entry.simSerialNumber || '-'} colors={colors} />
                 <CardRow icon={<Building2 size={14} color={colors.textMuted} strokeWidth={2} />} label="الشركة" value={entry.companyName || '-'} colors={colors} />
+                {entry.bundleName ? <CardRow icon={<CreditCard size={14} color={colors.textMuted} strokeWidth={2} />} label="الحزمة" value={entry.bundleName} colors={colors} /> : null}
                 <CardRow icon={<User size={14} color={colors.textMuted} strokeWidth={2} />} label="الزبون" value={`${entry.customerName || '-'}${entry.customerPhone ? ' / ' + entry.customerPhone : ''}`} colors={colors} />
                 <CardRow icon={<Clock size={14} color={colors.textMuted} strokeWidth={2} />} label="آخر معاملة" value={lastTransactionLabel(entry)} colors={colors} />
               </View>
@@ -565,6 +624,7 @@ const styles = StyleSheet.create({
   colSim: { flex: 1.2 },
   colCompany: { flex: 1 },
   colAgent: { flex: 1 },
+  colBundle: { flex: 1 },
   colCustomer: { flex: 1 },
   colLastTxn: { flex: 1.5 },
   colActions: { flex: 0.8, justifyContent: 'center' },

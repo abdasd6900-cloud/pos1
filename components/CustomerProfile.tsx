@@ -910,6 +910,18 @@ function TelecomTimelineCard({
           </Text>
         </View>
 
+        {/* Bundle name line */}
+        {s.bundleName ? (
+          <View style={[styles.timelineCardInfoRow, { borderTopColor: colors.border }]}>
+            <View style={styles.timelineCardInfoItem}>
+              <Package size={13} color={colors.textMuted} strokeWidth={2} />
+              <Text style={[styles.timelineCardInfoText, { color: colors.textSecondary }]}>
+                الحزمة: {s.bundleName}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         {/* Line 2: date + days remaining + payment status + debt */}
         <View style={[styles.timelineCardInfoRow, { borderTopColor: colors.border }]}>
           <View style={styles.timelineCardInfoItem}>
