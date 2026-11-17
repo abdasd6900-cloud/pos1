@@ -52,6 +52,7 @@ const copyJavaSources: ConfigPlugin<void> = (config) => {
         'DefaultSmsModule.java',
         'DefaultSmsPackage.java',
         'SmsReplyReceiver.java',
+        'SmsDeliveryReceiver.java',
         'SmsReaderModule.java',
         'SmsReaderPackage.java',
         'SkyRechargeModule.java',

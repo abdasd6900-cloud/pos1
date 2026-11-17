@@ -11,4 +11,7 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# Native SMS / telecom modules — prevent R8 from stripping or renaming
+-keep class com.sahabpos.sms.** { *; }
+
 # Add any project specific keep options here:
