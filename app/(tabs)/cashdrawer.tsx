@@ -1,293 +1,394 @@
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput } from 'react-native';
-import { useState, useMemo } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, FlatList } from 'react-native';
+import { useState, useMemo, useCallback } from 'react';
 import {
-  Wallet, Play, Square, Plus, Trash2, TrendingUp,
-  Receipt, AlertTriangle, Check, Clock,
+  Wallet, Plus, Trash2, TrendingUp, TrendingDown,
+  ArrowRightLeft, Banknote, Building2, Smartphone, Store,
+  Receipt, ChevronDown, ChevronUp, Settings2, Check,
 } from 'lucide-react-native';
 import { useApp } from '@/lib/app-context';
 import { useTheme } from '@/lib/theme-context';
 import { formatCurrency, formatDateTime, isToday } from '@/lib/format';
-import { EXPENSE_CATEGORIES } from '@/types';
+import { EXPENSE_CATEGORIES, WALLET_TYPES, ELECTRONIC_WALLET_TYPES, type WalletType, type WalletTypeDef, type WalletTxnType } from '@/types';
 import { BaseModal } from '@/components/BaseModal';
 import { EmptyState } from '@/components/EmptyState';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 type Colors = ReturnType<typeof useTheme>['colors'];
 
+const WALLET_ICONS: Record<WalletType, React.ReactNode> = {
+  cash: <Banknote size={20} color="#FFFFFF" strokeWidth={2} />,
+  bank_palestine: <Building2 size={20} color="#FFFFFF" strokeWidth={2} />,
+  palpay: <Wallet size={20} color="#FFFFFF" strokeWidth={2} />,
+  jawwal_pay: <Smartphone size={20} color="#FFFFFF" strokeWidth={2} />,
+  jawwal_pay_merchant: <Store size={20} color="#FFFFFF" strokeWidth={2} />,
+  malchat: <Wallet size={20} color="#FFFFFF" strokeWidth={2} />,
+};
+
+const TXN_TYPE_LABELS: Record<WalletTxnType, string> = {
+  income: 'إيداع',
+  expense: 'مصروف',
+  transfer_in: 'تحويل وارد',
+  transfer_out: 'تحويل صادر',
+  supplier_payment: 'دفع مورد',
+  sale: 'بيع',
+  adjustment: 'تسوية',
+};
+
+const TXN_TYPE_COLORS: Record<WalletTxnType, 'success' | 'danger' | 'info' | 'warning' | 'primary'> = {
+  income: 'success',
+  expense: 'danger',
+  transfer_in: 'success',
+  transfer_out: 'warning',
+  supplier_payment: 'danger',
+  sale: 'success',
+  adjustment: 'info',
+};
+
 export default function CashDrawerScreen() {
-  const { activeShift, shifts, expenses, transactions, settings, openShift, closeShift, addExpense, deleteExpense, stats } = useApp();
+  const {
+    walletTxns, getWalletBalance, getTotalWalletsBalance,
+    addExpense, deleteExpense, expenses,
+    transferBetweenWallets, adjustWalletBalance, deleteWalletTransaction,
+    settings,
+  } = useApp();
   const { colors } = useTheme();
-  const [showOpenModal, setShowOpenModal] = useState(false);
-  const [showCloseModal, setShowCloseModal] = useState(false);
+
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
-  const [openingCash, setOpeningCash] = useState('');
-  const [closingCash, setClosingCash] = useState('');
-  const [closeResult, setCloseResult] = useState<{ expected: number; actual: number; diff: number } | null>(null);
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyWallet, setHistoryWallet] = useState<WalletType | 'all'>('all');
+
+  // Transfer state
+  const [transferFrom, setTransferFrom] = useState<WalletType>('cash');
+  const [transferTo, setTransferTo] = useState<WalletType>('bank_palestine');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferNote, setTransferNote] = useState('');
+
+  // Expense state
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseCategory, setExpenseCategory] = useState(EXPENSE_CATEGORIES[0]);
   const [expenseDesc, setExpenseDesc] = useState('');
+  const [expenseWallet, setExpenseWallet] = useState<WalletType>('cash');
 
-  const shiftSales = useMemo(() => {
-    if (!activeShift) return 0;
-    return transactions
-      .filter((t) => t.type === 'sale' && t.createdAt >= activeShift.openedAt && t.paymentMethod === 'cash')
-      .reduce((sum, t) => sum + t.paid, 0);
-  }, [transactions, activeShift]);
+  // Adjust state
+  const [adjustWallet, setAdjustWallet] = useState<WalletType>('cash');
+  const [adjustAmount, setAdjustAmount] = useState('');
+  const [adjustNote, setAdjustNote] = useState('');
 
-  const shiftExpenses = useMemo(() => {
-    if (!activeShift) return 0;
-    return expenses.filter((e) => e.shiftId === activeShift.id).reduce((sum, e) => sum + e.amount, 0);
-  }, [expenses, activeShift]);
+  const totalBalance = getTotalWalletsBalance();
+  const cashBalance = getWalletBalance('cash');
+  const electronicTotal = ELECTRONIC_WALLET_TYPES.reduce((sum, w) => sum + getWalletBalance(w.id), 0);
 
-  const expectedCash = activeShift ? activeShift.openingCash + shiftSales - shiftExpenses : 0;
-  const todayExpenses = expenses.filter((e) => isToday(e.createdAt));
+  const todayWalletTxns = useMemo(() => {
+    return walletTxns.filter((w) => isToday(w.createdAt));
+  }, [walletTxns]);
 
-  const handleOpenShift = () => {
-    const amount = parseFloat(openingCash) || 0;
-    openShift(amount);
-    setShowOpenModal(false);
-    setOpeningCash('');
-  };
+  const todayExpenses = useMemo(() => {
+    return expenses.filter((e) => isToday(e.createdAt));
+  }, [expenses]);
 
-  const handleCloseShift = () => {
-    const actual = parseFloat(closingCash) || 0;
-    const result = closeShift(actual);
-    if (result) {
-      setCloseResult({ expected: result.expectedCash ?? 0, actual: result.closingCash ?? 0, diff: result.difference ?? 0 });
-    }
-    setShowCloseModal(false);
-    setClosingCash('');
-  };
+  const filteredHistory = useMemo(() => {
+    if (historyWallet === 'all') return walletTxns;
+    return walletTxns.filter((w) => w.walletType === historyWallet);
+  }, [walletTxns, historyWallet]);
 
-  const handleAddExpense = () => {
+  const handleTransfer = useCallback(() => {
+    const amount = parseFloat(transferAmount) || 0;
+    if (amount <= 0 || transferFrom === transferTo) return;
+    transferBetweenWallets(transferFrom, transferTo, amount, transferNote.trim());
+    setTransferAmount('');
+    setTransferNote('');
+    setShowTransferModal(false);
+  }, [transferFrom, transferTo, transferAmount, transferNote, transferBetweenWallets]);
+
+  const handleAddExpense = useCallback(() => {
     const amount = parseFloat(expenseAmount) || 0;
     if (amount <= 0) return;
-    addExpense(amount, expenseCategory, expenseDesc.trim());
+    addExpense(amount, expenseCategory, expenseDesc.trim(), expenseWallet);
     setExpenseAmount('');
     setExpenseDesc('');
     setShowExpenseModal(false);
-  };
+  }, [expenseAmount, expenseCategory, expenseDesc, expenseWallet, addExpense]);
+
+  const handleAdjust = useCallback(() => {
+    const newBalance = parseFloat(adjustAmount) || 0;
+    adjustWalletBalance(adjustWallet, newBalance, adjustNote.trim());
+    setAdjustAmount('');
+    setAdjustNote('');
+    setShowAdjustModal(false);
+  }, [adjustWallet, adjustAmount, adjustNote, adjustWalletBalance]);
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.bg }]} contentContainerStyle={{ paddingBottom: 24 }}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.bg }]} contentContainerStyle={{ paddingBottom: 32 }}>
+      {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.surface }]}>
         <Wallet size={24} color={colors.primary} strokeWidth={2} />
-        <Text style={[styles.headerTitle, { color: colors.text }]}>إدارة الخزينة</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>الصندوق</Text>
       </View>
 
-      {/* Active Shift Status */}
+      {/* Total Balance Hero Card */}
       <View style={styles.section}>
-        {activeShift ? (
-          <View style={[styles.shiftCard, { backgroundColor: colors.surface }]}>
-            <View style={styles.shiftStatusRow}>
-              <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
-              <Text style={[styles.shiftStatusText, { color: colors.success }]}>وردية مفتوحة</Text>
-            </View>
-            <View style={styles.shiftGrid}>
-              <ShiftStat label="رصيد الافتتاح" value={formatCurrency(activeShift.openingCash, settings.currency)} colors={colors} />
-              <ShiftStat label="مبيعات نقدية" value={formatCurrency(shiftSales, settings.currency)} colors={colors} colorsValue={colors.success} />
-              <ShiftStat label="مصروفات" value={formatCurrency(shiftExpenses, settings.currency)} colors={colors} colorsValue={colors.danger} />
-              <ShiftStat label="النقدية المتوقعة" value={formatCurrency(expectedCash, settings.currency)} colors={colors} colorsValue={colors.primary} />
-            </View>
-            <View style={styles.shiftTimeRow}>
-              <Clock size={12} color={colors.textMuted} strokeWidth={2} />
-              <Text style={[styles.shiftTime, { color: colors.textMuted }]}>
-                فُتحت: {formatDateTime(activeShift.openedAt)}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => setShowCloseModal(true)}
-              style={[styles.closeShiftBtn, { backgroundColor: colors.danger }]}
-              activeOpacity={0.7}
-            >
-              <Square size={18} color="#FFFFFF" strokeWidth={2} />
-              <Text style={styles.closeShiftText}>إغلاق الوردية</Text>
-            </TouchableOpacity>
+        <View style={[styles.heroCard, { backgroundColor: colors.primary }]}>
+          <View style={styles.heroTopRow}>
+            <Text style={styles.heroLabel}>إجمالي الرصيد</Text>
+            <Wallet size={22} color="#FFFFFF80" strokeWidth={2} />
           </View>
-        ) : (
-          <View style={[styles.noShiftCard, { backgroundColor: colors.surface }]}>
-            <Wallet size={40} color={colors.textMuted} strokeWidth={1.5} />
-            <Text style={[styles.noShiftTitle, { color: colors.text }]}>لا توجد وردية مفتوحة</Text>
-            <Text style={[styles.noShiftHint, { color: colors.textMuted }]}>افتح وردية جديدة لبدء تسجيل المبيعات والمصروفات</Text>
-            <TouchableOpacity
-              onPress={() => setShowOpenModal(true)}
-              style={[styles.openShiftBtn, { backgroundColor: colors.primary }]}
-              activeOpacity={0.7}
-            >
-              <Play size={18} color="#FFFFFF" strokeWidth={2} />
-              <Text style={styles.openShiftText}>فتح وردية جديدة</Text>
-            </TouchableOpacity>
+          <Text style={styles.heroValue}>{formatCurrency(totalBalance, settings.currency)}</Text>
+          <View style={styles.heroDivider} />
+          <View style={styles.heroBreakdown}>
+            <View style={styles.heroBreakdownItem}>
+              <Banknote size={16} color="#FFFFFFCC" strokeWidth={2} />
+              <Text style={styles.heroBreakdownLabel}>نقدي</Text>
+              <Text style={styles.heroBreakdownValue}>{formatCurrency(cashBalance, settings.currency)}</Text>
+            </View>
+            <View style={styles.heroBreakdownItem}>
+              <Smartphone size={16} color="#FFFFFFCC" strokeWidth={2} />
+              <Text style={styles.heroBreakdownLabel}>المحافظ</Text>
+              <Text style={styles.heroBreakdownValue}>{formatCurrency(electronicTotal, settings.currency)}</Text>
+            </View>
           </View>
-        )}
-      </View>
-
-      {/* Quick Stats */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>ملخص اليوم</Text>
-        <View style={styles.quickGrid}>
-          <QuickCard icon={<TrendingUp size={18} color="#FFFFFF" strokeWidth={2} />} label="مبيعات اليوم" value={formatCurrency(stats.todaySales, settings.currency)} bg={colors.primary} colors={colors} />
-          <QuickCard icon={<Wallet size={18} color="#FFFFFF" strokeWidth={2} />} label="مصروفات اليوم" value={formatCurrency(stats.todayExpenses, settings.currency)} bg={colors.danger} colors={colors} />
-          <QuickCard icon={<Receipt size={18} color="#FFFFFF" strokeWidth={2} />} label="عدد المعاملات" value={stats.todayTransactions.toString()} bg={colors.info} colors={colors} />
-          <QuickCard icon={<AlertTriangle size={18} color="#FFFFFF" strokeWidth={2} />} label="صافي اليوم" value={formatCurrency(stats.todaySales - stats.todayExpenses, settings.currency)} bg={colors.success} colors={colors} />
         </View>
       </View>
 
-      {/* Expenses */}
+      {/* Action Buttons */}
+      <View style={styles.section}>
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            onPress={() => setShowTransferModal(true)}
+            style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: colors.primary + '18' }]}>
+              <ArrowRightLeft size={20} color={colors.primary} strokeWidth={2} />
+            </View>
+            <Text style={[styles.actionLabel, { color: colors.text }]}>تحويل بين المحافظ</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setShowExpenseModal(true)}
+            style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: colors.danger + '18' }]}>
+              <Plus size={20} color={colors.danger} strokeWidth={2} />
+            </View>
+            <Text style={[styles.actionLabel, { color: colors.text }]}>مصروف جديد</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setShowAdjustModal(true)}
+            style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: colors.info + '18' }]}>
+              <Settings2 size={20} color={colors.info} strokeWidth={2} />
+            </View>
+            <Text style={[styles.actionLabel, { color: colors.text }]}>تسوية رصيد</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Wallet Cards */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>أرصدة المحافظ</Text>
+        <View style={styles.walletGrid}>
+          {WALLET_TYPES.map((w) => {
+            const balance = getWalletBalance(w.id);
+            const isNegative = balance < 0;
+            return (
+              <View key={w.id} style={[styles.walletCard, { backgroundColor: colors.surface }]}>
+                <View style={[styles.walletIconBox, { backgroundColor: w.color }]}>
+                  {WALLET_ICONS[w.id]}
+                </View>
+                <Text style={[styles.walletName, { color: colors.text }]}>{w.name}</Text>
+                <Text style={[styles.walletBalance, { color: isNegative ? colors.danger : colors.text }]}>
+                  {formatCurrency(balance, settings.currency)}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => { setHistoryWallet(w.id); setShowHistoryModal(true); }}
+                  style={[styles.walletHistoryBtn, { borderColor: colors.border }]}
+                >
+                  <Receipt size={12} color={colors.textMuted} strokeWidth={2} />
+                  <Text style={[styles.walletHistoryText, { color: colors.textMuted }]}>السجل</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Electronic Wallets Summary */}
+      <View style={styles.section}>
+        <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.summaryHeader}>
+            <Smartphone size={18} color={colors.info} strokeWidth={2} />
+            <Text style={[styles.summaryTitle, { color: colors.text }]}>ملخص المحافظ الإلكترونية</Text>
+          </View>
+          {ELECTRONIC_WALLET_TYPES.map((w, i) => {
+            const balance = getWalletBalance(w.id);
+            return (
+              <View
+                key={w.id}
+                style={[
+                  styles.summaryRow,
+                  i < ELECTRONIC_WALLET_TYPES.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                ]}
+              >
+                <View style={styles.summaryRowLeft}>
+                  <View style={[styles.summaryDot, { backgroundColor: w.color }]} />
+                  <Text style={[styles.summaryRowName, { color: colors.text }]}>{w.name}</Text>
+                </View>
+                <Text style={[styles.summaryRowValue, { color: balance < 0 ? colors.danger : colors.text }]}>
+                  {formatCurrency(balance, settings.currency)}
+                </Text>
+              </View>
+            );
+          })}
+          <View style={[styles.summaryTotalRow, { borderTopColor: colors.border }]}>
+            <Text style={[styles.summaryTotalLabel, { color: colors.text }]}>مجموع المحافظ</Text>
+            <Text style={[styles.summaryTotalValue, { color: colors.primary }]}>
+              {formatCurrency(electronicTotal, settings.currency)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Today's Transactions */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>المصروفات ({todayExpenses.length})</Text>
-          {activeShift && (
-            <TouchableOpacity onPress={() => setShowExpenseModal(true)} style={[styles.addExpenseBtn, { backgroundColor: colors.danger + '15' }]}>
-              <Plus size={16} color={colors.danger} strokeWidth={2} />
-              <Text style={[styles.addExpenseText, { color: colors.danger }]}>مصروف جديد</Text>
-            </TouchableOpacity>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>عمليات اليوم ({todayWalletTxns.length})</Text>
+          <TouchableOpacity
+            onPress={() => { setHistoryWallet('all'); setShowHistoryModal(true); }}
+            style={[styles.seeAllBtn, { backgroundColor: colors.primary + '12' }]}
+          >
+            <Text style={[styles.seeAllText, { color: colors.primary }]}>عرض الكل</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.txnList, { backgroundColor: colors.surface }]}>
+          {todayWalletTxns.length === 0 ? (
+            <EmptyState
+              icon={<Wallet size={32} color={colors.textMuted} strokeWidth={2} />}
+              title="لا توجد عمليات اليوم"
+              subtitle="ستظهر هنا جميع العمليات المالية"
+            />
+          ) : (
+            todayWalletTxns.slice(0, 12).map((w, i) => {
+              const wtd = WALLET_TYPES.find((wt) => wt.id === w.walletType);
+              const isIncome = w.type === 'income' || w.type === 'transfer_in' || w.type === 'sale';
+              const isExpense = w.type === 'expense' || w.type === 'transfer_out' || w.type === 'supplier_payment';
+              const colorKey = TXN_TYPE_COLORS[w.type];
+              const txnColor = colorKey === 'success' ? colors.success : colorKey === 'danger' ? colors.danger : colorKey === 'warning' ? colors.warning : colorKey === 'info' ? colors.info : colors.primary;
+              return (
+                <View
+                  key={w.id}
+                  style={[
+                    styles.txnRow,
+                    i < Math.min(todayWalletTxns.length, 12) - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                  ]}
+                >
+                  <View style={[styles.txnIcon, { backgroundColor: (wtd?.color ?? colors.primary) + '18' }]}>
+                    {isIncome ? (
+                      <TrendingUp size={16} color={colors.success} strokeWidth={2} />
+                    ) : isExpense ? (
+                      <TrendingDown size={16} color={colors.danger} strokeWidth={2} />
+                    ) : (
+                      <Settings2 size={16} color={colors.info} strokeWidth={2} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.txnType, { color: colors.text }]}>{TXN_TYPE_LABELS[w.type]}</Text>
+                    <Text style={[styles.txnWallet, { color: colors.textMuted }]}>{wtd?.name}</Text>
+                    {w.description ? <Text style={[styles.txnDesc, { color: colors.textMuted }]} numberOfLines={1}>{w.description}</Text> : null}
+                    <Text style={[styles.txnTime, { color: colors.textMuted }]}>{formatDateTime(w.createdAt)}</Text>
+                  </View>
+                  <Text style={[styles.txnAmount, { color: isIncome ? colors.success : isExpense ? colors.danger : txnColor }]}>
+                    {isIncome ? '+' : isExpense ? '-' : ''}{formatCurrency(w.amount, settings.currency)}
+                  </Text>
+                </View>
+              );
+            })
           )}
         </View>
-        <View style={[styles.expenseList, { backgroundColor: colors.surface }]}>
+      </View>
+
+      {/* Today's Expenses */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>مصروفات اليوم ({todayExpenses.length})</Text>
+        <View style={[styles.txnList, { backgroundColor: colors.surface }]}>
           {todayExpenses.length === 0 ? (
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>لا توجد مصروفات اليوم</Text>
           ) : (
-            todayExpenses.slice(0, 15).map((e, i) => (
-              <View key={e.id} style={[styles.expenseRow, i < Math.min(todayExpenses.length, 15) - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                <View style={[styles.expenseIcon, { backgroundColor: colors.danger + '15' }]}>
-                  <Wallet size={16} color={colors.danger} strokeWidth={2} />
+            todayExpenses.slice(0, 10).map((e, i) => {
+              const wtd = WALLET_TYPES.find((w) => w.id === (e.walletType ?? 'cash'));
+              return (
+                <View
+                  key={e.id}
+                  style={[
+                    styles.txnRow,
+                    i < Math.min(todayExpenses.length, 10) - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                  ]}
+                >
+                  <View style={[styles.txnIcon, { backgroundColor: colors.danger + '15' }]}>
+                    <TrendingDown size={16} color={colors.danger} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.txnType, { color: colors.text }]}>{e.category}</Text>
+                    {e.description ? <Text style={[styles.txnDesc, { color: colors.textMuted }]} numberOfLines={1}>{e.description}</Text> : null}
+                    <View style={styles.expenseMetaRow}>
+                      <Text style={[styles.txnTime, { color: colors.textMuted }]}>{formatDateTime(e.createdAt)}</Text>
+                      {wtd && (
+                        <View style={[styles.walletTag, { backgroundColor: (wtd.color) + '15' }]}>
+                          <Text style={[styles.walletTagText, { color: wtd.color }]}>{wtd.name}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  <Text style={[styles.txnAmount, { color: colors.danger }]}>
+                    -{formatCurrency(e.amount, settings.currency)}
+                  </Text>
+                  <TouchableOpacity onPress={() => deleteExpense(e.id)} style={styles.deleteBtn}>
+                    <Trash2 size={14} color={colors.textMuted} strokeWidth={2} />
+                  </TouchableOpacity>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.expenseCategory, { color: colors.text }]}>{e.category}</Text>
-                  {e.description ? <Text style={[styles.expenseDesc, { color: colors.textMuted }]} numberOfLines={1}>{e.description}</Text> : null}
-                  <Text style={[styles.expenseTime, { color: colors.textMuted }]}>{formatDateTime(e.createdAt)}</Text>
-                </View>
-                <Text style={[styles.expenseAmount, { color: colors.danger }]}>
-                  -{formatCurrency(e.amount, settings.currency)}
-                </Text>
-                <TouchableOpacity onPress={() => deleteExpense(e.id)} style={styles.deleteExpenseBtn}>
-                  <Trash2 size={14} color={colors.textMuted} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
       </View>
 
-      {/* Shift History */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>سجل الورديات ({shifts.filter((s) => s.status === 'closed').length})</Text>
-        {shifts.filter((s) => s.status === 'closed').length === 0 ? (
-          <View style={[styles.emptyShifts, { backgroundColor: colors.surface }]}>
-            <EmptyState icon={<Clock size={32} color={colors.textMuted} strokeWidth={2} />} title="لا يوجد سجل ورديات" subtitle="ستظهر هنا الورديات المغلقة" />
-          </View>
-        ) : (
-          <View style={styles.shiftHistory}>
-            {shifts.filter((s) => s.status === 'closed').slice(0, 10).map((s) => (
-              <View key={s.id} style={[styles.shiftHistoryCard, { backgroundColor: colors.surface }]}>
-                <View style={styles.shiftHistoryHeader}>
-                  <Text style={[styles.shiftHistoryDate, { color: colors.text }]}>
-                    {formatDateTime(s.openedAt)}
-                  </Text>
-                  <View style={[styles.diffBadge, { backgroundColor: (s.difference ?? 0) === 0 ? colors.success + '15' : (s.difference ?? 0) > 0 ? colors.warning + '15' : colors.danger + '15' }]}>
-                    <Text style={[styles.diffText, { color: (s.difference ?? 0) === 0 ? colors.success : (s.difference ?? 0) > 0 ? colors.warning : colors.danger }]}>
-                      الفرق: {formatCurrency(s.difference ?? 0, settings.currency)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.shiftHistoryGrid}>
-                  <Text style={[styles.shiftHistoryStat, { color: colors.textMuted }]}>
-                    افتتاح: {formatCurrency(s.openingCash, settings.currency)}
-                  </Text>
-                  <Text style={[styles.shiftHistoryStat, { color: colors.textMuted }]}>
-                    إغلاق: {formatCurrency(s.closingCash ?? 0, settings.currency)}
-                  </Text>
-                  <Text style={[styles.shiftHistoryStat, { color: colors.textMuted }]}>
-                    متوقع: {formatCurrency(s.expectedCash ?? 0, settings.currency)}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-
-      {/* Open Shift Modal */}
+      {/* Transfer Modal */}
       <BaseModal
-        visible={showOpenModal}
-        onClose={() => setShowOpenModal(false)}
-        title="فتح وردية جديدة"
+        visible={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        title="تحويل بين المحافظ"
         footer={
-          <TouchableOpacity onPress={handleOpenShift} style={[styles.saveBtn, { backgroundColor: colors.primary }]} activeOpacity={0.7}>
-            <Play size={18} color="#FFFFFF" strokeWidth={2} />
-            <Text style={styles.saveBtnText}>فتح الوردية</Text>
+          <TouchableOpacity onPress={handleTransfer} style={[styles.saveBtn, { backgroundColor: colors.primary }]} activeOpacity={0.7}>
+            <ArrowRightLeft size={18} color="#FFFFFF" strokeWidth={2} />
+            <Text style={styles.saveBtnText}>تنفيذ التحويل</Text>
           </TouchableOpacity>
         }
       >
-        <View style={[styles.infoBox, { backgroundColor: colors.primary + '10' }]}>
-          <Clock size={20} color={colors.primary} strokeWidth={2} />
-          <Text style={[styles.infoText, { color: colors.primary }]}>أدخل المبلغ النقدي المتوفر في الخزينة الآن</Text>
-        </View>
-        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>رصيد الافتتاح ({settings.currency})</Text>
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>من محفظة</Text>
+        <WalletSelector value={transferFrom} onChange={setTransferFrom} colors={colors} exclude={transferTo} />
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>إلى محفظة</Text>
+        <WalletSelector value={transferTo} onChange={setTransferTo} colors={colors} exclude={transferFrom} />
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>المبلغ ({settings.currency})</Text>
         <TextInput
-          value={openingCash}
-          onChangeText={setOpeningCash}
+          value={transferAmount}
+          onChangeText={setTransferAmount}
           placeholder="0.00"
           placeholderTextColor={colors.textMuted}
           keyboardType="numeric"
-          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 24, fontWeight: '700', textAlign: 'center' }]}
+          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 22, fontWeight: '700', textAlign: 'center' }]}
         />
-      </BaseModal>
-
-      {/* Close Shift Modal */}
-      <BaseModal
-        visible={showCloseModal}
-        onClose={() => setShowCloseModal(false)}
-        title="إغلاق الوردية"
-        footer={
-          <TouchableOpacity onPress={handleCloseShift} style={[styles.saveBtn, { backgroundColor: colors.danger }]} activeOpacity={0.7}>
-            <Square size={18} color="#FFFFFF" strokeWidth={2} />
-            <Text style={styles.saveBtnText}>تأكيد الإغلاق</Text>
-          </TouchableOpacity>
-        }
-      >
-        <View style={[styles.expectedBox, { backgroundColor: colors.info + '12' }]}>
-          <Text style={[styles.expectedLabel, { color: colors.textSecondary }]}>النقدية المتوقعة في الخزينة:</Text>
-          <Text style={[styles.expectedValue, { color: colors.info }]}>{formatCurrency(expectedCash, settings.currency)}</Text>
-        </View>
-        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 16 }]}>النقدية الفعلية ({settings.currency})</Text>
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>ملاحظة (اختياري)</Text>
         <TextInput
-          value={closingCash}
-          onChangeText={setClosingCash}
-          placeholder={expectedCash.toString()}
+          value={transferNote}
+          onChangeText={setTransferNote}
+          placeholder="سبب التحويل..."
           placeholderTextColor={colors.textMuted}
-          keyboardType="numeric"
-          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 24, fontWeight: '700', textAlign: 'center' }]}
+          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]}
         />
-      </BaseModal>
-
-      {/* Close Result Modal */}
-      <BaseModal
-        visible={closeResult !== null}
-        onClose={() => setCloseResult(null)}
-        title="نتيجة إغلاق الوردية"
-      >
-        {closeResult && (
-          <View>
-            <View style={[styles.resultBox, { backgroundColor: closeResult.diff === 0 ? colors.success + '12' : closeResult.diff > 0 ? colors.warning + '12' : colors.danger + '12' }]}>
-              {closeResult.diff === 0 ? (
-                <Check size={48} color={colors.success} strokeWidth={2} />
-              ) : (
-                <AlertTriangle size={48} color={closeResult.diff > 0 ? colors.warning : colors.danger} strokeWidth={2} />
-              )}
-              <Text style={[styles.resultTitle, { color: colors.text }]}>
-                {closeResult.diff === 0 ? 'الخزينة متوازنة' : closeResult.diff > 0 ? 'زيادة في الخزينة' : 'عجز في الخزينة'}
-              </Text>
-              <Text style={[styles.resultDiff, { color: closeResult.diff === 0 ? colors.success : closeResult.diff > 0 ? colors.warning : colors.danger }]}>
-                {closeResult.diff > 0 ? '+' : ''}{formatCurrency(closeResult.diff, settings.currency)}
-              </Text>
-            </View>
-            <View style={styles.resultDetails}>
-              <ResultRow label="النقدية المتوقعة" value={formatCurrency(closeResult.expected, settings.currency)} colors={colors} />
-              <ResultRow label="النقدية الفعلية" value={formatCurrency(closeResult.actual, settings.currency)} colors={colors} />
-            </View>
-          </View>
-        )}
       </BaseModal>
 
       {/* Expense Modal */}
@@ -301,30 +402,30 @@ export default function CashDrawerScreen() {
           </TouchableOpacity>
         }
       >
-        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>المبلغ ({settings.currency})</Text>
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>من محفظة</Text>
+        <WalletSelector value={expenseWallet} onChange={setExpenseWallet} colors={colors} />
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>المبلغ ({settings.currency})</Text>
         <TextInput
           value={expenseAmount}
           onChangeText={setExpenseAmount}
           placeholder="0.00"
           placeholderTextColor={colors.textMuted}
           keyboardType="numeric"
-          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 22, fontWeight: '700', textAlign: 'center', marginBottom: 16 }]}
+          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 22, fontWeight: '700', textAlign: 'center' }]}
         />
-        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>التصنيف</Text>
-        <View style={styles.categoryRow}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {EXPENSE_CATEGORIES.map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => setExpenseCategory(cat)}
-                style={[styles.categoryChip, { backgroundColor: expenseCategory === cat ? colors.danger : colors.surfaceAlt }]}
-              >
-                <Text style={[styles.categoryText, { color: expenseCategory === cat ? '#FFFFFF' : colors.text }]}>{cat}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 16 }]}>الوصف (اختياري)</Text>
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>التصنيف</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+          {EXPENSE_CATEGORIES.map((cat) => (
+            <TouchableOpacity
+              key={cat}
+              onPress={() => setExpenseCategory(cat)}
+              style={[styles.categoryChip, { backgroundColor: expenseCategory === cat ? colors.danger : colors.surfaceAlt }]}
+            >
+              <Text style={[styles.categoryText, { color: expenseCategory === cat ? '#FFFFFF' : colors.text }]}>{cat}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>جهة الصرف (اختياري)</Text>
         <TextInput
           value={expenseDesc}
           onChangeText={setExpenseDesc}
@@ -333,35 +434,132 @@ export default function CashDrawerScreen() {
           style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]}
         />
       </BaseModal>
+
+      {/* Adjust Balance Modal */}
+      <BaseModal
+        visible={showAdjustModal}
+        onClose={() => setShowAdjustModal(false)}
+        title="تسوية رصيد محفظة"
+        footer={
+          <TouchableOpacity onPress={handleAdjust} style={[styles.saveBtn, { backgroundColor: colors.info }]} activeOpacity={0.7}>
+            <Check size={18} color="#FFFFFF" strokeWidth={2} />
+            <Text style={styles.saveBtnText}>تطبيق التسوية</Text>
+          </TouchableOpacity>
+        }
+      >
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>المحفظة</Text>
+        <WalletSelector value={adjustWallet} onChange={setAdjustWallet} colors={colors} />
+        <View style={[styles.currentBalanceBox, { backgroundColor: colors.info + '12' }]}>
+          <Text style={[styles.currentBalanceLabel, { color: colors.textSecondary }]}>الرصيد الحالي:</Text>
+          <Text style={[styles.currentBalanceValue, { color: colors.info }]}>
+            {formatCurrency(getWalletBalance(adjustWallet), settings.currency)}
+          </Text>
+        </View>
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>الرصيد الجديد ({settings.currency})</Text>
+        <TextInput
+          value={adjustAmount}
+          onChangeText={setAdjustAmount}
+          placeholder={getWalletBalance(adjustWallet).toString()}
+          placeholderTextColor={colors.textMuted}
+          keyboardType="numeric"
+          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 22, fontWeight: '700', textAlign: 'center' }]}
+        />
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginTop: 14 }]}>ملاحظة (اختياري)</Text>
+        <TextInput
+          value={adjustNote}
+          onChangeText={setAdjustNote}
+          placeholder="سبب التسوية..."
+          placeholderTextColor={colors.textMuted}
+          style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]}
+        />
+      </BaseModal>
+
+      {/* Full History Modal */}
+      <BaseModal
+        visible={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        title="سجل العمليات"
+      >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginBottom: 12 }}>
+          <TouchableOpacity
+            onPress={() => setHistoryWallet('all')}
+            style={[styles.filterChip, { backgroundColor: historyWallet === 'all' ? colors.primary : colors.surfaceAlt }]}
+          >
+            <Text style={[styles.filterText, { color: historyWallet === 'all' ? '#FFFFFF' : colors.text }]}>الكل</Text>
+          </TouchableOpacity>
+          {WALLET_TYPES.map((w) => (
+            <TouchableOpacity
+              key={w.id}
+              onPress={() => setHistoryWallet(w.id)}
+              style={[styles.filterChip, { backgroundColor: historyWallet === w.id ? w.color : colors.surfaceAlt }]}
+            >
+              <Text style={[styles.filterText, { color: historyWallet === w.id ? '#FFFFFF' : colors.text }]}>{w.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <View style={{ maxHeight: 400 }}>
+          <FlatList
+            data={filteredHistory.slice(0, 100)}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => {
+              const wtd = WALLET_TYPES.find((wt) => wt.id === item.walletType);
+              const isIncome = item.type === 'income' || item.type === 'transfer_in' || item.type === 'sale';
+              const isExpense = item.type === 'expense' || item.type === 'transfer_out' || item.type === 'supplier_payment';
+              return (
+                <View style={[styles.historyRow, { borderBottomColor: colors.border }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.historyType, { color: colors.text }]}>{TXN_TYPE_LABELS[item.type]}</Text>
+                    <Text style={[styles.historyWallet, { color: colors.textMuted }]}>{wtd?.name}</Text>
+                    {item.description ? <Text style={[styles.historyDesc, { color: colors.textMuted }]} numberOfLines={1}>{item.description}</Text> : null}
+                    <Text style={[styles.historyTime, { color: colors.textMuted }]}>{formatDateTime(item.createdAt)}</Text>
+                  </View>
+                  <Text style={[styles.historyAmount, { color: isIncome ? colors.success : isExpense ? colors.danger : colors.info }]}>
+                    {isIncome ? '+' : isExpense ? '-' : ''}{formatCurrency(item.amount, settings.currency)}
+                  </Text>
+                  <TouchableOpacity onPress={() => deleteWalletTransaction(item.id)} style={styles.deleteBtn}>
+                    <Trash2 size={14} color={colors.textMuted} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+              );
+            }}
+            ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.border }} />}
+          />
+        </View>
+      </BaseModal>
     </ScrollView>
   );
 }
 
-function ShiftStat({ label, value, colors, colorsValue }: { label: string; value: string; colors: Colors; colorsValue?: string }) {
+function WalletSelector({
+  value, onChange, colors, exclude,
+}: {
+  value: WalletType;
+  onChange: (w: WalletType) => void;
+  colors: Colors;
+  exclude?: WalletType;
+}) {
+  const available = WALLET_TYPES.filter((w) => w.id !== exclude);
   return (
-    <View style={styles.shiftStatBox}>
-      <Text style={[styles.shiftStatLabel, { color: colors.textMuted }]}>{label}</Text>
-      <Text style={[styles.shiftStatValue, { color: colorsValue ?? colors.text }]}>{value}</Text>
-    </View>
-  );
-}
-
-function QuickCard({ icon, label, value, bg, colors }: { icon: React.ReactNode; label: string; value: string; bg: string; colors: Colors }) {
-  return (
-    <View style={[styles.quickCard, { backgroundColor: colors.surface }]}>
-      <View style={[styles.quickIcon, { backgroundColor: bg }]}>{icon}</View>
-      <Text style={[styles.quickLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.quickValue, { color: colors.text }]}>{value}</Text>
-    </View>
-  );
-}
-
-function ResultRow({ label, value, colors }: { label: string; value: string; colors: Colors }) {
-  return (
-    <View style={styles.resultRow}>
-      <Text style={[styles.resultRowLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.resultRowValue, { color: colors.text }]}>{value}</Text>
-    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+      {available.map((w) => (
+        <TouchableOpacity
+          key={w.id}
+          onPress={() => onChange(w.id)}
+          style={[
+            styles.walletSelectorChip,
+            {
+              backgroundColor: value === w.id ? w.color : colors.surfaceAlt,
+              borderColor: value === w.id ? w.color : colors.border,
+            },
+          ]}
+        >
+          <View style={[styles.walletSelectorIcon, { backgroundColor: value === w.id ? '#FFFFFF20' : w.color + '15' }]}>
+            {WALLET_ICONS[w.id]}
+          </View>
+          <Text style={[styles.walletSelectorText, { color: value === w.id ? '#FFFFFF' : colors.text }]}>{w.name}</Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -369,68 +567,91 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 14 },
   headerTitle: { fontSize: 22, fontWeight: '700', fontFamily: 'Cairo-Bold' },
-  section: { paddingHorizontal: 16, marginBottom: 20 },
+  section: { paddingHorizontal: 16, marginBottom: 18 },
   sectionTitle: { fontSize: 13, fontWeight: '600', marginBottom: 8, paddingHorizontal: 4 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingHorizontal: 4 },
-  shiftCard: { borderRadius: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  shiftStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
-  statusDot: { width: 10, height: 10, borderRadius: 5 },
-  shiftStatusText: { fontSize: 15, fontWeight: '700' },
-  shiftGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
-  shiftStatBox: { width: '50%', marginBottom: 10 },
-  shiftStatLabel: { fontSize: 12, marginBottom: 4 },
-  shiftStatValue: { fontSize: 16, fontWeight: '700', fontFamily: 'Cairo-Bold' },
-  shiftTime: { fontSize: 12, marginBottom: 14 },
-  shiftTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
-  closeShiftBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14 },
-  closeShiftText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  noShiftCard: { borderRadius: 16, padding: 28, alignItems: 'center', gap: 10 },
-  noShiftTitle: { fontSize: 18, fontWeight: '700' },
-  noShiftHint: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  openShiftBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, marginTop: 8, paddingHorizontal: 28 },
-  openShiftText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  quickCard: { flex: 1, minWidth: '46%', borderRadius: 14, padding: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  quickIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  quickLabel: { fontSize: 12, marginBottom: 4 },
-  quickValue: { fontSize: 16, fontWeight: '700', fontFamily: 'Cairo-Bold' },
-  addExpenseBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  addExpenseText: { fontSize: 12, fontWeight: '600' },
-  expenseList: { borderRadius: 16, overflow: 'hidden' },
+
+  // Hero card
+  heroCard: { borderRadius: 20, padding: 22, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 4 },
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  heroLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '600', fontFamily: 'Cairo-SemiBold' },
+  heroValue: { color: '#FFFFFF', fontSize: 32, fontWeight: '700', fontFamily: 'Cairo-Bold', marginTop: 8 },
+  heroDivider: { height: 1, backgroundColor: '#FFFFFF30', marginVertical: 16 },
+  heroBreakdown: { flexDirection: 'row', gap: 16 },
+  heroBreakdownItem: { flex: 1, gap: 4 },
+  heroBreakdownLabel: { color: '#FFFFFFCC', fontSize: 12, fontFamily: 'Cairo-Regular' },
+  heroBreakdownValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+
+  // Action buttons
+  actionRow: { flexDirection: 'row', gap: 10 },
+  actionBtn: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1 },
+  actionIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  actionLabel: { fontSize: 12, fontWeight: '600', fontFamily: 'Cairo-SemiBold', textAlign: 'center' },
+
+  // Wallet grid
+  walletGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  walletCard: { width: '47%', borderRadius: 16, padding: 14, alignItems: 'center', gap: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+  walletIconBox: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  walletName: { fontSize: 13, fontWeight: '600', fontFamily: 'Cairo-SemiBold' },
+  walletBalance: { fontSize: 18, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  walletHistoryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, marginTop: 2 },
+  walletHistoryText: { fontSize: 11 },
+
+  // Summary card
+  summaryCard: { borderRadius: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+  summaryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  summaryTitle: { fontSize: 15, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
+  summaryRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  summaryDot: { width: 10, height: 10, borderRadius: 5 },
+  summaryRowName: { fontSize: 14, fontWeight: '500' },
+  summaryRowValue: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  summaryTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14, marginTop: 4, borderTopWidth: 2 },
+  summaryTotalLabel: { fontSize: 15, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  summaryTotalValue: { fontSize: 18, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+
+  // Transaction list
+  txnList: { borderRadius: 16, overflow: 'hidden' },
   emptyText: { textAlign: 'center', paddingVertical: 20, fontSize: 14 },
-  expenseRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
-  expenseIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  expenseCategory: { fontSize: 14, fontWeight: '600' },
-  expenseDesc: { fontSize: 12, marginTop: 2 },
-  expenseTime: { fontSize: 11, marginTop: 2 },
-  expenseAmount: { fontSize: 14, fontWeight: '700' },
-  deleteExpenseBtn: { padding: 4 },
-  emptyShifts: { borderRadius: 16, padding: 20 },
-  shiftHistory: { gap: 10 },
-  shiftHistoryCard: { borderRadius: 14, padding: 14 },
-  shiftHistoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  shiftHistoryDate: { fontSize: 13, fontWeight: '600' },
-  diffBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  diffText: { fontSize: 12, fontWeight: '700' },
-  shiftHistoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  shiftHistoryStat: { fontSize: 12, marginEnd: 12 },
-  infoBox: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, marginBottom: 16 },
-  infoText: { fontSize: 13, fontWeight: '600', flex: 1, lineHeight: 20 },
+  txnRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  txnIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  txnType: { fontSize: 14, fontWeight: '600', fontFamily: 'Cairo-SemiBold' },
+  txnWallet: { fontSize: 12, marginTop: 2 },
+  txnDesc: { fontSize: 12, marginTop: 2 },
+  txnTime: { fontSize: 11, marginTop: 2 },
+  txnAmount: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  expenseMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  walletTag: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  walletTagText: { fontSize: 10, fontWeight: '600' },
+  deleteBtn: { padding: 4 },
+  seeAllBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  seeAllText: { fontSize: 12, fontWeight: '600' },
+
+  // History modal
+  filterChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, marginEnd: 8 },
+  filterText: { fontSize: 13, fontWeight: '600' },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1 },
+  historyType: { fontSize: 14, fontWeight: '600', fontFamily: 'Cairo-SemiBold' },
+  historyWallet: { fontSize: 12, marginTop: 2 },
+  historyDesc: { fontSize: 12, marginTop: 2 },
+  historyTime: { fontSize: 11, marginTop: 2 },
+  historyAmount: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+
+  // Form fields
   fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
   textInput: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1, fontSize: 15 },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14 },
   saveBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  expectedBox: { borderRadius: 14, padding: 16, alignItems: 'center' },
-  expectedLabel: { fontSize: 13, marginBottom: 6 },
-  expectedValue: { fontSize: 24, fontWeight: '700', fontFamily: 'Cairo-Bold' },
-  resultBox: { borderRadius: 16, padding: 24, alignItems: 'center', gap: 12, marginBottom: 16 },
-  resultTitle: { fontSize: 18, fontWeight: '700' },
-  resultDiff: { fontSize: 28, fontWeight: '700', fontFamily: 'Cairo-Bold' },
-  resultDetails: { gap: 8 },
-  resultRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  resultRowLabel: { fontSize: 14 },
-  resultRowValue: { fontSize: 14, fontWeight: '700' },
-  categoryRow: { flexDirection: 'row' },
   categoryChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginEnd: 8 },
   categoryText: { fontSize: 13, fontWeight: '600' },
+
+  // Wallet selector
+  walletSelectorChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1, marginEnd: 8 },
+  walletSelectorIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  walletSelectorText: { fontSize: 12, fontWeight: '600' },
+
+  // Adjust box
+  currentBalanceBox: { borderRadius: 12, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  currentBalanceLabel: { fontSize: 13 },
+  currentBalanceValue: { fontSize: 18, fontWeight: '700', fontFamily: 'Cairo-Bold' },
 });

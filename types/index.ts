@@ -381,6 +381,40 @@ export type CustomerTier = 'regular' | 'vip';
 
 export type PaymentMethod = 'cash' | 'debt' | 'wallet' | 'usdt' | 'balance';
 
+// ============ Wallet / Treasury System ============
+export type WalletType = 'cash' | 'bank_palestine' | 'palpay' | 'jawwal_pay' | 'jawwal_pay_merchant' | 'malchat';
+
+export interface WalletTypeDef {
+  id: WalletType;
+  name: string;
+  color: string;
+}
+
+export const WALLET_TYPES: WalletTypeDef[] = [
+  { id: 'cash', name: 'نقدي', color: '#0E7C6B' },
+  { id: 'bank_palestine', name: 'بنك فلسطين', color: '#1B5E9B' },
+  { id: 'palpay', name: 'محفظة بال بي', color: '#E65100' },
+  { id: 'jawwal_pay', name: 'محفظة جوال بي', color: '#6A1B9A' },
+  { id: 'jawwal_pay_merchant', name: 'جوال بي (تاجر)', color: '#AD1457' },
+  { id: 'malchat', name: 'محفظة مال شات', color: '#2E7D32' },
+];
+
+export const ELECTRONIC_WALLET_TYPES = WALLET_TYPES.filter((w) => w.id !== 'cash');
+
+export type WalletTxnType = 'income' | 'expense' | 'transfer_in' | 'transfer_out' | 'supplier_payment' | 'sale' | 'adjustment';
+
+export interface WalletTransaction {
+  id: string;
+  walletType: WalletType;
+  type: WalletTxnType;
+  amount: number;
+  category: string;
+  description: string;
+  relatedTxnId: string | null;
+  shiftId: string | null;
+  createdAt: number;
+}
+
 export type PaymentStatus = 'paid_full' | 'paid_partial' | 'unpaid';
 
 export type TransactionType = 'sale' | 'purchase' | 'payment' | 'return' | 'expense' | 'supplier_payment';
@@ -500,6 +534,7 @@ export interface Expense {
   category: string;
   description: string;
   shiftId: string | null;
+  walletType: WalletType;
   createdAt: number;
 }
 

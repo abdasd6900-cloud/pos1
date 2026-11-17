@@ -17,8 +17,9 @@ import type {
   BusinessHoursConfig, KeywordReply, PendingOperation, PendingOperationStatus, FreezeRequest, DebtEscalationState, EscalationPhase, SupportTicket, SupportTicketStatus, UnrecognizedMessage, UnrecognizedMessageStatus,
   TransferNotification, TransferReport, NameMapping, TransferNotificationStatus, TransferReportStatus,
   SmsMessage, SmsMessageCategory, SmsMessageStatus, QuickReplyTemplate, ScheduledSms,
-  PhoneNumberEntry,
+  PhoneNumberEntry, WalletTransaction, WalletType, WalletTxnType,
 } from '@/types';
+import { WALLET_TYPES, ELECTRONIC_WALLET_TYPES } from '@/types';
 import { storage, type BackupData, DEFAULT_SETTINGS } from './storage';
 import { Platform } from 'react-native';
 import { DEFAULT_BUSINESS_HOURS } from './storage';
@@ -239,8 +240,19 @@ interface AppData {
   deleteTransaction: (id: string) => void;
   processReturn: (originalTxnId: string, items: { productId: string; quantity: number }[], reason: string) => Transaction | null;
 
-  addExpense: (amount: number, category: string, description: string) => Expense;
+  addExpense: (amount: number, category: string, description: string, walletType: WalletType) => Expense;
   deleteExpense: (id: string) => void;
+
+  // Wallet / Treasury
+  walletTxns: WalletTransaction[];
+  getWalletBalance: (walletType: WalletType) => number;
+  getTotalWalletsBalance: () => number;
+  getCashBalance: () => number;
+  addWalletTransaction: (t: Omit<WalletTransaction, 'id' | 'createdAt'>) => WalletTransaction;
+  transferBetweenWallets: (from: WalletType, to: WalletType, amount: number, note: string) => void;
+  adjustWalletBalance: (walletType: WalletType, newBalance: number, note: string) => void;
+  deleteWalletTransaction: (id: string) => void;
+  recordSupplierWalletPayment: (supplierId: string, amount: number, walletType: WalletType) => Transaction;
 
   openShift: (openingCash: number) => Shift;
   closeShift: (closingCash: number) => Shift | null;
@@ -341,6 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [walletTxns, setWalletTxns] = useState<WalletTransaction[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [drafts, setDrafts] = useState<DraftBill[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -405,7 +418,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (Platform.OS === 'web' && typeof window === 'undefined') { setLoaded(true); return; }
     (async () => {
       const s = await storage.getSettings();
-      const [p, c, t, a, sup, exp, sh, dr, cur, stf, prom, stkt, att, csi, lic, tc, sims, bdls, sags, drms, tsales, abundles, slocs, slocstock, tsups, shpmnts, rreqs, bhrs, kwreplies, pendops, freezereqs, suptickets, unrecmsgs, tnotifs, treports, nmappings, smstmp, pinned, blocked, archived, quickReplies, scheduled, phoneNums] = await Promise.all([
+      const [p, c, t, a, sup, exp, sh, dr, cur, stf, prom, stkt, att, csi, lic, tc, sims, bdls, sags, drms, tsales, abundles, slocs, slocstock, tsups, shpmnts, rreqs, bhrs, kwreplies, pendops, freezereqs, suptickets, unrecmsgs, tnotifs, treports, nmappings, smstmp, pinned, blocked, archived, quickReplies, scheduled, phoneNums, wtxns] = await Promise.all([
         storage.getProducts(),
         storage.getCustomers(),
         storage.getTransactions(),
@@ -449,6 +462,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         storage.getQuickReplyTemplates(),
         storage.getScheduledMessages(),
         storage.getPhoneNumbers(),
+        storage.getWalletTxns(),
       ]);
       setCustomers(c);
       setTransactions(t);
@@ -495,6 +509,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setQuickReplyTemplates(quickReplies);
       setScheduledMessages(scheduled);
       setPhoneNumbers(phoneNums);
+      setWalletTxns(wtxns);
 
       (async () => {
         type RemoteData = Partial<Record<SyncCollectionName, Record<string, unknown> | unknown[]>>;
@@ -1806,7 +1821,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [transactions, addAuditEntry]);
 
   // ============ Expenses ============
-  const addExpense: AppData['addExpense'] = useCallback((amount, category, description) => {
+  const addExpense: AppData['addExpense'] = useCallback((amount, category, description, walletType) => {
     const activeShift = shifts.find((s) => s.status === 'open');
     const expense: Expense = {
       id: storage.generateId(),
@@ -1814,16 +1829,162 @@ export function AppProvider({ children }: { children: ReactNode }) {
       category,
       description,
       shiftId: activeShift?.id ?? null,
+      walletType,
       createdAt: Date.now(),
     };
     setExpenses((prev) => { const next = [expense, ...prev]; storage.saveExpenses(next); return next; });
-    addAuditEntry('expense', 'expense', expense.id, `مصروف: ${category} - ${amount}`);
+    const wTxn: WalletTransaction = {
+      id: storage.generateId(),
+      walletType,
+      type: 'expense',
+      amount,
+      category,
+      description,
+      relatedTxnId: expense.id,
+      shiftId: activeShift?.id ?? null,
+      createdAt: Date.now(),
+    };
+    setWalletTxns((prev) => { const next = [wTxn, ...prev]; storage.saveWalletTxns(next); return next; });
+    addAuditEntry('expense', 'expense', expense.id, `مصروف: ${category} - ${amount} من ${WALLET_TYPES.find((w) => w.id === walletType)?.name ?? walletType}`);
     return expense;
   }, [shifts, addAuditEntry]);
 
   const deleteExpense: AppData['deleteExpense'] = useCallback((id) => {
     setExpenses((prev) => { const next = prev.filter((e) => e.id !== id); storage.saveExpenses(next); return next; });
+    setWalletTxns((prev) => { const next = prev.filter((w) => w.relatedTxnId !== id); storage.saveWalletTxns(next); return next; });
   }, []);
+
+  // ============ Wallet / Treasury ============
+  const getWalletBalance: AppData['getWalletBalance'] = useCallback((walletType) => {
+    return walletTxns
+      .filter((w) => w.walletType === walletType)
+      .reduce((sum, w) => {
+        if (w.type === 'income' || w.type === 'transfer_in' || w.type === 'sale' || w.type === 'adjustment') return sum + w.amount;
+        if (w.type === 'expense' || w.type === 'transfer_out' || w.type === 'supplier_payment') return sum - w.amount;
+        return sum;
+      }, 0);
+  }, [walletTxns]);
+
+  const getTotalWalletsBalance: AppData['getTotalWalletsBalance'] = useCallback(() => {
+    return WALLET_TYPES.reduce((sum, w) => sum + getWalletBalance(w.id), 0);
+  }, [getWalletBalance]);
+
+  const getCashBalance: AppData['getCashBalance'] = useCallback(() => {
+    return getWalletBalance('cash');
+  }, [getWalletBalance]);
+
+  const addWalletTransaction: AppData['addWalletTransaction'] = useCallback((t) => {
+    const wTxn: WalletTransaction = { ...t, id: storage.generateId(), createdAt: Date.now() };
+    setWalletTxns((prev) => { const next = [wTxn, ...prev]; storage.saveWalletTxns(next); return next; });
+    return wTxn;
+  }, []);
+
+  const transferBetweenWallets: AppData['transferBetweenWallets'] = useCallback((from, to, amount, note) => {
+    if (amount <= 0 || from === to) return;
+    const now = Date.now();
+    const outTxn: WalletTransaction = {
+      id: storage.generateId(),
+      walletType: from,
+      type: 'transfer_out',
+      amount,
+      category: 'تحويل بين المحافظ',
+      description: note || `تحويل إلى ${WALLET_TYPES.find((w) => w.id === to)?.name ?? to}`,
+      relatedTxnId: null,
+      shiftId: null,
+      createdAt: now,
+    };
+    const inTxn: WalletTransaction = {
+      id: storage.generateId(),
+      walletType: to,
+      type: 'transfer_in',
+      amount,
+      category: 'تحويل بين المحافظ',
+      description: note || `تحويل من ${WALLET_TYPES.find((w) => w.id === from)?.name ?? from}`,
+      relatedTxnId: outTxn.id,
+      shiftId: null,
+      createdAt: now,
+    };
+    setWalletTxns((prev) => { const next = [inTxn, outTxn, ...prev]; storage.saveWalletTxns(next); return next; });
+    addAuditEntry('update', 'wallet', '', `تحويل ${amount} من ${WALLET_TYPES.find((w) => w.id === from)?.name ?? from} إلى ${WALLET_TYPES.find((w) => w.id === to)?.name ?? to}`);
+  }, [addAuditEntry]);
+
+  const adjustWalletBalance: AppData['adjustWalletBalance'] = useCallback((walletType, newBalance, note) => {
+    const current = getWalletBalance(walletType);
+    const diff = newBalance - current;
+    if (diff === 0) return;
+    const wTxn: WalletTransaction = {
+      id: storage.generateId(),
+      walletType,
+      type: 'adjustment',
+      amount: Math.abs(diff),
+      category: 'تسوية رصيد',
+      description: note || `تسوية رصيد ${WALLET_TYPES.find((w) => w.id === walletType)?.name ?? walletType}`,
+      relatedTxnId: null,
+      shiftId: null,
+      createdAt: Date.now(),
+    };
+    setWalletTxns((prev) => {
+      const next = [{ ...wTxn, amount: diff < 0 ? Math.abs(diff) : diff, type: diff < 0 ? 'expense' : 'income' } as WalletTransaction, ...prev];
+      storage.saveWalletTxns(next);
+      return next;
+    });
+    addAuditEntry('update', 'wallet', '', `تسوية رصيد ${WALLET_TYPES.find((w) => w.id === walletType)?.name}: ${diff > 0 ? '+' : ''}${diff}`);
+  }, [getWalletBalance, addAuditEntry]);
+
+  const deleteWalletTransaction: AppData['deleteWalletTransaction'] = useCallback((id) => {
+    setWalletTxns((prev) => { const next = prev.filter((w) => w.id !== id); storage.saveWalletTxns(next); return next; });
+  }, []);
+
+  const recordSupplierWalletPayment: AppData['recordSupplierWalletPayment'] = useCallback((supplierId, amount, walletType) => {
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    const txn: Transaction = {
+      id: storage.generateId(),
+      createdAt: Date.now(),
+      type: 'supplier_payment',
+      customerId: null,
+      customerName: '',
+      supplierId,
+      supplierName: supplier?.name ?? '',
+      items: [],
+      total: amount,
+      paid: amount,
+      remaining: 0,
+      paymentMethod: 'wallet',
+      splitPayment: null,
+      debtChange: 0,
+      loyaltyEarned: 0,
+      note: '',
+      smsSent: false,
+      returnReason: '',
+      originalTxnId: null,
+      currencyCode: settings?.defaultCurrencyCode ?? 'SAR',
+      shiftId: null,
+      staffId: currentStaffId,
+      staffName: currentStaff?.name ?? '',
+      promotionApplied: null,
+      discountAmount: 0,
+    };
+    setTransactions((prev) => { const next = [txn, ...prev]; storage.saveTransactions(next); return next; });
+    setSuppliers((prev) => {
+      const next = prev.map((s) => s.id === supplierId ? { ...s, balance: Math.max(0, s.balance - amount), updatedAt: Date.now() } : s);
+      storage.saveSuppliers(next);
+      return next;
+    });
+    const wTxn: WalletTransaction = {
+      id: storage.generateId(),
+      walletType,
+      type: 'supplier_payment',
+      amount,
+      category: 'دفع مورد',
+      description: `دفع للمورد ${supplier?.name ?? ''}`,
+      relatedTxnId: txn.id,
+      shiftId: null,
+      createdAt: Date.now(),
+    };
+    setWalletTxns((prev) => { const next = [wTxn, ...prev]; storage.saveWalletTxns(next); return next; });
+    addAuditEntry('supplier_payment', 'supplier', txn.id, `تسديد للمورد ${amount} من ${WALLET_TYPES.find((w) => w.id === walletType)?.name ?? walletType} - ${supplier?.name ?? ''}`);
+    return txn;
+  }, [suppliers, settings, currentStaffId, currentStaff, addAuditEntry]);
 
   // ============ Shifts ============
   const openShift: AppData['openShift'] = useCallback((openingCash) => {
@@ -4133,6 +4294,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         processReturn,
         addExpense,
         deleteExpense,
+        walletTxns,
+        getWalletBalance,
+        getTotalWalletsBalance,
+        getCashBalance,
+        addWalletTransaction,
+        transferBetweenWallets,
+        adjustWalletBalance,
+        deleteWalletTransaction,
+        recordSupplierWalletPayment,
         openShift,
         closeShift,
         saveDraft,
