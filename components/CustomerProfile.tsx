@@ -42,29 +42,43 @@ interface Stats {
 function computeStats(transactions: Transaction[], telecomSales: TelecomSale[]): Stats {
   let totalSpent = 0;
   let totalPaid = 0;
+  let totalDebt = 0;
   let totalRecharged = 0;
   const dates: number[] = [];
 
   for (const t of transactions) {
-    if (t.type === 'sale') totalSpent += t.total;
-    if (t.type === 'payment') totalPaid += t.paid;
+    if (t.type === 'sale') {
+      totalSpent += t.total;
+      totalPaid += t.paid;
+      totalDebt += Math.max(0, t.remaining);
+    }
+    if (t.type === 'payment') {
+      totalPaid += t.paid;
+      totalDebt -= t.paid;
+    }
+    if (t.type === 'return') {
+      totalSpent -= t.total;
+      totalDebt -= Math.max(0, t.remaining);
+    }
     dates.push(t.createdAt);
   }
   for (const s of telecomSales) {
     if (s.operationType !== 'cancelled') {
       totalSpent += s.total;
       totalPaid += s.paid;
+      totalDebt += Math.max(0, s.remaining);
       if (s.operationType === 'recharge') totalRecharged += s.total;
     }
     dates.push(s.createdAt);
   }
 
+  totalDebt = Math.max(0, totalDebt);
   dates.sort((a, b) => a - b);
 
   return {
     totalSpent,
     totalPaid,
-    totalDebt: 0,
+    totalDebt,
     totalRecharged,
     transactionCount: transactions.length,
     telecomCount: telecomSales.length,
@@ -169,10 +183,15 @@ export function CustomerProfile({
     return telecomSales.filter((s) => s.customerId === customer.id || s.customerPhone === customer.phone);
   }, [customer, telecomSales]);
 
+  const stats = useMemo(
+    () => computeStats(customerTransactions, customerTelecomSales),
+    [customerTransactions, customerTelecomSales],
+  );
+
   const paymentBalances = useMemo(() => {
     const balances = new Map<string, { before: number; after: number }>();
     const chronological = [...customerTransactions].sort((a, b) => a.createdAt - b.createdAt);
-    let runningBalance = Math.max(0, (customer?.debt ?? 0) - chronological.reduce((sum, t) => sum + (t.debtChange ?? 0), 0));
+    let runningBalance = Math.max(0, stats.totalDebt - chronological.reduce((sum, t) => sum + (t.debtChange ?? 0), 0));
     for (const transaction of chronological) {
       if (transaction.type === 'payment') {
         const before = Math.max(0, runningBalance);
@@ -193,17 +212,13 @@ export function CustomerProfile({
     ];
     entries.sort((a, b) => b.date - a.date);
     return entries;
-  }, [customerTransactions, customerTelecomSales]);
-
-  const stats = useMemo(
-    () => computeStats(customerTransactions, customerTelecomSales),
-    [customerTransactions, customerTelecomSales],
-  );
+  }, [customerTransactions, customerTelecomSales, stats]);
 
   if (!customer) return null;
 
   const isVip = customer.tier === 'vip';
-  const debtColor = getDebtAgeColor(customer.debt, customer.createdAt, colors);
+  const computedDebt = stats.totalDebt;
+  const debtColor = getDebtAgeColor(computedDebt, customer.createdAt, colors);
   const expiryDays = daysUntilExpiry(customer.subscriptionExpiry);
   const isExpiringSoon = expiryDays !== null && expiryDays <= settings.expiryAlertDays && expiryDays >= 0;
   const isExpired = expiryDays !== null && expiryDays < 0;
@@ -259,8 +274,8 @@ export function CustomerProfile({
     const message = fillSmsTemplate(settings.smsTemplate, {
       name: customer.name,
       sub: customer.subscriptionNumber || '—',
-      amount: formatCurrency(customer.debt, settings.currency),
-      debt: formatCurrency(customer.debt, settings.currency),
+      amount: formatCurrency(computedDebt, settings.currency),
+      debt: formatCurrency(computedDebt, settings.currency),
     });
     const encoded = encodeURIComponent(message);
     if (Platform.OS !== 'web') {
@@ -274,8 +289,7 @@ export function CustomerProfile({
     }
   };
 
-  const totalDebtWithTelecom = customer.debt +
-    customerTelecomSales.filter((s) => s.remaining > 0 && s.operationType !== 'cancelled').reduce((sum, s) => sum + s.remaining, 0);
+  const totalDebtWithTelecom = computedDebt;
 
   const handleEditPrice = () => {
     if (!editPriceTarget) return;
@@ -426,10 +440,10 @@ export function CustomerProfile({
             colors={colors}
           />
           <SummaryCard
-            icon={<BookOpen size={22} color={customer.debt > 0 ? debtColor : colors.success} strokeWidth={2} />}
+            icon={<BookOpen size={22} color={computedDebt > 0 ? debtColor : colors.success} strokeWidth={2} />}
             label="الدين الحالي"
-            value={formatCurrency(customer.debt, settings.currency)}
-            color={customer.debt > 0 ? debtColor : colors.success}
+            value={formatCurrency(computedDebt, settings.currency)}
+            color={computedDebt > 0 ? debtColor : colors.success}
             colors={colors}
           />
           <SummaryCard
