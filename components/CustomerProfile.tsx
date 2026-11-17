@@ -191,7 +191,7 @@ export function CustomerProfile({
   const paymentBalances = useMemo(() => {
     const balances = new Map<string, { before: number; after: number }>();
     const chronological = [...customerTransactions].sort((a, b) => a.createdAt - b.createdAt);
-    let runningBalance = Math.max(0, stats.totalDebt - chronological.reduce((sum, t) => sum + (t.debtChange ?? 0), 0));
+    let runningBalance = Math.max(0, (customer?.debt ?? 0) - chronological.reduce((sum, t) => sum + (t.debtChange ?? 0), 0));
     for (const transaction of chronological) {
       if (transaction.type === 'payment') {
         const before = Math.max(0, runningBalance);
@@ -217,7 +217,7 @@ export function CustomerProfile({
   if (!customer) return null;
 
   const isVip = customer.tier === 'vip';
-  const computedDebt = stats.totalDebt;
+  const computedDebt = customer.debt;
   const debtColor = getDebtAgeColor(computedDebt, customer.createdAt, colors);
   const expiryDays = daysUntilExpiry(customer.subscriptionExpiry);
   const isExpiringSoon = expiryDays !== null && expiryDays <= settings.expiryAlertDays && expiryDays >= 0;
