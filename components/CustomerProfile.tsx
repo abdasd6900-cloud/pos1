@@ -880,69 +880,52 @@ function TelecomTimelineCard({
         {!isLast && <View style={[styles.timelineLine, { backgroundColor: colors.border }]} />}
       </View>
       <View style={[styles.timelineCard, { backgroundColor: isCancelled ? colors.danger + '05' : colors.surface, borderColor: sColor + '30' }]}>
+        {/* Line 1: type + company/number (enlarged) + amount */}
         <View style={styles.timelineCardTop}>
           <View style={[styles.timelineCardIcon, { backgroundColor: sColor + '15' }]}>
             {icon}
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.timelineCardType, { color: colors.text }]}>{telecomSaleLabel(s)}</Text>
-            <Text style={[styles.timelineCardSubType, { color: colors.textSecondary }]} numberOfLines={1}>
-              {s.companyName} — {s.bundleName || s.simName}
-              {s.simNumber ? ` — ${s.simNumber}` : ''}
+            <Text style={[styles.timelineCardCompany, { color: colors.text }]} numberOfLines={1}>
+              {s.companyName}{s.simNumber ? ` — ${s.simNumber}` : ''}
             </Text>
-            <View style={styles.timelineCardDateRow}>
-              <Clock size={13} color={colors.textMuted} strokeWidth={2} />
-              <Text style={[styles.timelineCardDate, { color: colors.textMuted }]}>
-                {formatDateTime(s.createdAt)}
-              </Text>
-            </View>
           </View>
           <Text style={[styles.timelineCardAmount, { color: sColor }]}>
             {formatCurrency(s.total, currency)}
           </Text>
         </View>
 
-        {/* Info row */}
+        {/* Line 2: date + days remaining + payment status + debt */}
         <View style={[styles.timelineCardInfoRow, { borderTopColor: colors.border }]}>
           <View style={styles.timelineCardInfoItem}>
-            <User size={13} color={colors.textMuted} strokeWidth={2} />
-            <Text style={[styles.timelineCardInfoText, { color: colors.textSecondary }]} numberOfLines={1}>
-              {s.simNumber || s.customerPhone || '—'}
+            <Clock size={13} color={colors.textMuted} strokeWidth={2} />
+            <Text style={[styles.timelineCardInfoText, { color: colors.textMuted }]}>
+              {formatDateTime(s.createdAt)}
             </Text>
           </View>
-          <View style={styles.timelineCardInfoItem}>
-            <Clock size={13} color={daysRem !== null && daysRem <= 3 ? colors.danger : colors.textMuted} strokeWidth={2} />
-            <Text style={[styles.timelineCardInfoText, { color: daysRem !== null && daysRem <= 3 ? colors.danger : colors.textSecondary }]}>
-              {daysRem !== null ? `${daysRem} يوم متبقي` : '—'}
-            </Text>
-          </View>
+          {daysRem !== null && (
+            <View style={styles.timelineCardInfoItem}>
+              <Clock size={13} color={daysRem <= 3 ? colors.danger : colors.textMuted} strokeWidth={2} />
+              <Text style={[styles.timelineCardInfoText, { color: daysRem <= 3 ? colors.danger : colors.textSecondary }]}>
+                {daysRem} يوم متبقي
+              </Text>
+            </View>
+          )}
           <View style={styles.timelineCardInfoItem}>
             <Text style={[styles.timelineCardInfoText, { color: paymentStatusColor(s.paymentStatus, colors) }]}>
               {paymentStatusLabel(s.paymentStatus)}
             </Text>
           </View>
+          {hasDebt && (
+            <View style={styles.timelineCardInfoItem}>
+              <BookOpen size={13} color={colors.danger} strokeWidth={2} />
+              <Text style={[styles.timelineCardInfoText, { color: colors.danger }]}>
+                دين: {formatCurrency(s.remaining, currency)}
+              </Text>
+            </View>
+          )}
         </View>
-
-        {/* Balance row */}
-        {(s.customerBalanceBefore != null || s.customerBalanceAfter != null) && (
-          <View style={[styles.timelineCardBalanceRow, { borderTopColor: colors.border }]}>
-            <Text style={[styles.timelineCardBalanceText, { color: colors.textMuted }]}>
-              رصيد قبل: {s.customerBalanceBefore != null ? formatCurrency(s.customerBalanceBefore, currency) : '—'}
-            </Text>
-            <Text style={[styles.timelineCardBalanceText, { color: colors.textMuted }]}>
-              رصيد بعد: {s.customerBalanceAfter != null ? formatCurrency(s.customerBalanceAfter, currency) : '—'}
-            </Text>
-          </View>
-        )}
-
-        {hasDebt && (
-          <View style={[styles.timelineCardDebtBar, { backgroundColor: colors.danger + '10' }]}>
-            <BookOpen size={14} color={colors.danger} strokeWidth={2} />
-            <Text style={[styles.timelineCardDebtText, { color: colors.danger }]}>
-              دين متبقي: {formatCurrency(s.remaining, currency)}
-            </Text>
-          </View>
-        )}
 
         {/* Action buttons */}
         {!isCancelled && (
@@ -1029,7 +1012,7 @@ const styles = StyleSheet.create({
   timelineCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   timelineCardIcon: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   timelineCardType: { fontSize: 16, fontWeight: '700', textAlign: 'right' },
-  timelineCardSubType: { fontSize: 13, marginTop: 3, textAlign: 'right' },
+  timelineCardCompany: { fontSize: 16, fontWeight: '700', marginTop: 4, textAlign: 'right' },
   timelineCardDateRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
   timelineCardDate: { fontSize: 12, textAlign: 'right' },
   timelineCardAmount: { fontSize: 18, fontWeight: '700', textAlign: 'left' },
