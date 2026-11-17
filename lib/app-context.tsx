@@ -187,6 +187,9 @@ interface AppData {
   addTelecomSale: (s: Omit<TelecomSale, 'id' | 'createdAt'>, createdAt?: number) => TelecomSale;
   updateTelecomSale: (id: string, updates: Partial<TelecomSale>) => void;
   deleteTelecomSale: (id: string) => void;
+  cancelTelecomSale: (id: string) => void;
+  editTelecomSalePrice: (id: string, newSalePrice: number) => void;
+  collectTelecomSaleDebt: (id: string, amount: number) => void;
   checkAutoRenewals: () => void;
 
   addDebtReminder: (r: Omit<DebtReminderSchedule, 'id' | 'createdAt' | 'lastSent' | 'nextSend'>) => DebtReminderSchedule;
@@ -222,7 +225,7 @@ interface AppData {
   createCustomerFiles: () => void;
   mergeDuplicateCustomers: () => number;
   recordPayment: (customerId: string, amount: number) => Transaction;
-  addCustomerBalance: (customerId: string, amount: number, note: string) => Transaction;
+  addCustomerBalance: (customerId: string, amount: number, note: string, settleDebt?: boolean) => Transaction;
   redeemLoyalty: (customerId: string, points: number) => void;
 
   addSupplier: (s: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt' | 'balance'>) => Supplier;
@@ -1353,9 +1356,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return mergedCount;
   }, [customers, transactions, telecomSales, pendingOperations, customerFiles, addAuditEntry]);
 
-  const addCustomerBalance: AppData['addCustomerBalance'] = useCallback((customerId, amount, note) => {
+  const addCustomerBalance: AppData['addCustomerBalance'] = useCallback((customerId, amount, note, settleDebt) => {
     const customer = customers.find((c) => c.id === customerId);
-    const debtPaid = Math.min(Math.max(customer?.debt ?? 0, 0), amount);
+    const currentDebt = Math.max(customer?.debt ?? 0, 0);
+    const debtPaid = settleDebt ? Math.min(currentDebt, amount) : 0;
     const balanceAdded = Math.max(0, amount - debtPaid);
     const txn: Transaction = {
       id: storage.generateId(),
@@ -2076,7 +2080,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ============ Telecom Sales ============
   const addTelecomSale: AppData['addTelecomSale'] = useCallback((s, createdAt) => {
-    const sale: TelecomSale = { ...s, id: storage.generateId(), createdAt: createdAt ?? Date.now() };
+    const customer = s.customerId ? customers.find((c) => c.id === s.customerId) : null;
+    const balanceBefore = customer ? customer.balance : 0;
+    const balanceAfter = balanceBefore;
+    const sale: TelecomSale = { ...s, customerBalanceBefore: balanceBefore, customerBalanceAfter: balanceAfter, id: storage.generateId(), createdAt: createdAt ?? Date.now() };
     setTelecomSales((prev) => { const next = [sale, ...prev]; storage.saveTelecomSales(next); return next; });
 
     if (sale.mode === 'sell_sim' && sale.simId) {
@@ -2132,6 +2139,155 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTelecomSales((prev) => { const next = prev.filter((s) => s.id !== id); storage.saveTelecomSales(next); return next; });
     addAuditEntry('delete', 'telecom_sale', id, 'حذف معاملة اتصالات');
   }, [addAuditEntry]);
+
+  const cancelTelecomSale: AppData['cancelTelecomSale'] = useCallback((id) => {
+    const sale = telecomSales.find((s) => s.id === id);
+    if (!sale || sale.operationType === 'cancelled') return;
+    const now = Date.now();
+    const dayMs = 86400000;
+    const usageDays = Math.floor((now - sale.createdAt) / dayMs);
+    const totalDays = sale.carryoverDays || 30;
+    const remainingDays = Math.max(0, totalDays - usageDays);
+    const isDebt = sale.paymentStatus === 'unpaid' || sale.remaining > 0;
+    const deduction = sale.cancellationDeduction || 0;
+
+    setTelecomSales((prev) => {
+      const next = prev.map((s) => s.id === id ? {
+        ...s,
+        operationType: 'cancelled' as OperationType,
+        cancelledAt: now,
+        cancellationDeduction: deduction,
+        notes: s.notes ? `${s.notes}\n[إلغاء: ${usageDays} يوم استخدام، ${remainingDays} يوم متبقي]` : `[إلغاء: ${usageDays} يوم استخدام، ${remainingDays} يوم متبقي]`,
+      } : s);
+      storage.saveTelecomSales(next);
+      return next;
+    });
+
+    if (sale.customerId) {
+      const customer = customers.find((c) => c.id === sale.customerId);
+      if (customer) {
+        if (isDebt) {
+          // Debt case: calculate usage cost as new debt, remove old debt
+          const usageCost = sale.salePrice * (usageDays / totalDays);
+          const oldDebtReversal = -sale.debtChange;
+          setCustomers((prev) => {
+            const next = prev.map((c) => c.id === sale.customerId ? {
+              ...c,
+              debt: Math.max(0, c.debt + oldDebtReversal + usageCost),
+              updatedAt: now,
+            } : c);
+            storage.saveCustomers(next);
+            return next;
+          });
+        } else {
+          // Paid case: deduct usage cost, refund remainder to balance
+          const usageCost = sale.salePrice * (usageDays / totalDays);
+          const refund = Math.max(0, sale.paid - usageCost);
+          setCustomers((prev) => {
+            const next = prev.map((c) => c.id === sale.customerId ? {
+              ...c,
+              balance: c.balance + refund,
+              updatedAt: now,
+            } : c);
+            storage.saveCustomers(next);
+            return next;
+          });
+        }
+      }
+    }
+
+    // Restore sub-agent balance
+    if (sale.subAgentId) {
+      setSubAgents((prev) => {
+        const next = prev.map((a) => a.id === sale.subAgentId ? { ...a, balance: a.balance + sale.cost, updatedAt: now } : a);
+        storage.saveSubAgents(next);
+        return next;
+      });
+    }
+
+    // Restore sim stock if it was a sell_sim
+    if (sale.mode === 'sell_sim' && sale.simId) {
+      setSimCards((prev) => {
+        const next = prev.map((s2) => s2.id === sale.simId ? { ...s2, stock: s2.stock + 1, updatedAt: now } : s2);
+        storage.saveSimCards(next);
+        return next;
+      });
+    }
+
+    addAuditEntry('delete', 'telecom_sale', id, `إلغاء معاملة: ${sale.simName} - ${usageDays} يوم استخدام، ${remainingDays} يوم متبقي`);
+  }, [telecomSales, customers, addAuditEntry]);
+
+  const editTelecomSalePrice: AppData['editTelecomSalePrice'] = useCallback((id, newSalePrice) => {
+    const sale = telecomSales.find((s) => s.id === id);
+    if (!sale) return;
+    const oldPrice = sale.salePrice;
+    const priceDiff = newSalePrice - oldPrice;
+    const now = Date.now();
+    const newTotal = newSalePrice;
+    const newRemaining = Math.max(0, newTotal - sale.paid);
+
+    setTelecomSales((prev) => {
+      const next = prev.map((s) => s.id === id ? {
+        ...s,
+        salePrice: newSalePrice,
+        total: newTotal,
+        remaining: newRemaining,
+        debtChange: s.debtChange + priceDiff,
+        customerBalanceAfter: (s.customerBalanceAfter ?? 0) + priceDiff,
+      } : s);
+      storage.saveTelecomSales(next);
+      return next;
+    });
+
+    // Adjust customer debt by the price difference
+    if (sale.customerId && priceDiff !== 0) {
+      setCustomers((prev) => {
+        const next = prev.map((c) => c.id === sale.customerId ? {
+          ...c,
+          debt: Math.max(0, c.debt + priceDiff),
+          updatedAt: now,
+        } : c);
+        storage.saveCustomers(next);
+        return next;
+      });
+    }
+
+    addAuditEntry('price_change', 'telecom_sale', id, `تعديل سعر: ${oldPrice} → ${newSalePrice} (فرق ${priceDiff >= 0 ? '+' : ''}${priceDiff})`);
+  }, [telecomSales, addAuditEntry]);
+
+  const collectTelecomSaleDebt: AppData['collectTelecomSaleDebt'] = useCallback((id, amount) => {
+    const sale = telecomSales.find((s) => s.id === id);
+    if (!sale || sale.remaining <= 0) return;
+    const collectAmount = Math.min(amount, sale.remaining);
+    const now = Date.now();
+
+    setTelecomSales((prev) => {
+      const next = prev.map((s) => s.id === id ? {
+        ...s,
+        paid: s.paid + collectAmount,
+        remaining: Math.max(0, s.remaining - collectAmount),
+        paymentStatus: s.remaining - collectAmount <= 0 ? 'paid_full' as PaymentStatus : 'paid_partial' as PaymentStatus,
+        customerBalanceAfter: (s.customerBalanceAfter ?? 0) - collectAmount,
+      } : s);
+      storage.saveTelecomSales(next);
+      return next;
+    });
+
+    // Reduce customer debt
+    if (sale.customerId) {
+      setCustomers((prev) => {
+        const next = prev.map((c) => c.id === sale.customerId ? {
+          ...c,
+          debt: Math.max(0, c.debt - collectAmount),
+          updatedAt: now,
+        } : c);
+        storage.saveCustomers(next);
+        return next;
+      });
+    }
+
+    addAuditEntry('payment', 'telecom_sale', id, `تحصيل دين معاملة: ${collectAmount} - ${sale.customerName}`);
+  }, [telecomSales, addAuditEntry]);
 
   const checkAutoRenewals: AppData['checkAutoRenewals'] = useCallback(() => {
     const now = Date.now();
@@ -3765,6 +3921,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addTelecomSale,
         updateTelecomSale,
         deleteTelecomSale,
+        cancelTelecomSale,
+        editTelecomSalePrice,
+        collectTelecomSaleDebt,
         checkAutoRenewals,
         addDebtReminder,
         updateDebtReminder,

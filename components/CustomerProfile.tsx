@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Linking, Platform, TextInput,
+  ScrollView,
 } from 'react-native';
 import * as XLSX from 'xlsx';
 import {
   Phone, Wallet, Crown, Star, Clock, Calendar, BookOpen,
   Undo2, Package, MessageSquare, PlusCircle, Check, Smartphone,
   TrendingUp, ArrowUpRight, ArrowDownRight, Receipt,
-  Download, Share2, X,
+  Download, Share2, X, Pencil, Trash2, AlertCircle,
 } from 'lucide-react-native';
 import { BaseModal } from './BaseModal';
 import { Badge } from './Badge';
+import { ConfirmDialog } from './ConfirmDialog';
 import { useApp } from '@/lib/app-context';
 import { useTheme } from '@/lib/theme-context';
 import {
@@ -18,7 +20,7 @@ import {
   daysUntilExpiry, formatExpiry, fillSmsTemplate,
 } from '@/lib/format';
 import { exportXlsx } from '@/lib/xlsx-export';
-import type { Customer, Transaction, TelecomSale } from '@/types';
+import type { Customer, Transaction, TelecomSale, PaymentStatus } from '@/types';
 
 type Colors = ReturnType<typeof useTheme>['colors'];
 
@@ -49,9 +51,11 @@ function computeStats(transactions: Transaction[], telecomSales: TelecomSale[]):
     dates.push(t.createdAt);
   }
   for (const s of telecomSales) {
-    totalSpent += s.total;
-    totalPaid += s.paid;
-    if (s.operationType === 'recharge') totalRecharged += s.total;
+    if (s.operationType !== 'cancelled') {
+      totalSpent += s.total;
+      totalPaid += s.paid;
+      if (s.operationType === 'recharge') totalRecharged += s.total;
+    }
     dates.push(s.createdAt);
   }
 
@@ -80,6 +84,42 @@ function getDebtAgeColor(debt: number, createdAt: number, colors: Colors): strin
   return colors.success;
 }
 
+function telecomSaleLabel(s: TelecomSale): string {
+  if (s.operationType === 'cancelled') return 'ملغاة';
+  if (s.operationType === 'recharge') return 'إعادة شحن';
+  if (s.operationType === 'renewal') return 'تجديد';
+  if (s.mode === 'sell_sim') {
+    const simTypeLabel = s.simType === 'plastic' ? 'بلاستيك' : s.simType === 'electronic' ? 'إلكترونية' : '';
+    return simTypeLabel ? `تفعيل (${simTypeLabel})` : 'تفعيل رقم جديد';
+  }
+  return 'تحديد رقم';
+}
+
+function paymentStatusLabel(status: PaymentStatus): string {
+  switch (status) {
+    case 'paid_full': return 'مدفوع';
+    case 'paid_partial': return 'مدفوع جزئي';
+    case 'unpaid': return 'دين';
+  }
+  return status;
+}
+
+function paymentStatusColor(status: PaymentStatus, colors: Colors): string {
+  switch (status) {
+    case 'paid_full': return colors.success;
+    case 'paid_partial': return colors.warning;
+    case 'unpaid': return colors.danger;
+  }
+  return colors.textMuted;
+}
+
+function calcDaysRemaining(sale: TelecomSale): number | null {
+  if (sale.operationType === 'cancelled') return 0;
+  const totalDays = sale.carryoverDays || 30;
+  const elapsed = Math.floor((Date.now() - sale.createdAt) / 86400000);
+  return Math.max(0, totalDays - elapsed);
+}
+
 
 interface CustomerProfileProps {
   visible: boolean;
@@ -95,12 +135,17 @@ interface CustomerProfileProps {
 export function CustomerProfile({
   visible, customer, onClose, onEdit, onPayment, onTopUp, onAddDebt, onRedeem,
 }: CustomerProfileProps) {
-  const { transactions, telecomSales, settings } = useApp();
+  const { transactions, telecomSales, settings, deleteTelecomSale, cancelTelecomSale, editTelecomSalePrice, collectTelecomSaleDebt, addCustomerBalance } = useApp();
   const { colors } = useTheme();
   const [showExport, setShowExport] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [editPriceTarget, setEditPriceTarget] = useState<TelecomSale | null>(null);
+  const [editPriceValue, setEditPriceValue] = useState('');
+  const [deleteSaleTarget, setDeleteSaleTarget] = useState<TelecomSale | null>(null);
+  const [collectTarget, setCollectTarget] = useState<TelecomSale | null>(null);
+  const [collectAmount, setCollectAmount] = useState('');
 
   const customerTransactions = useMemo(() => {
     if (!customer) return [];
@@ -133,6 +178,7 @@ export function CustomerProfile({
   const expiryDays = daysUntilExpiry(customer.subscriptionExpiry);
   const isExpiringSoon = expiryDays !== null && expiryDays <= settings.expiryAlertDays && expiryDays >= 0;
   const isExpired = expiryDays !== null && expiryDays < 0;
+  const isWeb = Platform.OS === 'web';
 
   const handleExportRecord = () => {
     if (!customer) return;
@@ -201,7 +247,31 @@ export function CustomerProfile({
   };
 
   const totalDebtWithTelecom = customer.debt +
-    customerTelecomSales.filter((s) => s.remaining > 0).reduce((sum, s) => sum + s.remaining, 0);
+    customerTelecomSales.filter((s) => s.remaining > 0 && s.operationType !== 'cancelled').reduce((sum, s) => sum + s.remaining, 0);
+
+  const handleEditPrice = () => {
+    if (!editPriceTarget) return;
+    const val = parseFloat(editPriceValue);
+    if (!val || val <= 0) return;
+    editTelecomSalePrice(editPriceTarget.id, val);
+    setEditPriceTarget(null);
+    setEditPriceValue('');
+  };
+
+  const handleDeleteSale = () => {
+    if (!deleteSaleTarget) return;
+    deleteTelecomSale(deleteSaleTarget.id);
+    setDeleteSaleTarget(null);
+  };
+
+  const handleCollectDebt = () => {
+    if (!collectTarget) return;
+    const val = parseFloat(collectAmount);
+    if (!val || val <= 0) return;
+    collectTelecomSaleDebt(collectTarget.id, val);
+    setCollectTarget(null);
+    setCollectAmount('');
+  };
 
   return (
     <BaseModal
@@ -276,7 +346,7 @@ export function CustomerProfile({
             activeOpacity={0.8}
           >
             <Download size={18} color="#FFFFFF" strokeWidth={2} />
-            <Text style={styles.quickActionText}>تصدير السجل</Text>
+            <Text style={styles.quickActionText}>تصدير</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleShareLink}
@@ -284,7 +354,7 @@ export function CustomerProfile({
             activeOpacity={0.8}
           >
             {linkCopied ? <Check size={18} color="#FFFFFF" strokeWidth={2} /> : <Share2 size={18} color="#FFFFFF" strokeWidth={2} />}
-            <Text style={styles.quickActionText}>{linkCopied ? 'تم النسخ' : 'رابط الزبون'}</Text>
+            <Text style={styles.quickActionText}>{linkCopied ? 'تم النسخ' : 'رابط'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => onEdit(customer)}
@@ -337,14 +407,6 @@ export function CustomerProfile({
               actionLabel={customer.loyaltyPoints > 0 ? 'استبدال' : undefined}
             />
           )}
-        </View>
-
-        {/* Discount detail */}
-        <View style={[styles.detailsCard, { backgroundColor: colors.surfaceAlt }]}>
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>خصم تلقائي</Text>
-            <Text style={[styles.detailValue, { color: colors.text }]}>{customer.discountPercent}%</Text>
-          </View>
         </View>
 
         {/* Subscription info */}
@@ -429,13 +491,7 @@ export function CustomerProfile({
               activeOpacity={0.8}
             >
               <Download size={18} color="#FFFFFF" strokeWidth={2} />
-              <Text style={styles.exportBtnText}>تصدير ({(() => {
-                const fromTs = fromDate ? new Date(fromDate + 'T00:00:00').getTime() : 0;
-                const toTs = toDate ? new Date(toDate + 'T23:59:59').getTime() : Date.now();
-                const fc = customerTransactions.filter((t) => t.createdAt >= fromTs && t.createdAt <= toTs).length;
-                const fs = customerTelecomSales.filter((s) => s.createdAt >= fromTs && s.createdAt <= toTs).length;
-                return fc + fs;
-              })()} سجل)</Text>
+              <Text style={styles.exportBtnText}>تصدير ({timeline.length} سجل)</Text>
             </TouchableOpacity>
             <Text style={[styles.exportHint, { color: colors.textMuted }]}>
               اترك التواريخ فارغة لتصدير كل السجل
@@ -453,7 +509,7 @@ export function CustomerProfile({
           </View>
         )}
 
-        {/* Unified timeline */}
+        {/* Timeline / Table */}
         <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: 16, marginBottom: 8 }]}>
           السجل الموحد ({timeline.length})
         </Text>
@@ -462,9 +518,52 @@ export function CustomerProfile({
           <View style={styles.emptyTimeline}>
             <Text style={[styles.emptyTimelineText, { color: colors.textMuted }]}>لا توجد معاملات</Text>
           </View>
+        ) : isWeb ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ minWidth: 900 }}>
+              {/* Table header */}
+              <View style={[styles.tblHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+                <Text style={[styles.tblHeaderCell, { flex: 1.2, color: colors.textSecondary }]}>رقم الزبون</Text>
+                <Text style={[styles.tblHeaderCell, { flex: 1, color: colors.textSecondary }]}>الوكيل</Text>
+                <Text style={[styles.tblHeaderCell, { flex: 1.1, color: colors.textSecondary }]}>التاريخ</Text>
+                <Text style={[styles.tblHeaderCell, { flex: 1, color: colors.textSecondary }]}>النوع</Text>
+                <Text style={[styles.tblHeaderCell, { flex: 0.9, color: colors.textSecondary }]}>الدفع</Text>
+                <Text style={[styles.tblHeaderCell, { flex: 0.9, color: colors.textSecondary }]}>متبقي</Text>
+                <Text style={[styles.tblHeaderCell, { flex: 0.9, color: colors.textSecondary }]}>رصيد قبل</Text>
+                <Text style={[styles.tblHeaderCell, { flex: 0.9, color: colors.textSecondary }]}>رصيد بعد</Text>
+                <Text style={[styles.tblHeaderCell, { flex: 1.2, color: colors.textSecondary }]}>الإجراءات</Text>
+              </View>
+              {/* Table rows */}
+              {timeline.map((entry) => {
+                if (entry.kind === 'transaction') {
+                  return (
+                    <TransactionTableRow
+                      key={`t-${entry.item.id}`}
+                      transaction={entry.item}
+                      customer={customer}
+                      colors={colors}
+                      currency={settings.currency}
+                    />
+                  );
+                }
+                return (
+                  <TelecomTableRow
+                    key={`s-${entry.item.id}`}
+                    sale={entry.item}
+                    colors={colors}
+                    currency={settings.currency}
+                    onEditPrice={(s) => { setEditPriceTarget(s); setEditPriceValue(s.salePrice.toString()); }}
+                    onDelete={(s) => setDeleteSaleTarget(s)}
+                    onCollect={(s) => { setCollectTarget(s); setCollectAmount(s.remaining.toString()); }}
+                    onCancel={(s) => cancelTelecomSale(s.id)}
+                  />
+                );
+              })}
+            </View>
+          </ScrollView>
         ) : (
           <View style={styles.timeline}>
-            {timeline.map((entry, idx) => {
+            {timeline.map((entry) => {
               if (entry.kind === 'transaction') {
                 return (
                   <TransactionTimelineCard
@@ -472,7 +571,7 @@ export function CustomerProfile({
                     transaction={entry.item}
                     colors={colors}
                     currency={settings.currency}
-                    isLast={idx === timeline.length - 1}
+                    isLast={timeline.indexOf(entry) === timeline.length - 1}
                   />
                 );
               }
@@ -482,13 +581,86 @@ export function CustomerProfile({
                   sale={entry.item}
                   colors={colors}
                   currency={settings.currency}
-                  isLast={idx === timeline.length - 1}
+                  isLast={timeline.indexOf(entry) === timeline.length - 1}
+                  onEditPrice={(s) => { setEditPriceTarget(s); setEditPriceValue(s.salePrice.toString()); }}
+                  onDelete={(s) => setDeleteSaleTarget(s)}
+                  onCollect={(s) => { setCollectTarget(s); setCollectAmount(s.remaining.toString()); }}
+                  onCancel={(s) => cancelTelecomSale(s.id)}
                 />
               );
             })}
           </View>
         )}
       </View>
+
+      {/* Edit Price Modal */}
+      <BaseModal
+        visible={editPriceTarget !== null}
+        onClose={() => { setEditPriceTarget(null); setEditPriceValue(''); }}
+        title="تعديل سعر البيع"
+        footer={
+          <TouchableOpacity onPress={handleEditPrice} style={[styles.saveBtn, { backgroundColor: colors.primary }]} activeOpacity={0.8}>
+            <Text style={styles.saveBtnText}>حفظ</Text>
+          </TouchableOpacity>
+        }
+      >
+        {editPriceTarget && (
+          <View>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>المعاملة: {editPriceTarget.simName}</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 12 }]}>السعر الحالي: {formatCurrency(editPriceTarget.salePrice, settings.currency)}</Text>
+            <TextInput
+              value={editPriceValue}
+              onChangeText={setEditPriceValue}
+              placeholder="السعر الجديد"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 18, fontWeight: '700', textAlign: 'center' }]}
+            />
+            <Text style={[styles.hintText, { color: colors.textMuted, marginTop: 8 }]}>
+              سيتم خصم الفرق من دين الزبون أو إضافته لرصيده
+            </Text>
+          </View>
+        )}
+      </BaseModal>
+
+      {/* Collect Debt Modal */}
+      <BaseModal
+        visible={collectTarget !== null}
+        onClose={() => { setCollectTarget(null); setCollectAmount(''); }}
+        title="تحصيل دين المعاملة"
+        footer={
+          <TouchableOpacity onPress={handleCollectDebt} style={[styles.saveBtn, { backgroundColor: colors.success }]} activeOpacity={0.8}>
+            <Check size={20} color="#FFFFFF" strokeWidth={2} />
+            <Text style={styles.saveBtnText}>تأكيد التحصيل</Text>
+          </TouchableOpacity>
+        }
+      >
+        {collectTarget && (
+          <View>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>المعاملة: {collectTarget.simName}</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 12 }]}>الدين المتبقي: {formatCurrency(collectTarget.remaining, settings.currency)}</Text>
+            <TextInput
+              value={collectAmount}
+              onChangeText={setCollectAmount}
+              placeholder="مبلغ التحصيل"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 18, fontWeight: '700', textAlign: 'center' }]}
+            />
+          </View>
+        )}
+      </BaseModal>
+
+      {/* Delete Sale Confirmation */}
+      <ConfirmDialog
+        visible={deleteSaleTarget !== null}
+        title="حذف المعاملة"
+        message={`هل تريد حذف معاملة "${deleteSaleTarget?.simName ?? ''}"؟`}
+        confirmLabel="حذف"
+        kind="danger"
+        onConfirm={handleDeleteSale}
+        onCancel={() => setDeleteSaleTarget(null)}
+      />
     </BaseModal>
   );
 }
@@ -511,6 +683,145 @@ function SummaryCard({
     </View>
   );
 }
+
+// ============ Web Table Rows ============
+
+function TransactionTableRow({
+  transaction: t, customer, colors, currency,
+}: { transaction: Transaction; customer: Customer; colors: Colors; currency: string }) {
+  const isSale = t.type === 'sale';
+  const isPayment = t.type === 'payment';
+  const isReturn = t.type === 'return';
+  const tColor = isSale ? colors.primary : isPayment ? colors.success : isReturn ? colors.danger : colors.info;
+
+  return (
+    <View style={[styles.tblRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+      <View style={[styles.tblCell, { flex: 1.2 }]}>
+        <Text style={[styles.tblCellText, { color: colors.text }]} numberOfLines={1}>{customer.phone}</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 1 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>—</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 1.1 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>{formatDateTime(t.createdAt)}</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 1 }]}>
+        <Text style={[styles.tblCellText, { color: tColor }]} numberOfLines={1}>
+          {isSale ? 'بيع' : isPayment ? 'دفعة' : isReturn ? 'مرتجع' : 'شراء'}
+        </Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 0.9 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>
+          {t.paymentMethod === 'cash' ? 'نقدي' : t.paymentMethod === 'debt' ? 'دين' : t.paymentMethod}
+        </Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 0.9 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>—</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 0.9 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>—</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 0.9 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>—</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 1.2 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]}>—</Text>
+      </View>
+    </View>
+  );
+}
+
+function TelecomTableRow({
+  sale: s, colors, currency, onEditPrice, onDelete, onCollect, onCancel,
+}: {
+  sale: TelecomSale; colors: Colors; currency: string;
+  onEditPrice: (s: TelecomSale) => void;
+  onDelete: (s: TelecomSale) => void;
+  onCollect: (s: TelecomSale) => void;
+  onCancel: (s: TelecomSale) => void;
+}) {
+  const daysRem = calcDaysRemaining(s);
+  const isCancelled = s.operationType === 'cancelled';
+  const sColor = isCancelled ? colors.danger : s.operationType === 'recharge' ? colors.accent : colors.primary;
+  const hasDebt = s.remaining > 0 && !isCancelled;
+
+  return (
+    <View style={[styles.tblRow, { backgroundColor: isCancelled ? colors.danger + '05' : colors.surface, borderBottomColor: colors.border }]}>
+      <View style={[styles.tblCell, { flex: 1.2 }]}>
+        <Text style={[styles.tblCellText, { color: colors.text }]} numberOfLines={1}>{s.simNumber || s.customerPhone || '—'}</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 1 }]}>
+        <Text style={[styles.tblCellText, { color: colors.text }]} numberOfLines={1}>{s.companyName}</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 1.1 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>{formatDateTime(s.createdAt)}</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 1 }]}>
+        <Text style={[styles.tblCellText, { color: sColor }]} numberOfLines={1}>{telecomSaleLabel(s)}</Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 0.9 }]}>
+        <Text style={[styles.tblCellText, { color: paymentStatusColor(s.paymentStatus, colors) }]} numberOfLines={1}>
+          {paymentStatusLabel(s.paymentStatus)}
+        </Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 0.9 }]}>
+        <Text style={[styles.tblCellText, { color: daysRem !== null && daysRem <= 3 ? colors.danger : colors.text }]} numberOfLines={1}>
+          {daysRem !== null ? `${daysRem} يوم` : '—'}
+        </Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 0.9 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>
+          {s.customerBalanceBefore ? formatCurrency(s.customerBalanceBefore, currency) : '—'}
+        </Text>
+      </View>
+      <View style={[styles.tblCell, { flex: 0.9 }]}>
+        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>
+          {s.customerBalanceAfter != null ? formatCurrency(s.customerBalanceAfter, currency) : '—'}
+        </Text>
+      </View>
+      <View style={[styles.tblActions, { flex: 1.2 }]}>
+        {isCancelled ? (
+          <Text style={[styles.tblCellText, { color: colors.danger }]}>ملغاة</Text>
+        ) : (
+          <View style={styles.tblActionsRow}>
+            <TouchableOpacity
+              onPress={() => onEditPrice(s)}
+              style={[styles.tblActionBtn, { backgroundColor: colors.surfaceAlt }]}
+              activeOpacity={0.7}
+            >
+              <Pencil size={13} color={colors.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
+            {hasDebt && (
+              <TouchableOpacity
+                onPress={() => onCollect(s)}
+                style={[styles.tblActionBtn, { backgroundColor: colors.success + '15' }]}
+                activeOpacity={0.7}
+              >
+                <Wallet size={13} color={colors.success} strokeWidth={2} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => onCancel(s)}
+              style={[styles.tblActionBtn, { backgroundColor: colors.warning + '15' }]}
+              activeOpacity={0.7}
+            >
+              <Undo2 size={13} color={colors.warning} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => onDelete(s)}
+              style={[styles.tblActionBtn, { backgroundColor: colors.danger + '15' }]}
+              activeOpacity={0.7}
+            >
+              <Trash2 size={13} color={colors.danger} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ============ Mobile Timeline Cards ============
 
 function TransactionTimelineCard({
   transaction: t, colors, currency, isLast,
@@ -584,29 +895,24 @@ function TransactionTimelineCard({
   );
 }
 
-function telecomSaleLabel(s: TelecomSale): string {
-  if (s.operationType === 'recharge') return 'إعادة شحن';
-  if (s.operationType === 'renewal') return 'تجديد';
-  if (s.operationType === 'cancelled') return 'ملغاة';
-  if (s.mode === 'sell_sim') {
-    const simTypeLabel = s.simType === 'plastic' ? 'بلاستيك' : s.simType === 'electronic' ? 'إلكترونية' : '';
-    return simTypeLabel ? `تفعيل رقم جديد (${simTypeLabel})` : 'تفعيل رقم جديد';
-  }
-  return 'تحديد رقم';
-}
-
 function TelecomTimelineCard({
-  sale: s, colors, currency, isLast,
-}: { sale: TelecomSale; colors: Colors; currency: string; isLast: boolean }) {
+  sale: s, colors, currency, isLast, onEditPrice, onDelete, onCollect, onCancel,
+}: {
+  sale: TelecomSale; colors: Colors; currency: string; isLast: boolean;
+  onEditPrice: (s: TelecomSale) => void;
+  onDelete: (s: TelecomSale) => void;
+  onCollect: (s: TelecomSale) => void;
+  onCancel: (s: TelecomSale) => void;
+}) {
   const isRecharge = s.operationType === 'recharge';
-  const isSellSim = s.mode === 'sell_sim';
-  const sColor = isRecharge ? colors.accent : colors.primary;
+  const isCancelled = s.operationType === 'cancelled';
+  const sColor = isCancelled ? colors.danger : isRecharge ? colors.accent : colors.primary;
+  const daysRem = calcDaysRemaining(s);
+  const hasDebt = s.remaining > 0 && !isCancelled;
 
-  const icon = isRecharge ? <TrendingUp size={16} color={sColor} strokeWidth={2} />
-    : isSellSim ? <Smartphone size={16} color={sColor} strokeWidth={2} />
+  const icon = isCancelled ? <Undo2 size={16} color={sColor} strokeWidth={2} />
+    : isRecharge ? <TrendingUp size={16} color={sColor} strokeWidth={2} />
     : <Smartphone size={16} color={sColor} strokeWidth={2} />;
-
-  const label = telecomSaleLabel(s);
 
   return (
     <View style={styles.timelineItem}>
@@ -620,7 +926,7 @@ function TelecomTimelineCard({
             {icon}
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.timelineCardType, { color: colors.text }]}>{label}</Text>
+            <Text style={[styles.timelineCardType, { color: colors.text }]}>{telecomSaleLabel(s)}</Text>
             <Text style={[styles.timelineCardSubType, { color: colors.textMuted }]} numberOfLines={1}>
               {s.companyName} — {s.bundleName || s.simName}
               {s.simNumber ? ` — ${s.simNumber}` : ''}
@@ -636,12 +942,59 @@ function TelecomTimelineCard({
             {formatCurrency(s.total, currency)}
           </Text>
         </View>
-        {s.remaining > 0 && (
+
+        {/* New info row: days remaining + balance + payment status */}
+        <View style={[styles.timelineCardInfoRow, { borderTopColor: colors.border }]}>
+          <View style={styles.timelineCardInfoItem}>
+            <Clock size={11} color={colors.textMuted} strokeWidth={2} />
+            <Text style={[styles.timelineCardInfoText, { color: daysRem !== null && daysRem <= 3 ? colors.danger : colors.textMuted }]}>
+              {daysRem !== null ? `${daysRem} يوم متبقي` : '—'}
+            </Text>
+          </View>
+          <View style={styles.timelineCardInfoItem}>
+            <Text style={[styles.timelineCardInfoText, { color: paymentStatusColor(s.paymentStatus, colors) }]}>
+              {paymentStatusLabel(s.paymentStatus)}
+            </Text>
+          </View>
+          {s.customerBalanceBefore != null && (
+            <View style={styles.timelineCardInfoItem}>
+              <Text style={[styles.timelineCardInfoText, { color: colors.textMuted }]}>
+                رصيد: {formatCurrency(s.customerBalanceBefore, currency)} ← {s.customerBalanceAfter != null ? formatCurrency(s.customerBalanceAfter, currency) : '—'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {s.remaining > 0 && !isCancelled && (
           <View style={[styles.timelineCardDebtBar, { backgroundColor: colors.danger + '10' }]}>
             <BookOpen size={12} color={colors.danger} strokeWidth={2} />
             <Text style={[styles.timelineCardDebtText, { color: colors.danger }]}>
               دين: {formatCurrency(s.remaining, currency)}
             </Text>
+          </View>
+        )}
+
+        {/* Action buttons for mobile */}
+        {!isCancelled && (
+          <View style={[styles.timelineCardActions, { borderTopColor: colors.border }]}>
+            <TouchableOpacity onPress={() => onEditPrice(s)} style={[styles.timelineActionBtn, { backgroundColor: colors.surfaceAlt }]} activeOpacity={0.7}>
+              <Pencil size={13} color={colors.textSecondary} strokeWidth={2} />
+              <Text style={[styles.timelineActionText, { color: colors.textSecondary }]}>تعديل</Text>
+            </TouchableOpacity>
+            {hasDebt && (
+              <TouchableOpacity onPress={() => onCollect(s)} style={[styles.timelineActionBtn, { backgroundColor: colors.success + '15' }]} activeOpacity={0.7}>
+                <Wallet size={13} color={colors.success} strokeWidth={2} />
+                <Text style={[styles.timelineActionText, { color: colors.success }]}>تحصيل</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => onCancel(s)} style={[styles.timelineActionBtn, { backgroundColor: colors.warning + '15' }]} activeOpacity={0.7}>
+              <Undo2 size={13} color={colors.warning} strokeWidth={2} />
+              <Text style={[styles.timelineActionText, { color: colors.warning }]}>إلغاء</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onDelete(s)} style={[styles.timelineActionBtn, { backgroundColor: colors.danger + '15' }]} activeOpacity={0.7}>
+              <Trash2 size={13} color={colors.danger} strokeWidth={2} />
+              <Text style={[styles.timelineActionText, { color: colors.danger }]}>حذف</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -667,11 +1020,6 @@ const styles = StyleSheet.create({
   summaryValue: { fontSize: 14, fontWeight: '700' },
   summaryAction: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 2, alignSelf: 'flex-start' },
   summaryActionText: { fontSize: 10, fontWeight: '700', color: '#FFFFFF' },
-  detailsCard: { borderRadius: 10, padding: 10, marginBottom: 10 },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
-  detailLabel: { fontSize: 13 },
-  detailValue: { fontSize: 15, fontWeight: '700' },
-  detailRowSep: { height: 1, marginVertical: 6 },
   subCard: { borderRadius: 10, padding: 10, marginBottom: 10, gap: 5 },
   subCardRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   subCardLabel: { fontSize: 13, flex: 1 },
@@ -704,15 +1052,36 @@ const styles = StyleSheet.create({
   timelineCardMore: { fontSize: 11, marginTop: 2 },
   timelineCardDebtBar: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8 },
   timelineCardDebtText: { fontSize: 11, fontWeight: '600' },
+  timelineCardInfoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, borderTopWidth: 1, paddingTop: 6 },
+  timelineCardInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  timelineCardInfoText: { fontSize: 11, fontWeight: '600' },
+  timelineCardActions: { flexDirection: 'row', gap: 6, borderTopWidth: 1, paddingTop: 6, flexWrap: 'wrap' },
+  timelineActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 7 },
+  timelineActionText: { fontSize: 10, fontWeight: '700' },
   exportBox: { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 12, gap: 8 },
   exportHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   exportTitle: { flex: 1, fontSize: 14, fontWeight: '700' },
   exportDateRow: { flexDirection: 'row', gap: 8 },
   exportDateLabel: { fontSize: 11, marginBottom: 4 },
-  exportDateInput: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, fontFamily: 'Cairo-Regular' },
+  exportDateInput: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
   exportBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
   exportBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   exportHint: { fontSize: 11, textAlign: 'center' },
   linkCopiedBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginBottom: 12 },
   linkCopiedText: { fontSize: 12, fontWeight: '600', flex: 1 },
+  // Table styles
+  tblHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, borderBottomWidth: 1.5, borderTopLeftRadius: 10, borderTopRightRadius: 10 },
+  tblHeaderCell: { fontSize: 11, fontWeight: '700', paddingHorizontal: 4, textAlign: 'right' },
+  tblRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8, borderBottomWidth: 1, minHeight: 44 },
+  tblCell: { paddingHorizontal: 4, justifyContent: 'center' },
+  tblCellText: { fontSize: 11, textAlign: 'right' },
+  tblActions: { paddingHorizontal: 4 },
+  tblActionsRow: { flexDirection: 'row', gap: 4 },
+  tblActionBtn: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  // Modal styles
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14 },
+  saveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  textInput: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12 },
+  hintText: { fontSize: 11 },
 });

@@ -801,9 +801,9 @@ export default function CustomersScreen() {
         currency={settings.currency}
         colors={colors}
         onClose={() => setBalanceCustomer(null)}
-        onConfirm={(amount, note) => {
+        onConfirm={(amount, note, settleDebt) => {
           if (balanceCustomer) {
-            addCustomerBalance(balanceCustomer.id, amount, note);
+            addCustomerBalance(balanceCustomer.id, amount, note, settleDebt);
             setBalanceCustomer(null);
           }
         }}
@@ -1294,24 +1294,26 @@ function BalanceModal({
   currency: string;
   colors: Colors;
   onClose: () => void;
-  onConfirm: (amount: number, note: string) => void;
+  onConfirm: (amount: number, note: string, settleDebt?: boolean) => void;
 }) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [settleDebt, setSettleDebt] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setAmount('');
       setNote('');
       setError('');
+      setSettleDebt(false);
     }
   }, [visible, customer]);
 
   const handleConfirm = () => {
     const val = parseFloat(amount);
     if (!val || val <= 0) { setError('أدخل مبلغاً صحيحاً'); return; }
-    onConfirm(val, note.trim());
+    onConfirm(val, note.trim(), settleDebt);
   };
 
   return (
@@ -1343,7 +1345,33 @@ function BalanceModal({
             <Text style={[styles.currentBalanceValue, { color: colors.primary }]}>
               {formatCurrency(customer.balance, currency)}
             </Text>
+            {customer.debt > 0 && (
+              <Text style={[styles.currentDebtLabel, { color: colors.danger, marginTop: 4 }]}>
+                دين مستحق: {formatCurrency(customer.debt, currency)}
+              </Text>
+            )}
           </View>
+
+          {/* Debt settlement option */}
+          {customer.debt > 0 && (
+            <TouchableOpacity
+              onPress={() => setSettleDebt((v) => !v)}
+              style={[styles.settleDebtRow, { backgroundColor: settleDebt ? colors.success + '15' : colors.surfaceAlt, borderColor: settleDebt ? colors.success : colors.border }]}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.settleDebtCheck, { backgroundColor: settleDebt ? colors.success : 'transparent', borderColor: settleDebt ? colors.success : colors.border }]}>
+                {settleDebt && <Check size={14} color="#FFFFFF" strokeWidth={2.5} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settleDebtLabel, { color: settleDebt ? colors.success : colors.text }]}>
+                  تسديد الدين السابق
+                </Text>
+                <Text style={[styles.settleDebtHint, { color: colors.textMuted }]}>
+                  سيتم خصم {formatCurrency(Math.min(customer.debt, parseFloat(amount) || 0), currency)} من المبلغ وتسجيل الباقي كرصيد
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
 
           <FormField label="مبلغ الشحن" colors={colors}>
             <TextInput
@@ -1794,6 +1822,10 @@ const styles = StyleSheet.create({
   topUpBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   currentBalanceBox: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginBottom: 16 },
   currentBalanceValue: { fontSize: 24, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  settleDebtRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, marginBottom: 16 },
+  settleDebtCheck: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  settleDebtLabel: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-SemiBold' },
+  settleDebtHint: { fontSize: 11, marginTop: 2 },
   detailActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12 },
   detailActionText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
   smsPreviewBox: { borderRadius: 14, padding: 14, gap: 10 },
