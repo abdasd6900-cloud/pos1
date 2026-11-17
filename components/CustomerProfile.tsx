@@ -1071,10 +1071,10 @@ const styles = StyleSheet.create({
   linkCopiedText: { fontSize: 12, fontWeight: '600', flex: 1 },
   // Table styles
   tblHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, borderBottomWidth: 1.5, borderTopLeftRadius: 10, borderTopRightRadius: 10 },
-  tblHeaderCell: { fontSize: 11, fontWeight: '700', paddingHorizontal: 4, textAlign: 'right' },
+  tblHeaderCell: { fontSize: 11, fontWeight: '700', paddingHorizontal: 4, textAlign: 'left' },
   tblRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8, borderBottomWidth: 1, minHeight: 44 },
   tblCell: { paddingHorizontal: 4, justifyContent: 'center' },
-  tblCellText: { fontSize: 11, textAlign: 'right' },
+  tblCellText: { fontSize: 11, textAlign: 'left' },
   tblActions: { paddingHorizontal: 4 },
   tblActionsRow: { flexDirection: 'row', gap: 4 },
   tblActionBtn: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
