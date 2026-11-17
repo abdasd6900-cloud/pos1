@@ -169,6 +169,23 @@ export function CustomerProfile({
     return telecomSales.filter((s) => s.customerId === customer.id || s.customerPhone === customer.phone);
   }, [customer, telecomSales]);
 
+  const paymentBalances = useMemo(() => {
+    const balances = new Map<string, { before: number; after: number }>();
+    const chronological = [...customerTransactions].sort((a, b) => a.createdAt - b.createdAt);
+    let runningBalance = Math.max(0, (customer?.debt ?? 0) - chronological.reduce((sum, t) => sum + (t.debtChange ?? 0), 0));
+    for (const transaction of chronological) {
+      if (transaction.type === 'payment') {
+        const before = Math.max(0, runningBalance);
+        const after = Math.max(0, before + (transaction.debtChange ?? -transaction.paid));
+        balances.set(transaction.id, { before, after });
+        runningBalance = after;
+      } else {
+        runningBalance = Math.max(0, runningBalance + (transaction.debtChange ?? 0));
+      }
+    }
+    return balances;
+  }, [customer, customerTransactions]);
+
   const timeline = useMemo<TimelineEntry[]>(() => {
     const entries: TimelineEntry[] = [
       ...customerTransactions.map((t) => ({ kind: 'transaction' as const, date: t.createdAt, item: t })),
@@ -557,6 +574,7 @@ export function CustomerProfile({
                       colors={colors}
                       currency={settings.currency}
                       isLast={idx === timeline.length - 1}
+                      paymentBalance={paymentBalances.get(entry.item.id)}
                       onEditPayment={(t) => { setEditPaymentTarget(t); setEditPaymentValue(t.paid.toString()); }}
                       onDeletePayment={(t) => setDeletePaymentTarget(t)}
                     />
@@ -714,13 +732,14 @@ function SummaryCard({
 // ============ Timeline Cards ============
 
 function TransactionTimelineCard({
-  transaction: t, customer, colors, currency, isLast, onEditPayment, onDeletePayment,
+  transaction: t, customer, colors, currency, isLast, paymentBalance, onEditPayment, onDeletePayment,
 }: {
   transaction: Transaction;
   customer: Customer;
   colors: Colors;
   currency: string;
   isLast: boolean;
+  paymentBalance?: { before: number; after: number };
   onEditPayment: (transaction: Transaction) => void;
   onDeletePayment: (transaction: Transaction) => void;
 }) {
@@ -777,6 +796,17 @@ function TransactionTimelineCard({
             </Text>
           </View>
         </View>
+
+        {isPayment && paymentBalance && (
+          <View style={[styles.timelineCardBalanceRow, { borderTopColor: colors.border }]}>
+            <Text style={[styles.timelineCardBalanceText, { color: colors.textMuted }]}>
+              الرصيد قبل: {formatCurrency(paymentBalance.before, currency)}
+            </Text>
+            <Text style={[styles.timelineCardBalanceText, { color: colors.success }]}>
+              الرصيد بعد: {formatCurrency(paymentBalance.after, currency)}
+            </Text>
+          </View>
+        )}
 
         {isSale && t.items.length > 0 && (
           <View style={[styles.timelineCardItems, { borderTopColor: colors.border }]}>
