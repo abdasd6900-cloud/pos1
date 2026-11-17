@@ -7,7 +7,8 @@ import {
   Package, Clock, AlertCircle, Calendar, Star, Undo2, Gift,
   Upload, Download, FileSpreadsheet, PlusCircle, Contact as ContactIcon,
   X,
- Info, AlertTriangle, ArrowUpRight, ArrowDownRight, TrendingUp, RefreshCw } from 'lucide-react-native';
+ Info, AlertTriangle, ArrowUpRight, ArrowDownRight, TrendingUp, RefreshCw,
+ MoreVertical, ArrowUpDown, Filter } from 'lucide-react-native';
 import * as XLSX from 'xlsx';
 import { useApp } from '@/lib/app-context';
 import { useTheme } from '@/lib/theme-context';
@@ -49,6 +50,8 @@ export default function CustomersScreen() {
   const [contactsSearch, setContactsSearch] = useState('');
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [mergeResult, setMergeResult] = useState<number | null>(null);
+  const [showMobileMore, setShowMobileMore] = useState(false);
+  const [mobileMoreTab, setMobileMoreTab] = useState<'filter' | 'actions'>('filter');
 
   const searchParams = useLocalSearchParams<{ id?: string }>();
 
@@ -593,27 +596,29 @@ export default function CustomersScreen() {
       )}
 
       <View style={[styles.combinedToolbar, isDesktopLayout && styles.combinedToolbarDesktop, isDesktopLayout && styles.centeredWrap, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
-          {([
-            { key: 'all', label: 'الكل', count: customers.length },
-            { key: 'vip', label: 'مميزون', count: vipCount },
-            { key: 'debtors', label: 'مدينون', count: debtorsCount },
-            ...(settings.businessMode === 'telecom' ? [{ key: 'expiring' as const, label: 'انتهاء قريب', count: expirySoonCount }] : []),
-          ] as { key: FilterMode; label: string; count: number }[]).map((f) => (
-            <TouchableOpacity
-              key={f.key}
-              onPress={() => setFilter(f.key)}
-              style={[styles.filterChip, filter === f.key ? { backgroundColor: colors.primary } : { backgroundColor: colors.surfaceAlt }]}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.filterChipText, { color: filter === f.key ? '#FFFFFF' : colors.textSecondary }]}>
-                {f.label} ({f.count})
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {isDesktopLayout && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
+            {([
+              { key: 'all', label: 'الكل', count: customers.length },
+              { key: 'vip', label: 'مميزون', count: vipCount },
+              { key: 'debtors', label: 'مدينون', count: debtorsCount },
+              ...(settings.businessMode === 'telecom' ? [{ key: 'expiring' as const, label: 'انتهاء قريب', count: expirySoonCount }] : []),
+            ] as { key: FilterMode; label: string; count: number }[]).map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => setFilter(f.key)}
+                style={[styles.filterChip, filter === f.key ? { backgroundColor: colors.primary } : { backgroundColor: colors.surfaceAlt }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.filterChipText, { color: filter === f.key ? '#FFFFFF' : colors.textSecondary }]}>
+                  {f.label} ({f.count})
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
-        <View style={[styles.toolbarSearchRow, isDesktopLayout && styles.toolbarSearchRowDesktop, { borderColor: colors.border }]}>
+        <View style={[styles.toolbarSearchRow, isDesktopLayout && styles.toolbarSearchRowDesktop, { borderColor: colors.border, flex: 1 }]}>
           <Search size={isDesktopLayout ? 15 : 16} color={colors.textMuted} strokeWidth={2} />
           <TextInput
             value={search}
@@ -627,46 +632,122 @@ export default function CustomersScreen() {
               <X size={15} color={colors.textMuted} strokeWidth={2} />
             </TouchableOpacity>
           )}
+          {!isDesktopLayout && (
+            <View style={styles.mobileMoreWrap}>
+              <TouchableOpacity
+                onPress={() => setShowMobileMore((v) => !v)}
+                style={[styles.mobileMoreBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                activeOpacity={0.7}
+              >
+                <MoreVertical size={18} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+              {showMobileMore && (
+                <View style={[styles.mobileMorePanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={styles.mobileMoreTabs}>
+                    <TouchableOpacity
+                      onPress={() => setMobileMoreTab('filter')}
+                      style={[styles.mobileMoreTab, mobileMoreTab === 'filter' ? { backgroundColor: colors.primary + '15' } : {}]}
+                      activeOpacity={0.7}
+                    >
+                      <Filter size={13} color={mobileMoreTab === 'filter' ? colors.primary : colors.textSecondary} strokeWidth={2} />
+                      <Text style={[styles.mobileMoreTabText, { color: mobileMoreTab === 'filter' ? colors.primary : colors.textSecondary }]}>فرز</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setMobileMoreTab('actions')}
+                      style={[styles.mobileMoreTab, mobileMoreTab === 'actions' ? { backgroundColor: colors.primary + '15' } : {}]}
+                      activeOpacity={0.7}
+                    >
+                      <ArrowUpDown size={13} color={mobileMoreTab === 'actions' ? colors.primary : colors.textSecondary} strokeWidth={2} />
+                      <Text style={[styles.mobileMoreTabText, { color: mobileMoreTab === 'actions' ? colors.primary : colors.textSecondary }]}>أدوات</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.mobileMoreBody}>
+                    {mobileMoreTab === 'filter' && (
+                      <View style={styles.mobileMoreChipsRow}>
+                        {([
+                          { key: 'all' as const, label: 'الكل' },
+                          { key: 'vip' as const, label: 'مميزون' },
+                          { key: 'debtors' as const, label: 'مدينون' },
+                          ...(settings.businessMode === 'telecom' ? [{ key: 'expiring' as const, label: 'انتهاء قريب' }] : []),
+                        ]).map((opt) => (
+                          <TouchableOpacity
+                            key={opt.key}
+                            onPress={() => setFilter(opt.key)}
+                            style={[styles.mobileMoreChip, { backgroundColor: filter === opt.key ? colors.primary : colors.surfaceAlt, borderColor: filter === opt.key ? colors.primary : colors.border }]}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.mobileMoreChipText, { color: filter === opt.key ? '#FFFFFF' : colors.textSecondary }]}>{opt.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                    {mobileMoreTab === 'actions' && (
+                      <>
+                        <TouchableOpacity onPress={() => { setShowMobileMore(false); handleExportTemplate(); }} style={[styles.mobileMoreItem, { borderColor: colors.border }]} activeOpacity={0.7}>
+                          <FileSpreadsheet size={15} color={colors.info} strokeWidth={2} />
+                          <Text style={[styles.mobileMoreItemText, { color: colors.text }]}>قالب</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => { setShowMobileMore(false); Platform.OS === 'web' ? fileInputRef.current?.click() : handleImportMobile(); }} style={[styles.mobileMoreItem, { borderColor: colors.border }]} activeOpacity={0.7} disabled={importing}>
+                          <Upload size={15} color={colors.primary} strokeWidth={2} />
+                          <Text style={[styles.mobileMoreItemText, { color: colors.text }]}>{importing ? '...' : 'استيراد'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => { setShowMobileMore(false); handleExportCustomers(); }} style={[styles.mobileMoreItem, { borderColor: colors.border }]} activeOpacity={0.7}>
+                          <Download size={15} color={colors.success} strokeWidth={2} />
+                          <Text style={[styles.mobileMoreItemText, { color: colors.text }]}>تصدير</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => { setShowMobileMore(false); const merged = mergeDuplicateCustomers(); setMergeResult(merged); }} style={[styles.mobileMoreItem, { borderColor: colors.border }]} activeOpacity={0.7}>
+                          <RefreshCw size={15} color={colors.primary} strokeWidth={2} />
+                          <Text style={[styles.mobileMoreItemText, { color: colors.text }]}>تحديث ودمج</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
-        <View style={[styles.toolbarActions, isDesktopLayout && styles.toolbarActionsDesktop]}>
-          <TouchableOpacity
-            onPress={handleExportTemplate}
-            style={[styles.toolbarBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
-            activeOpacity={0.7}
-          >
-            <FileSpreadsheet size={16} color={colors.info} strokeWidth={2} />
-            <Text style={[styles.toolbarBtnText, { color: colors.textSecondary }]}>قالب</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => Platform.OS === 'web' ? fileInputRef.current?.click() : handleImportMobile()}
-            style={[styles.toolbarBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
-            activeOpacity={0.7}
-            disabled={importing}
-          >
-            <Upload size={16} color={colors.primary} strokeWidth={2} />
-            <Text style={[styles.toolbarBtnText, { color: colors.textSecondary }]}>{importing ? '...' : 'استيراد'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleExportCustomers}
-            style={[styles.toolbarBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
-            activeOpacity={0.7}
-          >
-            <Download size={16} color={colors.success} strokeWidth={2} />
-            <Text style={[styles.toolbarBtnText, { color: colors.textSecondary }]}>تصدير</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              const merged = mergeDuplicateCustomers();
-              setMergeResult(merged);
-            }}
-            style={[styles.toolbarBtn, styles.toolbarBtnPrimary, { backgroundColor: colors.primary }]}
-            activeOpacity={0.8}
-          >
-            <RefreshCw size={16} color="#FFFFFF" strokeWidth={2} />
-            <Text style={styles.toolbarBtnTextWhite}>تحديث ودمج</Text>
-          </TouchableOpacity>
-        </View>
+        {isDesktopLayout && (
+          <View style={[styles.toolbarActions, styles.toolbarActionsDesktop]}>
+            <TouchableOpacity
+              onPress={handleExportTemplate}
+              style={[styles.toolbarBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+              activeOpacity={0.7}
+            >
+              <FileSpreadsheet size={16} color={colors.info} strokeWidth={2} />
+              <Text style={[styles.toolbarBtnText, { color: colors.textSecondary }]}>قالب</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => Platform.OS === 'web' ? fileInputRef.current?.click() : handleImportMobile()}
+              style={[styles.toolbarBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+              activeOpacity={0.7}
+              disabled={importing}
+            >
+              <Upload size={16} color={colors.primary} strokeWidth={2} />
+              <Text style={[styles.toolbarBtnText, { color: colors.textSecondary }]}>{importing ? '...' : 'استيراد'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleExportCustomers}
+              style={[styles.toolbarBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+              activeOpacity={0.7}
+            >
+              <Download size={16} color={colors.success} strokeWidth={2} />
+              <Text style={[styles.toolbarBtnText, { color: colors.textSecondary }]}>تصدير</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                const merged = mergeDuplicateCustomers();
+                setMergeResult(merged);
+              }}
+              style={[styles.toolbarBtn, styles.toolbarBtnPrimary, { backgroundColor: colors.primary }]}
+              activeOpacity={0.8}
+            >
+              <RefreshCw size={16} color="#FFFFFF" strokeWidth={2} />
+              <Text style={styles.toolbarBtnTextWhite}>تحديث ودمج</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {filteredCustomers.length === 0 ? (
@@ -1859,4 +1940,16 @@ const styles = StyleSheet.create({
   contactPickCheck: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   contactPickName: { fontSize: 14, fontWeight: '600' },
   contactPickPhone: { fontSize: 12, marginTop: 2 },
+  mobileMoreWrap: { position: 'relative' },
+  mobileMoreBtn: { width: 34, height: 34, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  mobileMorePanel: { position: 'absolute', top: 40, right: 0, width: 220, borderRadius: 14, borderWidth: 1, padding: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 12, elevation: 10, zIndex: 50 },
+  mobileMoreTabs: { flexDirection: 'row', gap: 4, marginBottom: 8 },
+  mobileMoreTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 9 },
+  mobileMoreTabText: { fontSize: 12, fontWeight: '700' },
+  mobileMoreBody: { gap: 4 },
+  mobileMoreChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  mobileMoreChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9, borderWidth: 1 },
+  mobileMoreChipText: { fontSize: 12, fontWeight: '700' },
+  mobileMoreItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 11, borderRadius: 10, borderWidth: 1 },
+  mobileMoreItemText: { fontSize: 13, fontWeight: '600' },
 });
