@@ -8,7 +8,7 @@ import {
   Phone, Wallet, Crown, Star, Clock, Calendar, BookOpen,
   Undo2, Package, MessageSquare, PlusCircle, Check, Smartphone,
   TrendingUp, ArrowUpRight, ArrowDownRight, Receipt,
-  Download, Share2, X, Pencil, Trash2, AlertCircle,
+  Download, Share2, X, Pencil, Trash2, User,
 } from 'lucide-react-native';
 import { BaseModal } from './BaseModal';
 import { Badge } from './Badge';
@@ -120,6 +120,15 @@ function calcDaysRemaining(sale: TelecomSale): number | null {
   return Math.max(0, totalDays - elapsed);
 }
 
+function paymentMethodLabel(method: string): string {
+  if (method === 'cash') return 'نقدي';
+  if (method === 'debt') return 'دين';
+  if (method === 'balance') return 'من الرصيد';
+  if (method === 'card') return 'بطاقة';
+  if (method === 'transfer') return 'تحويل';
+  return method;
+}
+
 
 interface CustomerProfileProps {
   visible: boolean;
@@ -178,7 +187,6 @@ export function CustomerProfile({
   const expiryDays = daysUntilExpiry(customer.subscriptionExpiry);
   const isExpiringSoon = expiryDays !== null && expiryDays <= settings.expiryAlertDays && expiryDays >= 0;
   const isExpired = expiryDays !== null && expiryDays < 0;
-  const isWeb = Platform.OS === 'web';
 
   const handleExportRecord = () => {
     if (!customer) return;
@@ -290,14 +298,14 @@ export function CustomerProfile({
           <View style={{ flex: 1 }}>
             <View style={styles.nameRow}>
               <Text style={[styles.detailName, { color: colors.text }]}>{customer.name}</Text>
-              {isVip && <Crown size={16} color={colors.accent} strokeWidth={2} />}
+              {isVip && <Crown size={20} color={colors.accent} strokeWidth={2} />}
             </View>
             <View style={styles.phoneRow}>
-              <Phone size={14} color={colors.textMuted} strokeWidth={2} />
+              <Phone size={16} color={colors.textMuted} strokeWidth={2} />
               <Text style={[styles.detailPhone, { color: colors.textMuted }]}>{customer.phone}</Text>
             </View>
             {isVip && (
-              <View style={{ marginTop: 4 }}>
+              <View style={{ marginTop: 6 }}>
                 <Badge label="عميل مميز VIP" color={colors.accent} bg={colors.accent + '20'} size="md" />
               </View>
             )}
@@ -311,7 +319,7 @@ export function CustomerProfile({
             style={[styles.quickActionBtn, { backgroundColor: colors.primary }]}
             activeOpacity={0.8}
           >
-            <PlusCircle size={18} color="#FFFFFF" strokeWidth={2} />
+            <PlusCircle size={20} color="#FFFFFF" strokeWidth={2} />
             <Text style={styles.quickActionText}>شحن رصيد</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -319,7 +327,7 @@ export function CustomerProfile({
             style={[styles.quickActionBtn, { backgroundColor: colors.danger }]}
             activeOpacity={0.8}
           >
-            <BookOpen size={18} color="#FFFFFF" strokeWidth={2} />
+            <BookOpen size={20} color="#FFFFFF" strokeWidth={2} />
             <Text style={styles.quickActionText}>دين جديد</Text>
           </TouchableOpacity>
           {totalDebtWithTelecom > 0 && (
@@ -328,7 +336,7 @@ export function CustomerProfile({
               style={[styles.quickActionBtn, { backgroundColor: colors.success }]}
               activeOpacity={0.8}
             >
-              <Wallet size={18} color="#FFFFFF" strokeWidth={2} />
+              <Wallet size={20} color="#FFFFFF" strokeWidth={2} />
               <Text style={styles.quickActionText}>تسديد دين</Text>
             </TouchableOpacity>
           )}
@@ -337,7 +345,7 @@ export function CustomerProfile({
             style={[styles.quickActionBtn, { backgroundColor: colors.info }]}
             activeOpacity={0.8}
           >
-            <MessageSquare size={18} color="#FFFFFF" strokeWidth={2} />
+            <MessageSquare size={20} color="#FFFFFF" strokeWidth={2} />
             <Text style={styles.quickActionText}>تذكير</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -345,7 +353,7 @@ export function CustomerProfile({
             style={[styles.quickActionBtn, { backgroundColor: colors.info }]}
             activeOpacity={0.8}
           >
-            <Download size={18} color="#FFFFFF" strokeWidth={2} />
+            <Download size={20} color="#FFFFFF" strokeWidth={2} />
             <Text style={styles.quickActionText}>تصدير</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -353,7 +361,7 @@ export function CustomerProfile({
             style={[styles.quickActionBtn, { backgroundColor: linkCopied ? colors.success : colors.accent }]}
             activeOpacity={0.8}
           >
-            {linkCopied ? <Check size={18} color="#FFFFFF" strokeWidth={2} /> : <Share2 size={18} color="#FFFFFF" strokeWidth={2} />}
+            {linkCopied ? <Check size={20} color="#FFFFFF" strokeWidth={2} /> : <Share2 size={20} color="#FFFFFF" strokeWidth={2} />}
             <Text style={styles.quickActionText}>{linkCopied ? 'تم النسخ' : 'رابط'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -361,7 +369,7 @@ export function CustomerProfile({
             style={[styles.quickActionBtn, { backgroundColor: colors.surfaceAlt }]}
             activeOpacity={0.8}
           >
-            <Receipt size={18} color={colors.textSecondary} strokeWidth={2} />
+            <Receipt size={20} color={colors.textSecondary} strokeWidth={2} />
             <Text style={[styles.quickActionText, { color: colors.textSecondary }]}>تعديل</Text>
           </TouchableOpacity>
         </View>
@@ -369,28 +377,28 @@ export function CustomerProfile({
         {/* Summary cards */}
         <View style={styles.summaryGrid}>
           <SummaryCard
-            icon={<TrendingUp size={18} color={colors.primary} strokeWidth={2} />}
+            icon={<TrendingUp size={22} color={colors.primary} strokeWidth={2} />}
             label="إجمالي المشتريات"
             value={formatCurrency(stats.totalSpent, settings.currency)}
             color={colors.primary}
             colors={colors}
           />
           <SummaryCard
-            icon={<Check size={18} color={colors.success} strokeWidth={2} />}
+            icon={<Check size={22} color={colors.success} strokeWidth={2} />}
             label="إجمالي المدفوع"
             value={formatCurrency(stats.totalPaid, settings.currency)}
             color={colors.success}
             colors={colors}
           />
           <SummaryCard
-            icon={<BookOpen size={18} color={customer.debt > 0 ? debtColor : colors.success} strokeWidth={2} />}
+            icon={<BookOpen size={22} color={customer.debt > 0 ? debtColor : colors.success} strokeWidth={2} />}
             label="الدين الحالي"
             value={formatCurrency(customer.debt, settings.currency)}
             color={customer.debt > 0 ? debtColor : colors.success}
             colors={colors}
           />
           <SummaryCard
-            icon={<Wallet size={18} color={colors.primary} strokeWidth={2} />}
+            icon={<Wallet size={22} color={colors.primary} strokeWidth={2} />}
             label="الرصيد المسبق"
             value={formatCurrency(customer.balance, settings.currency)}
             color={colors.primary}
@@ -398,7 +406,7 @@ export function CustomerProfile({
           />
           {settings.enableLoyalty && (
             <SummaryCard
-              icon={<Star size={18} color={colors.accent} strokeWidth={2} />}
+              icon={<Star size={22} color={colors.accent} strokeWidth={2} />}
               label="نقاط الولاء"
               value={`${customer.loyaltyPoints}`}
               color={colors.accent}
@@ -413,12 +421,12 @@ export function CustomerProfile({
         {settings.businessMode === 'telecom' && (customer.subscriptionNumber || customer.subscriptionExpiry) && (
           <View style={[styles.subCard, { backgroundColor: colors.surfaceAlt }]}>
             <View style={styles.subCardRow}>
-              <Clock size={16} color={colors.primary} strokeWidth={2} />
+              <Clock size={18} color={colors.primary} strokeWidth={2} />
               <Text style={[styles.subCardLabel, { color: colors.textSecondary }]}>رقم الاشتراك</Text>
               <Text style={[styles.subCardValue, { color: colors.text }]}>{customer.subscriptionNumber || '—'}</Text>
             </View>
             <View style={styles.subCardRow}>
-              <Calendar size={16} color={isExpired ? colors.danger : isExpiringSoon ? colors.warning : colors.primary} strokeWidth={2} />
+              <Calendar size={18} color={isExpired ? colors.danger : isExpiringSoon ? colors.warning : colors.primary} strokeWidth={2} />
               <Text style={[styles.subCardLabel, { color: colors.textSecondary }]}>تاريخ الانتهاء</Text>
               <Text style={[styles.subCardValue, { color: isExpired ? colors.danger : colors.text }]}>
                 {formatExpiry(customer.subscriptionExpiry)}
@@ -431,13 +439,13 @@ export function CustomerProfile({
         {stats.firstActivity && stats.lastActivity && (
           <View style={styles.activityDatesRow}>
             <View style={styles.activityDateItem}>
-              <ArrowDownRight size={14} color={colors.textMuted} strokeWidth={2} />
+              <ArrowDownRight size={16} color={colors.textMuted} strokeWidth={2} />
               <Text style={[styles.activityDateText, { color: colors.textMuted }]}>
                 أول تعامل: {formatDateTime(stats.firstActivity)}
               </Text>
             </View>
             <View style={styles.activityDateItem}>
-              <ArrowUpRight size={14} color={colors.textMuted} strokeWidth={2} />
+              <ArrowUpRight size={16} color={colors.textMuted} strokeWidth={2} />
               <Text style={[styles.activityDateText, { color: colors.textMuted }]}>
                 آخر تعامل: {formatDateTime(stats.lastActivity)}
               </Text>
@@ -457,10 +465,10 @@ export function CustomerProfile({
         {showExport && (
           <View style={[styles.exportBox, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
             <View style={styles.exportHeader}>
-              <Download size={16} color={colors.info} strokeWidth={2} />
+              <Download size={18} color={colors.info} strokeWidth={2} />
               <Text style={[styles.exportTitle, { color: colors.text }]}>تصدير السجل بالفترة</Text>
               <TouchableOpacity onPress={() => setShowExport(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <X size={16} color={colors.textMuted} strokeWidth={2} />
+                <X size={18} color={colors.textMuted} strokeWidth={2} />
               </TouchableOpacity>
             </View>
             <View style={styles.exportDateRow}>
@@ -490,7 +498,7 @@ export function CustomerProfile({
               style={[styles.exportBtn, { backgroundColor: colors.info }]}
               activeOpacity={0.8}
             >
-              <Download size={18} color="#FFFFFF" strokeWidth={2} />
+              <Download size={20} color="#FFFFFF" strokeWidth={2} />
               <Text style={styles.exportBtnText}>تصدير ({timeline.length} سجل)</Text>
             </TouchableOpacity>
             <Text style={[styles.exportHint, { color: colors.textMuted }]}>
@@ -502,15 +510,15 @@ export function CustomerProfile({
         {/* Link copied feedback */}
         {linkCopied && (
           <View style={[styles.linkCopiedBanner, { backgroundColor: colors.success + '15' }]}>
-            <Check size={14} color={colors.success} strokeWidth={2} />
+            <Check size={16} color={colors.success} strokeWidth={2} />
             <Text style={[styles.linkCopiedText, { color: colors.success }]}>
               تم نسخ الرابط — شاركه مع الزبون ليرى معاملاته
             </Text>
           </View>
         )}
 
-        {/* Timeline / Table */}
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: 16, marginBottom: 8 }]}>
+        {/* Timeline */}
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: 20, marginBottom: 10 }]}>
           السجل الموحد ({timeline.length})
         </Text>
 
@@ -518,40 +526,29 @@ export function CustomerProfile({
           <View style={styles.emptyTimeline}>
             <Text style={[styles.emptyTimelineText, { color: colors.textMuted }]}>لا توجد معاملات</Text>
           </View>
-        ) : isWeb ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ minWidth: 900 }}>
-              {/* Table header */}
-              <View style={[styles.tblHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-                <Text style={[styles.tblHeaderCell, { flex: 1.2, color: colors.textSecondary }]}>رقم الزبون</Text>
-                <Text style={[styles.tblHeaderCell, { flex: 1, color: colors.textSecondary }]}>الوكيل</Text>
-                <Text style={[styles.tblHeaderCell, { flex: 1.1, color: colors.textSecondary }]}>التاريخ</Text>
-                <Text style={[styles.tblHeaderCell, { flex: 1, color: colors.textSecondary }]}>النوع</Text>
-                <Text style={[styles.tblHeaderCell, { flex: 0.9, color: colors.textSecondary }]}>الدفع</Text>
-                <Text style={[styles.tblHeaderCell, { flex: 0.9, color: colors.textSecondary }]}>متبقي</Text>
-                <Text style={[styles.tblHeaderCell, { flex: 0.9, color: colors.textSecondary }]}>رصيد قبل</Text>
-                <Text style={[styles.tblHeaderCell, { flex: 0.9, color: colors.textSecondary }]}>رصيد بعد</Text>
-                <Text style={[styles.tblHeaderCell, { flex: 1.2, color: colors.textSecondary }]}>الإجراءات</Text>
-              </View>
-              {/* Table rows */}
-              {timeline.map((entry) => {
+        ) : (
+          <ScrollView>
+            <View style={styles.timeline}>
+              {timeline.map((entry, idx) => {
                 if (entry.kind === 'transaction') {
                   return (
-                    <TransactionTableRow
+                    <TransactionTimelineCard
                       key={`t-${entry.item.id}`}
                       transaction={entry.item}
                       customer={customer}
                       colors={colors}
                       currency={settings.currency}
+                      isLast={idx === timeline.length - 1}
                     />
                   );
                 }
                 return (
-                  <TelecomTableRow
+                  <TelecomTimelineCard
                     key={`s-${entry.item.id}`}
                     sale={entry.item}
                     colors={colors}
                     currency={settings.currency}
+                    isLast={idx === timeline.length - 1}
                     onEditPrice={(s) => { setEditPriceTarget(s); setEditPriceValue(s.salePrice.toString()); }}
                     onDelete={(s) => setDeleteSaleTarget(s)}
                     onCollect={(s) => { setCollectTarget(s); setCollectAmount(s.remaining.toString()); }}
@@ -561,35 +558,6 @@ export function CustomerProfile({
               })}
             </View>
           </ScrollView>
-        ) : (
-          <View style={styles.timeline}>
-            {timeline.map((entry) => {
-              if (entry.kind === 'transaction') {
-                return (
-                  <TransactionTimelineCard
-                    key={`t-${entry.item.id}`}
-                    transaction={entry.item}
-                    colors={colors}
-                    currency={settings.currency}
-                    isLast={timeline.indexOf(entry) === timeline.length - 1}
-                  />
-                );
-              }
-              return (
-                <TelecomTimelineCard
-                  key={`s-${entry.item.id}`}
-                  sale={entry.item}
-                  colors={colors}
-                  currency={settings.currency}
-                  isLast={timeline.indexOf(entry) === timeline.length - 1}
-                  onEditPrice={(s) => { setEditPriceTarget(s); setEditPriceValue(s.salePrice.toString()); }}
-                  onDelete={(s) => setDeleteSaleTarget(s)}
-                  onCollect={(s) => { setCollectTarget(s); setCollectAmount(s.remaining.toString()); }}
-                  onCancel={(s) => cancelTelecomSale(s.id)}
-                />
-              );
-            })}
-          </View>
         )}
       </View>
 
@@ -630,7 +598,7 @@ export function CustomerProfile({
         title="تحصيل دين المعاملة"
         footer={
           <TouchableOpacity onPress={handleCollectDebt} style={[styles.saveBtn, { backgroundColor: colors.success }]} activeOpacity={0.8}>
-            <Check size={20} color="#FFFFFF" strokeWidth={2} />
+            <Check size={22} color="#FFFFFF" strokeWidth={2} />
             <Text style={styles.saveBtnText}>تأكيد التحصيل</Text>
           </TouchableOpacity>
         }
@@ -684,158 +652,21 @@ function SummaryCard({
   );
 }
 
-// ============ Web Table Rows ============
-
-function TransactionTableRow({
-  transaction: t, customer, colors, currency,
-}: { transaction: Transaction; customer: Customer; colors: Colors; currency: string }) {
-  const isSale = t.type === 'sale';
-  const isPayment = t.type === 'payment';
-  const isReturn = t.type === 'return';
-  const tColor = isSale ? colors.primary : isPayment ? colors.success : isReturn ? colors.danger : colors.info;
-
-  return (
-    <View style={[styles.tblRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-      <View style={[styles.tblCell, { flex: 1.2 }]}>
-        <Text style={[styles.tblCellText, { color: colors.text }]} numberOfLines={1}>{customer.phone}</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 1 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>—</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 1.1 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>{formatDateTime(t.createdAt)}</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 1 }]}>
-        <Text style={[styles.tblCellText, { color: tColor }]} numberOfLines={1}>
-          {isSale ? 'بيع' : isPayment ? 'دفعة' : isReturn ? 'مرتجع' : 'شراء'}
-        </Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 0.9 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>
-          {t.paymentMethod === 'cash' ? 'نقدي' : t.paymentMethod === 'debt' ? 'دين' : t.paymentMethod}
-        </Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 0.9 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>—</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 0.9 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>—</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 0.9 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>—</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 1.2 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]}>—</Text>
-      </View>
-    </View>
-  );
-}
-
-function TelecomTableRow({
-  sale: s, colors, currency, onEditPrice, onDelete, onCollect, onCancel,
-}: {
-  sale: TelecomSale; colors: Colors; currency: string;
-  onEditPrice: (s: TelecomSale) => void;
-  onDelete: (s: TelecomSale) => void;
-  onCollect: (s: TelecomSale) => void;
-  onCancel: (s: TelecomSale) => void;
-}) {
-  const daysRem = calcDaysRemaining(s);
-  const isCancelled = s.operationType === 'cancelled';
-  const sColor = isCancelled ? colors.danger : s.operationType === 'recharge' ? colors.accent : colors.primary;
-  const hasDebt = s.remaining > 0 && !isCancelled;
-
-  return (
-    <View style={[styles.tblRow, { backgroundColor: isCancelled ? colors.danger + '05' : colors.surface, borderBottomColor: colors.border }]}>
-      <View style={[styles.tblCell, { flex: 1.2 }]}>
-        <Text style={[styles.tblCellText, { color: colors.text }]} numberOfLines={1}>{s.simNumber || s.customerPhone || '—'}</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 1 }]}>
-        <Text style={[styles.tblCellText, { color: colors.text }]} numberOfLines={1}>{s.companyName}</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 1.1 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>{formatDateTime(s.createdAt)}</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 1 }]}>
-        <Text style={[styles.tblCellText, { color: sColor }]} numberOfLines={1}>{telecomSaleLabel(s)}</Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 0.9 }]}>
-        <Text style={[styles.tblCellText, { color: paymentStatusColor(s.paymentStatus, colors) }]} numberOfLines={1}>
-          {paymentStatusLabel(s.paymentStatus)}
-        </Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 0.9 }]}>
-        <Text style={[styles.tblCellText, { color: daysRem !== null && daysRem <= 3 ? colors.danger : colors.text }]} numberOfLines={1}>
-          {daysRem !== null ? `${daysRem} يوم` : '—'}
-        </Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 0.9 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>
-          {s.customerBalanceBefore ? formatCurrency(s.customerBalanceBefore, currency) : '—'}
-        </Text>
-      </View>
-      <View style={[styles.tblCell, { flex: 0.9 }]}>
-        <Text style={[styles.tblCellText, { color: colors.textMuted }]} numberOfLines={1}>
-          {s.customerBalanceAfter != null ? formatCurrency(s.customerBalanceAfter, currency) : '—'}
-        </Text>
-      </View>
-      <View style={[styles.tblActions, { flex: 1.2 }]}>
-        {isCancelled ? (
-          <Text style={[styles.tblCellText, { color: colors.danger }]}>ملغاة</Text>
-        ) : (
-          <View style={styles.tblActionsRow}>
-            <TouchableOpacity
-              onPress={() => onEditPrice(s)}
-              style={[styles.tblActionBtn, { backgroundColor: colors.surfaceAlt }]}
-              activeOpacity={0.7}
-            >
-              <Pencil size={13} color={colors.textSecondary} strokeWidth={2} />
-            </TouchableOpacity>
-            {hasDebt && (
-              <TouchableOpacity
-                onPress={() => onCollect(s)}
-                style={[styles.tblActionBtn, { backgroundColor: colors.success + '15' }]}
-                activeOpacity={0.7}
-              >
-                <Wallet size={13} color={colors.success} strokeWidth={2} />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              onPress={() => onCancel(s)}
-              style={[styles.tblActionBtn, { backgroundColor: colors.warning + '15' }]}
-              activeOpacity={0.7}
-            >
-              <Undo2 size={13} color={colors.warning} strokeWidth={2} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onDelete(s)}
-              style={[styles.tblActionBtn, { backgroundColor: colors.danger + '15' }]}
-              activeOpacity={0.7}
-            >
-              <Trash2 size={13} color={colors.danger} strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-
-// ============ Mobile Timeline Cards ============
+// ============ Timeline Cards ============
 
 function TransactionTimelineCard({
-  transaction: t, colors, currency, isLast,
-}: { transaction: Transaction; colors: Colors; currency: string; isLast: boolean }) {
+  transaction: t, customer, colors, currency, isLast,
+}: { transaction: Transaction; customer: Customer; colors: Colors; currency: string; isLast: boolean }) {
   const isSale = t.type === 'sale';
   const isPayment = t.type === 'payment';
   const isReturn = t.type === 'return';
   const isPurchase = t.type === 'purchase';
   const tColor = isSale ? colors.primary : isPayment ? colors.success : isReturn ? colors.danger : colors.info;
 
-  const icon = isSale ? <BookOpen size={16} color={tColor} strokeWidth={2} />
-    : isPayment ? <Wallet size={16} color={tColor} strokeWidth={2} />
-    : isReturn ? <Undo2 size={16} color={tColor} strokeWidth={2} />
-    : <Package size={16} color={tColor} strokeWidth={2} />;
+  const icon = isSale ? <BookOpen size={20} color={tColor} strokeWidth={2} />
+    : isPayment ? <Wallet size={20} color={tColor} strokeWidth={2} />
+    : isReturn ? <Undo2 size={20} color={tColor} strokeWidth={2} />
+    : <Package size={20} color={tColor} strokeWidth={2} />;
 
   const label = isSale ? 'بيع' : isPayment ? 'دفعة' : isReturn ? 'مرتجع' : 'شراء';
 
@@ -853,7 +684,7 @@ function TransactionTimelineCard({
           <View style={{ flex: 1 }}>
             <Text style={[styles.timelineCardType, { color: colors.text }]}>{label}</Text>
             <View style={styles.timelineCardDateRow}>
-              <Clock size={11} color={colors.textMuted} strokeWidth={2} />
+              <Clock size={13} color={colors.textMuted} strokeWidth={2} />
               <Text style={[styles.timelineCardDate, { color: colors.textMuted }]}>
                 {formatDateTime(t.createdAt)}
               </Text>
@@ -863,9 +694,26 @@ function TransactionTimelineCard({
             {isPayment ? '-' : ''}{formatCurrency(isPayment ? t.paid : t.total, currency)}
           </Text>
         </View>
+
+        {/* Info row */}
+        <View style={[styles.timelineCardInfoRow, { borderTopColor: colors.border }]}>
+          <View style={styles.timelineCardInfoItem}>
+            <User size={13} color={colors.textMuted} strokeWidth={2} />
+            <Text style={[styles.timelineCardInfoText, { color: colors.textSecondary }]}>
+              {customer.phone}
+            </Text>
+          </View>
+          <View style={styles.timelineCardInfoItem}>
+            <Wallet size={13} color={colors.textMuted} strokeWidth={2} />
+            <Text style={[styles.timelineCardInfoText, { color: colors.textSecondary }]}>
+              {paymentMethodLabel(t.paymentMethod)}
+            </Text>
+          </View>
+        </View>
+
         {isSale && t.items.length > 0 && (
           <View style={[styles.timelineCardItems, { borderTopColor: colors.border }]}>
-            {t.items.slice(0, 3).map((item, idx) => (
+            {t.items.slice(0, 4).map((item, idx) => (
               <View key={idx} style={styles.timelineCardItemRow}>
                 <Text style={[styles.timelineCardItemName, { color: colors.textSecondary }]} numberOfLines={1}>
                   {item.name}
@@ -875,18 +723,19 @@ function TransactionTimelineCard({
                 </Text>
               </View>
             ))}
-            {t.items.length > 3 && (
+            {t.items.length > 4 && (
               <Text style={[styles.timelineCardMore, { color: colors.textMuted }]}>
-                +{t.items.length - 3} صنف آخر
+                +{t.items.length - 4} صنف آخر
               </Text>
             )}
           </View>
         )}
+
         {isSale && t.remaining > 0 && (
           <View style={[styles.timelineCardDebtBar, { backgroundColor: colors.danger + '10' }]}>
-            <BookOpen size={12} color={colors.danger} strokeWidth={2} />
+            <BookOpen size={14} color={colors.danger} strokeWidth={2} />
             <Text style={[styles.timelineCardDebtText, { color: colors.danger }]}>
-              دين: {formatCurrency(t.remaining, currency)}
+              دين متبقي: {formatCurrency(t.remaining, currency)}
             </Text>
           </View>
         )}
@@ -910,9 +759,9 @@ function TelecomTimelineCard({
   const daysRem = calcDaysRemaining(s);
   const hasDebt = s.remaining > 0 && !isCancelled;
 
-  const icon = isCancelled ? <Undo2 size={16} color={sColor} strokeWidth={2} />
-    : isRecharge ? <TrendingUp size={16} color={sColor} strokeWidth={2} />
-    : <Smartphone size={16} color={sColor} strokeWidth={2} />;
+  const icon = isCancelled ? <Undo2 size={20} color={sColor} strokeWidth={2} />
+    : isRecharge ? <TrendingUp size={20} color={sColor} strokeWidth={2} />
+    : <Smartphone size={20} color={sColor} strokeWidth={2} />;
 
   return (
     <View style={styles.timelineItem}>
@@ -920,19 +769,19 @@ function TelecomTimelineCard({
         <View style={[styles.timelineDot, { backgroundColor: sColor }]} />
         {!isLast && <View style={[styles.timelineLine, { backgroundColor: colors.border }]} />}
       </View>
-      <View style={[styles.timelineCard, { backgroundColor: colors.surface, borderColor: sColor + '30' }]}>
+      <View style={[styles.timelineCard, { backgroundColor: isCancelled ? colors.danger + '05' : colors.surface, borderColor: sColor + '30' }]}>
         <View style={styles.timelineCardTop}>
           <View style={[styles.timelineCardIcon, { backgroundColor: sColor + '15' }]}>
             {icon}
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.timelineCardType, { color: colors.text }]}>{telecomSaleLabel(s)}</Text>
-            <Text style={[styles.timelineCardSubType, { color: colors.textMuted }]} numberOfLines={1}>
+            <Text style={[styles.timelineCardSubType, { color: colors.textSecondary }]} numberOfLines={1}>
               {s.companyName} — {s.bundleName || s.simName}
               {s.simNumber ? ` — ${s.simNumber}` : ''}
             </Text>
             <View style={styles.timelineCardDateRow}>
-              <Clock size={11} color={colors.textMuted} strokeWidth={2} />
+              <Clock size={13} color={colors.textMuted} strokeWidth={2} />
               <Text style={[styles.timelineCardDate, { color: colors.textMuted }]}>
                 {formatDateTime(s.createdAt)}
               </Text>
@@ -943,11 +792,17 @@ function TelecomTimelineCard({
           </Text>
         </View>
 
-        {/* New info row: days remaining + balance + payment status */}
+        {/* Info row */}
         <View style={[styles.timelineCardInfoRow, { borderTopColor: colors.border }]}>
           <View style={styles.timelineCardInfoItem}>
-            <Clock size={11} color={colors.textMuted} strokeWidth={2} />
-            <Text style={[styles.timelineCardInfoText, { color: daysRem !== null && daysRem <= 3 ? colors.danger : colors.textMuted }]}>
+            <User size={13} color={colors.textMuted} strokeWidth={2} />
+            <Text style={[styles.timelineCardInfoText, { color: colors.textSecondary }]} numberOfLines={1}>
+              {s.simNumber || s.customerPhone || '—'}
+            </Text>
+          </View>
+          <View style={styles.timelineCardInfoItem}>
+            <Clock size={13} color={daysRem !== null && daysRem <= 3 ? colors.danger : colors.textMuted} strokeWidth={2} />
+            <Text style={[styles.timelineCardInfoText, { color: daysRem !== null && daysRem <= 3 ? colors.danger : colors.textSecondary }]}>
               {daysRem !== null ? `${daysRem} يوم متبقي` : '—'}
             </Text>
           </View>
@@ -956,43 +811,48 @@ function TelecomTimelineCard({
               {paymentStatusLabel(s.paymentStatus)}
             </Text>
           </View>
-          {s.customerBalanceBefore != null && (
-            <View style={styles.timelineCardInfoItem}>
-              <Text style={[styles.timelineCardInfoText, { color: colors.textMuted }]}>
-                رصيد: {formatCurrency(s.customerBalanceBefore, currency)} ← {s.customerBalanceAfter != null ? formatCurrency(s.customerBalanceAfter, currency) : '—'}
-              </Text>
-            </View>
-          )}
         </View>
 
-        {s.remaining > 0 && !isCancelled && (
-          <View style={[styles.timelineCardDebtBar, { backgroundColor: colors.danger + '10' }]}>
-            <BookOpen size={12} color={colors.danger} strokeWidth={2} />
-            <Text style={[styles.timelineCardDebtText, { color: colors.danger }]}>
-              دين: {formatCurrency(s.remaining, currency)}
+        {/* Balance row */}
+        {(s.customerBalanceBefore != null || s.customerBalanceAfter != null) && (
+          <View style={[styles.timelineCardBalanceRow, { borderTopColor: colors.border }]}>
+            <Text style={[styles.timelineCardBalanceText, { color: colors.textMuted }]}>
+              رصيد قبل: {s.customerBalanceBefore != null ? formatCurrency(s.customerBalanceBefore, currency) : '—'}
+            </Text>
+            <Text style={[styles.timelineCardBalanceText, { color: colors.textMuted }]}>
+              رصيد بعد: {s.customerBalanceAfter != null ? formatCurrency(s.customerBalanceAfter, currency) : '—'}
             </Text>
           </View>
         )}
 
-        {/* Action buttons for mobile */}
+        {hasDebt && (
+          <View style={[styles.timelineCardDebtBar, { backgroundColor: colors.danger + '10' }]}>
+            <BookOpen size={14} color={colors.danger} strokeWidth={2} />
+            <Text style={[styles.timelineCardDebtText, { color: colors.danger }]}>
+              دين متبقي: {formatCurrency(s.remaining, currency)}
+            </Text>
+          </View>
+        )}
+
+        {/* Action buttons */}
         {!isCancelled && (
           <View style={[styles.timelineCardActions, { borderTopColor: colors.border }]}>
             <TouchableOpacity onPress={() => onEditPrice(s)} style={[styles.timelineActionBtn, { backgroundColor: colors.surfaceAlt }]} activeOpacity={0.7}>
-              <Pencil size={13} color={colors.textSecondary} strokeWidth={2} />
-              <Text style={[styles.timelineActionText, { color: colors.textSecondary }]}>تعديل</Text>
+              <Pencil size={15} color={colors.textSecondary} strokeWidth={2} />
+              <Text style={[styles.timelineActionText, { color: colors.textSecondary }]}>تعديل السعر</Text>
             </TouchableOpacity>
             {hasDebt && (
               <TouchableOpacity onPress={() => onCollect(s)} style={[styles.timelineActionBtn, { backgroundColor: colors.success + '15' }]} activeOpacity={0.7}>
-                <Wallet size={13} color={colors.success} strokeWidth={2} />
-                <Text style={[styles.timelineActionText, { color: colors.success }]}>تحصيل</Text>
+                <Wallet size={15} color={colors.success} strokeWidth={2} />
+                <Text style={[styles.timelineActionText, { color: colors.success }]}>تحصيل الدين</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={() => onCancel(s)} style={[styles.timelineActionBtn, { backgroundColor: colors.warning + '15' }]} activeOpacity={0.7}>
-              <Undo2 size={13} color={colors.warning} strokeWidth={2} />
+              <Undo2 size={15} color={colors.warning} strokeWidth={2} />
               <Text style={[styles.timelineActionText, { color: colors.warning }]}>إلغاء</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => onDelete(s)} style={[styles.timelineActionBtn, { backgroundColor: colors.danger + '15' }]} activeOpacity={0.7}>
-              <Trash2 size={13} color={colors.danger} strokeWidth={2} />
+              <Trash2 size={15} color={colors.danger} strokeWidth={2} />
               <Text style={[styles.timelineActionText, { color: colors.danger }]}>حذف</Text>
             </TouchableOpacity>
           </View>
@@ -1003,85 +863,110 @@ function TelecomTimelineCard({
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  avatarLarge: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  avatarLargeText: { fontSize: 18, fontWeight: '700' },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  detailName: { fontSize: 17, fontWeight: '700', marginBottom: 2 },
-  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 },
-  detailPhone: { fontSize: 12 },
-  quickActionsBar: { flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
-  quickActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9 },
-  quickActionText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
-  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  summaryCard: { flex: 1, minWidth: '18%', borderRadius: 10, padding: 8, gap: 3 },
-  summaryIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  summaryLabel: { fontSize: 10 },
-  summaryValue: { fontSize: 14, fontWeight: '700' },
-  summaryAction: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 2, alignSelf: 'flex-start' },
-  summaryActionText: { fontSize: 10, fontWeight: '700', color: '#FFFFFF' },
-  subCard: { borderRadius: 10, padding: 10, marginBottom: 10, gap: 5 },
-  subCardRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  subCardLabel: { fontSize: 13, flex: 1 },
-  subCardValue: { fontSize: 13, fontWeight: '600' },
-  activityDatesRow: { flexDirection: 'row', gap: 16, marginBottom: 16, flexWrap: 'wrap' },
-  activityDateItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  activityDateText: { fontSize: 12 },
-  notesBox: { borderRadius: 10, padding: 10, marginBottom: 10 },
-  sectionLabel: { fontSize: 14, fontWeight: '600' },
-  notesText: { fontSize: 14, lineHeight: 20, marginTop: 6 },
-  emptyTimeline: { paddingVertical: 24, alignItems: 'center' },
-  emptyTimelineText: { fontSize: 14 },
+  // Header
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  avatarLarge: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  avatarLargeText: { fontSize: 22, fontWeight: '700' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  detailName: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  detailPhone: { fontSize: 14 },
+
+  // Quick actions
+  quickActionsBar: { flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
+  quickActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12 },
+  quickActionText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+
+  // Summary cards
+  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  summaryCard: { flex: 1, minWidth: '18%', borderRadius: 14, padding: 12, gap: 4 },
+  summaryIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  summaryLabel: { fontSize: 12 },
+  summaryValue: { fontSize: 16, fontWeight: '700' },
+  summaryAction: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 4, alignSelf: 'flex-start' },
+  summaryActionText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
+
+  // Subscription card
+  subCard: { borderRadius: 14, padding: 14, marginBottom: 12, gap: 8 },
+  subCardRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  subCardLabel: { fontSize: 14, flex: 1 },
+  subCardValue: { fontSize: 15, fontWeight: '600' },
+
+  // Activity dates
+  activityDatesRow: { flexDirection: 'row', gap: 20, marginBottom: 16, flexWrap: 'wrap' },
+  activityDateItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  activityDateText: { fontSize: 13 },
+
+  // Notes
+  notesBox: { borderRadius: 14, padding: 14, marginBottom: 12 },
+  sectionLabel: { fontSize: 16, fontWeight: '700' },
+  notesText: { fontSize: 15, lineHeight: 22, marginTop: 8 },
+
+  // Empty state
+  emptyTimeline: { paddingVertical: 32, alignItems: 'center' },
+  emptyTimelineText: { fontSize: 16 },
+
+  // Timeline
   timeline: { gap: 0 },
-  timelineItem: { flexDirection: 'row', gap: 10 },
-  timelineLeft: { alignItems: 'center', paddingTop: 14 },
-  timelineDot: { width: 10, height: 10, borderRadius: 5 },
-  timelineLine: { width: 2, flex: 1, minHeight: 20, marginTop: 4 },
-  timelineCard: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 8, gap: 5, marginBottom: 6 },
-  timelineCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
-  timelineCardIcon: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  timelineCardType: { fontSize: 14, fontWeight: '700' },
-  timelineCardSubType: { fontSize: 12, marginTop: 2 },
-  timelineCardDateRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  timelineCardDate: { fontSize: 11 },
-  timelineCardAmount: { fontSize: 15, fontWeight: '700' },
-  timelineCardItems: { borderTopWidth: 1, paddingTop: 8, gap: 4 },
+  timelineItem: { flexDirection: 'row', gap: 12 },
+  timelineLeft: { alignItems: 'center', paddingTop: 18 },
+  timelineDot: { width: 12, height: 12, borderRadius: 6 },
+  timelineLine: { width: 2, flex: 1, minHeight: 24, marginTop: 4 },
+
+  // Timeline card
+  timelineCard: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 12, gap: 8, marginBottom: 8 },
+  timelineCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  timelineCardIcon: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  timelineCardType: { fontSize: 16, fontWeight: '700' },
+  timelineCardSubType: { fontSize: 13, marginTop: 3 },
+  timelineCardDateRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+  timelineCardDate: { fontSize: 12 },
+  timelineCardAmount: { fontSize: 18, fontWeight: '700' },
+
+  // Timeline card items
+  timelineCardItems: { borderTopWidth: 1, paddingTop: 10, gap: 6 },
   timelineCardItemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  timelineCardItemName: { fontSize: 12, flex: 1 },
-  timelineCardItemQty: { fontSize: 12, fontWeight: '600' },
-  timelineCardMore: { fontSize: 11, marginTop: 2 },
-  timelineCardDebtBar: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8 },
-  timelineCardDebtText: { fontSize: 11, fontWeight: '600' },
-  timelineCardInfoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, borderTopWidth: 1, paddingTop: 6 },
-  timelineCardInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  timelineCardInfoText: { fontSize: 11, fontWeight: '600' },
-  timelineCardActions: { flexDirection: 'row', gap: 6, borderTopWidth: 1, paddingTop: 6, flexWrap: 'wrap' },
-  timelineActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 7 },
-  timelineActionText: { fontSize: 10, fontWeight: '700' },
-  exportBox: { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 12, gap: 8 },
-  exportHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  exportTitle: { flex: 1, fontSize: 14, fontWeight: '700' },
-  exportDateRow: { flexDirection: 'row', gap: 8 },
-  exportDateLabel: { fontSize: 11, marginBottom: 4 },
-  exportDateInput: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
-  exportBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  exportHint: { fontSize: 11, textAlign: 'center' },
-  linkCopiedBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginBottom: 12 },
-  linkCopiedText: { fontSize: 12, fontWeight: '600', flex: 1 },
-  // Table styles
-  tblHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, borderBottomWidth: 1.5, borderTopLeftRadius: 10, borderTopRightRadius: 10 },
-  tblHeaderCell: { fontSize: 11, fontWeight: '700', paddingHorizontal: 4, textAlign: 'left' },
-  tblRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8, borderBottomWidth: 1, minHeight: 44 },
-  tblCell: { paddingHorizontal: 4, justifyContent: 'center' },
-  tblCellText: { fontSize: 11, textAlign: 'left' },
-  tblActions: { paddingHorizontal: 4 },
-  tblActionsRow: { flexDirection: 'row', gap: 4 },
-  tblActionBtn: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  timelineCardItemName: { fontSize: 13, flex: 1 },
+  timelineCardItemQty: { fontSize: 13, fontWeight: '600' },
+  timelineCardMore: { fontSize: 12, marginTop: 3 },
+
+  // Timeline card info row
+  timelineCardInfoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, borderTopWidth: 1, paddingTop: 8 },
+  timelineCardInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  timelineCardInfoText: { fontSize: 12, fontWeight: '600' },
+
+  // Timeline card balance row
+  timelineCardBalanceRow: { flexDirection: 'row', gap: 16, borderTopWidth: 1, paddingTop: 8, flexWrap: 'wrap' },
+  timelineCardBalanceText: { fontSize: 12, fontWeight: '600' },
+
+  // Timeline card debt bar
+  timelineCardDebtBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10 },
+  timelineCardDebtText: { fontSize: 13, fontWeight: '700' },
+
+  // Timeline card actions
+  timelineCardActions: { flexDirection: 'row', gap: 8, borderTopWidth: 1, paddingTop: 8, flexWrap: 'wrap' },
+  timelineActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9 },
+  timelineActionText: { fontSize: 12, fontWeight: '700' },
+
+  // Export box
+  exportBox: { borderRadius: 14, borderWidth: 1, padding: 16, marginBottom: 14, gap: 10 },
+  exportHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  exportTitle: { flex: 1, fontSize: 16, fontWeight: '700' },
+  exportDateRow: { flexDirection: 'row', gap: 10 },
+  exportDateLabel: { fontSize: 13, marginBottom: 6 },
+  exportDateInput: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12 },
+  exportBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  exportHint: { fontSize: 12, textAlign: 'center' },
+
+  // Link copied banner
+  linkCopiedBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, marginBottom: 14 },
+  linkCopiedText: { fontSize: 13, fontWeight: '600', flex: 1 },
+
   // Modal styles
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14 },
-  saveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
-  textInput: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12 },
-  hintText: { fontSize: 11 },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 16 },
+  saveBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  fieldLabel: { fontSize: 15, fontWeight: '600', marginBottom: 8 },
+  textInput: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14 },
+  hintText: { fontSize: 13 },
 });
