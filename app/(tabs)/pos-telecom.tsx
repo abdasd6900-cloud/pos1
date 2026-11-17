@@ -2614,7 +2614,7 @@ export default function TelecomPOSScreen() {
           onCancelSale={handleCancelSale}
           onFollowUp={handleFollowUp}
           onOpenCustomer={handleOpenCustomer}
-          hideToolbar={!isMobileLayout}
+          hideToolbar={true}
           externalSearchQuery={historySearch}
           externalSortOrder={historySort}
           externalStatusFilter={historyStatusFilter}
