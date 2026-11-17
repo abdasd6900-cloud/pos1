@@ -801,7 +801,7 @@ export default function CustomersScreen() {
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 80 }}
+            contentContainerStyle={{ paddingBottom: 88 }}
           />
         </View>
       )}
@@ -1710,6 +1710,7 @@ const styles = StyleSheet.create({
   statsBar: {
     flexDirection: 'row',
     alignItems: 'stretch',
+    direction: 'ltr',
     gap: 10,
     marginHorizontal: 16,
     marginTop: 12,
@@ -1734,19 +1735,21 @@ const styles = StyleSheet.create({
   mergeBannerText: { flex: 1, fontSize: 13, fontFamily: 'Cairo-Regular' },
   miniStat: {
     flex: 1,
-    flexDirection: 'row',
+    minWidth: 0,
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 2,
     minHeight: 52,
-    paddingHorizontal: 10,
+    paddingHorizontal: 4,
     paddingVertical: 7,
     borderRadius: 12,
     backgroundColor: 'rgba(128,128,128,0.06)',
   },
-  miniStatLabel: { fontSize: 11 },
-  miniStatValue: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold', marginTop: 1 },
+  miniStatLabel: { fontSize: 11, textAlign: 'center', writingDirection: 'rtl' },
+  miniStatValue: { fontSize: 13, fontWeight: '700', fontFamily: 'Cairo-Bold', marginTop: 1, textAlign: 'center', writingDirection: 'rtl' },
   divider: { width: 1, height: 28, marginHorizontal: 0, alignSelf: 'center' },
-  cardListWrap: { flex: 1, paddingHorizontal: 16, paddingBottom: 80 },
+  cardListWrap: { flex: 1, paddingHorizontal: 16, minHeight: 0 },
   customerCard: { borderRadius: 14, borderWidth: 1, marginBottom: 10, padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
   customerCardTop: { marginBottom: 10 },
   customerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -1763,6 +1766,9 @@ const styles = StyleSheet.create({
   customerCardActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardIconBtn: { width: 40, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   combinedToolbar: {
+    position: 'relative',
+    zIndex: 50,
+    elevation: 50,
     marginHorizontal: 16,
     marginTop: 10,
     borderRadius: 14,
@@ -1940,9 +1946,9 @@ const styles = StyleSheet.create({
   contactPickCheck: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   contactPickName: { fontSize: 14, fontWeight: '600' },
   contactPickPhone: { fontSize: 12, marginTop: 2 },
-  mobileMoreWrap: { position: 'relative' },
+  mobileMoreWrap: { position: 'relative', zIndex: 100, elevation: 100 },
   mobileMoreBtn: { width: 34, height: 34, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  mobileMorePanel: { position: 'absolute', top: 40, right: 0, width: 220, borderRadius: 14, borderWidth: 1, padding: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 12, elevation: 10, zIndex: 50 },
+  mobileMorePanel: { position: 'absolute', top: 40, right: 0, width: 220, borderRadius: 14, borderWidth: 1, padding: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 12, elevation: 200, zIndex: 200 },
   mobileMoreTabs: { flexDirection: 'row', gap: 4, marginBottom: 8 },
   mobileMoreTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 9 },
   mobileMoreTabText: { fontSize: 12, fontWeight: '700' },
