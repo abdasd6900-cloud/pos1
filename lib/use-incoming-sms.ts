@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { sendWebNotification } from '@/lib/notifications';
+import { useAuth } from '@/lib/auth-context';
 
 export interface IncomingSms {
   id: string;
@@ -34,6 +35,7 @@ const MAX_PROCESSED_IDS = 500;
 const processedIdsRef = new Set<number>();
 
 export function useIncomingSms() {
+  const { session } = useAuth();
   const [incoming, setIncoming] = useState<IncomingSms | null>(null);
   const [queue, setQueue] = useState<IncomingSms[]>([]);
 
@@ -107,6 +109,7 @@ export function useIncomingSms() {
 
   // Also set up realtime subscription for instant delivery
   useEffect(() => {
+    if (!session) return;
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
     if (Platform.OS !== 'web') {
@@ -139,7 +142,7 @@ export function useIncomingSms() {
         try { supabase.removeChannel(channel); } catch { /* noop */ }
       }
     };
-  }, [pollForNewEvents]);
+  }, [pollForNewEvents, session]);
 
   useEffect(() => {
     if (!incoming && queue.length > 0) {
