@@ -1,5 +1,5 @@
 diff --git a/node_modules/expo-constants/scripts/get-app-config-android.gradle b/node_modules/expo-constants/scripts/get-app-config-android.gradle
-index 7911284..cd3e086 100644
+index 7911284..4ad808a 100644
 --- a/node_modules/expo-constants/scripts/get-app-config-android.gradle
 +++ b/node_modules/expo-constants/scripts/get-app-config-android.gradle
 @@ -8,17 +8,37 @@ def expoConstantsDir = project.providers.exec {
@@ -64,7 +64,7 @@ index 7911284..cd3e086 100644
        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
          commandLine("cmd", "/c", *nodeExecutableAndArgs, "$expoConstantsDir/scripts/getAppConfig.js", projectRoot, assetsDir, "android", "false", configMode)
        } else {
-@@ -45,41 +59,16 @@ afterEvaluate {
+@@ -45,41 +59,20 @@ afterEvaluate {
        }
      }
  
@@ -95,8 +95,10 @@ index 7911284..cd3e086 100644
 -      commandLine("cmd", "/c", *nodeExecutableAndArgs, "$expoConstantsDir/scripts/createFingerprintFile.js", projectRoot, fingerprintAssetsDir, "android")
 -    } else {
 -      commandLine(*nodeExecutableAndArgs, "$expoConstantsDir/scripts/createFingerprintFile.js", projectRoot, fingerprintAssetsDir, "android")
-+    tasks.named("${variant.name}PreBuild") {
-+      dependsOn(createConfigTask)
++    tasks.configureEach { task ->
++      if (task.name == "${variant.name}PreBuild") {
++        task.dependsOn(createConfigTask)
++      }
      }
 -  }
 +    android.sourceSets.maybeCreate(variant.name).assets.srcDirs += assetsDir
@@ -105,8 +107,10 @@ index 7911284..cd3e086 100644
 -    if (!variant.buildType.debuggable) {
 -      return
 +    if (variant.buildType == "debug" || variant.buildType == "debugOptimized") {
-+      tasks.named("${variant.name}PreBuild") {
-+        dependsOn(createFingerprintTask)
++      tasks.configureEach { task ->
++        if (task.name == "${variant.name}PreBuild") {
++          task.dependsOn(createFingerprintTask)
++        }
 +      }
 +      android.sourceSets.maybeCreate(variant.buildType).assets.srcDirs += fingerprintAssetsDir
      }
