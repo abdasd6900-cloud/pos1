@@ -144,7 +144,7 @@ interface CustomerProfileProps {
 export function CustomerProfile({
   visible, customer, onClose, onEdit, onPayment, onTopUp, onAddDebt, onRedeem,
 }: CustomerProfileProps) {
-  const { transactions, telecomSales, settings, deleteTelecomSale, cancelTelecomSale, editTelecomSalePrice, collectTelecomSaleDebt, addCustomerBalance } = useApp();
+  const { transactions, telecomSales, settings, deleteTransaction, updatePayment, deleteTelecomSale, cancelTelecomSale, editTelecomSalePrice, collectTelecomSaleDebt } = useApp();
   const { colors } = useTheme();
   const [showExport, setShowExport] = useState(false);
   const [fromDate, setFromDate] = useState('');
@@ -155,6 +155,9 @@ export function CustomerProfile({
   const [deleteSaleTarget, setDeleteSaleTarget] = useState<TelecomSale | null>(null);
   const [collectTarget, setCollectTarget] = useState<TelecomSale | null>(null);
   const [collectAmount, setCollectAmount] = useState('');
+  const [editPaymentTarget, setEditPaymentTarget] = useState<Transaction | null>(null);
+  const [editPaymentValue, setEditPaymentValue] = useState('');
+  const [deletePaymentTarget, setDeletePaymentTarget] = useState<Transaction | null>(null);
 
   const customerTransactions = useMemo(() => {
     if (!customer) return [];
@@ -281,13 +284,28 @@ export function CustomerProfile({
     setCollectAmount('');
   };
 
+  const handleEditPayment = () => {
+    if (!editPaymentTarget) return;
+    const val = parseFloat(editPaymentValue);
+    if (!val || val <= 0) return;
+    updatePayment(editPaymentTarget.id, val);
+    setEditPaymentTarget(null);
+    setEditPaymentValue('');
+  };
+
+  const handleDeletePayment = () => {
+    if (!deletePaymentTarget) return;
+    deleteTransaction(deletePaymentTarget.id);
+    setDeletePaymentTarget(null);
+  };
+
   return (
     <BaseModal
       visible={visible}
       onClose={onClose}
       title="ملف العميل"
     >
-      <View>
+      <View style={styles.rtlContent}>
         {/* Header */}
         <View style={styles.header}>
           <View style={[styles.avatarLarge, { backgroundColor: isVip ? colors.accent + '25' : colors.primary + '20' }]}>
@@ -539,6 +557,8 @@ export function CustomerProfile({
                       colors={colors}
                       currency={settings.currency}
                       isLast={idx === timeline.length - 1}
+                      onEditPayment={(t) => { setEditPaymentTarget(t); setEditPaymentValue(t.paid.toString()); }}
+                      onDeletePayment={(t) => setDeletePaymentTarget(t)}
                     />
                   );
                 }
@@ -560,6 +580,45 @@ export function CustomerProfile({
           </ScrollView>
         )}
       </View>
+
+      {/* Edit Payment Modal */}
+      <BaseModal
+        visible={editPaymentTarget !== null}
+        onClose={() => { setEditPaymentTarget(null); setEditPaymentValue(''); }}
+        title="تعديل الدفعة"
+        footer={
+          <TouchableOpacity onPress={handleEditPayment} style={[styles.saveBtn, { backgroundColor: colors.primary }]} activeOpacity={0.8}>
+            <Check size={22} color="#FFFFFF" strokeWidth={2} />
+            <Text style={styles.saveBtnText}>حفظ التعديل</Text>
+          </TouchableOpacity>
+        }
+      >
+        {editPaymentTarget && (
+          <View>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>المبلغ الحالي: {formatCurrency(editPaymentTarget.paid, settings.currency)}</Text>
+            <TextInput
+              value={editPaymentValue}
+              onChangeText={setEditPaymentValue}
+              placeholder="المبلغ الجديد"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, fontSize: 18, fontWeight: '700', textAlign: 'center' }]}
+            />
+            <Text style={[styles.hintText, { color: colors.textMuted, marginTop: 8 }]}>سيتم تحديث دين الزبون تلقائياً</Text>
+          </View>
+        )}
+      </BaseModal>
+
+      {/* Delete Payment Confirmation */}
+      <ConfirmDialog
+        visible={deletePaymentTarget !== null}
+        title="حذف الدفعة"
+        message={`هل تريد حذف دفعة بقيمة ${deletePaymentTarget ? formatCurrency(deletePaymentTarget.paid, settings.currency) : ''}؟`}
+        confirmLabel="حذف"
+        kind="danger"
+        onConfirm={handleDeletePayment}
+        onCancel={() => setDeletePaymentTarget(null)}
+      />
 
       {/* Edit Price Modal */}
       <BaseModal
@@ -655,8 +714,16 @@ function SummaryCard({
 // ============ Timeline Cards ============
 
 function TransactionTimelineCard({
-  transaction: t, customer, colors, currency, isLast,
-}: { transaction: Transaction; customer: Customer; colors: Colors; currency: string; isLast: boolean }) {
+  transaction: t, customer, colors, currency, isLast, onEditPayment, onDeletePayment,
+}: {
+  transaction: Transaction;
+  customer: Customer;
+  colors: Colors;
+  currency: string;
+  isLast: boolean;
+  onEditPayment: (transaction: Transaction) => void;
+  onDeletePayment: (transaction: Transaction) => void;
+}) {
   const isSale = t.type === 'sale';
   const isPayment = t.type === 'payment';
   const isReturn = t.type === 'return';
@@ -737,6 +804,19 @@ function TransactionTimelineCard({
             <Text style={[styles.timelineCardDebtText, { color: colors.danger }]}>
               دين متبقي: {formatCurrency(t.remaining, currency)}
             </Text>
+          </View>
+        )}
+
+        {isPayment && (
+          <View style={[styles.timelineCardActions, { borderTopColor: colors.border }]}>
+            <TouchableOpacity onPress={() => onEditPayment(t)} style={[styles.timelineActionBtn, { backgroundColor: colors.surfaceAlt }]} activeOpacity={0.7}>
+              <Pencil size={15} color={colors.textSecondary} strokeWidth={2} />
+              <Text style={[styles.timelineActionText, { color: colors.textSecondary }]}>تعديل الدفعة</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onDeletePayment(t)} style={[styles.timelineActionBtn, { backgroundColor: colors.danger + '15' }]} activeOpacity={0.7}>
+              <Trash2 size={15} color={colors.danger} strokeWidth={2} />
+              <Text style={[styles.timelineActionText, { color: colors.danger }]}>حذف الدفعة</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -863,14 +943,15 @@ function TelecomTimelineCard({
 }
 
 const styles = StyleSheet.create({
+  rtlContent: { direction: 'rtl' },
   // Header
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14, direction: 'rtl' },
   avatarLarge: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   avatarLargeText: { fontSize: 22, fontWeight: '700' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  detailName: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
+  detailName: { fontSize: 20, fontWeight: '700', marginBottom: 4, textAlign: 'right' },
   phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  detailPhone: { fontSize: 14 },
+  detailPhone: { fontSize: 14, textAlign: 'right' },
 
   // Quick actions
   quickActionsBar: { flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
@@ -908,7 +989,7 @@ const styles = StyleSheet.create({
 
   // Timeline
   timeline: { gap: 0 },
-  timelineItem: { flexDirection: 'row', gap: 12 },
+  timelineItem: { flexDirection: 'row-reverse', gap: 12 },
   timelineLeft: { alignItems: 'center', paddingTop: 18 },
   timelineDot: { width: 12, height: 12, borderRadius: 6 },
   timelineLine: { width: 2, flex: 1, minHeight: 24, marginTop: 4 },
@@ -917,36 +998,36 @@ const styles = StyleSheet.create({
   timelineCard: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 12, gap: 8, marginBottom: 8 },
   timelineCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   timelineCardIcon: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  timelineCardType: { fontSize: 16, fontWeight: '700' },
-  timelineCardSubType: { fontSize: 13, marginTop: 3 },
+  timelineCardType: { fontSize: 16, fontWeight: '700', textAlign: 'right' },
+  timelineCardSubType: { fontSize: 13, marginTop: 3, textAlign: 'right' },
   timelineCardDateRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
-  timelineCardDate: { fontSize: 12 },
-  timelineCardAmount: { fontSize: 18, fontWeight: '700' },
+  timelineCardDate: { fontSize: 12, textAlign: 'right' },
+  timelineCardAmount: { fontSize: 18, fontWeight: '700', textAlign: 'left' },
 
   // Timeline card items
   timelineCardItems: { borderTopWidth: 1, paddingTop: 10, gap: 6 },
   timelineCardItemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  timelineCardItemName: { fontSize: 13, flex: 1 },
-  timelineCardItemQty: { fontSize: 13, fontWeight: '600' },
+  timelineCardItemName: { fontSize: 13, flex: 1, textAlign: 'right' },
+  timelineCardItemQty: { fontSize: 13, fontWeight: '600', textAlign: 'left' },
   timelineCardMore: { fontSize: 12, marginTop: 3 },
 
   // Timeline card info row
   timelineCardInfoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, borderTopWidth: 1, paddingTop: 8 },
   timelineCardInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  timelineCardInfoText: { fontSize: 12, fontWeight: '600' },
+  timelineCardInfoText: { fontSize: 12, fontWeight: '600', textAlign: 'right' },
 
   // Timeline card balance row
   timelineCardBalanceRow: { flexDirection: 'row', gap: 16, borderTopWidth: 1, paddingTop: 8, flexWrap: 'wrap' },
-  timelineCardBalanceText: { fontSize: 12, fontWeight: '600' },
+  timelineCardBalanceText: { fontSize: 12, fontWeight: '600', textAlign: 'right' },
 
   // Timeline card debt bar
   timelineCardDebtBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10 },
-  timelineCardDebtText: { fontSize: 13, fontWeight: '700' },
+  timelineCardDebtText: { fontSize: 13, fontWeight: '700', textAlign: 'right' },
 
   // Timeline card actions
   timelineCardActions: { flexDirection: 'row', gap: 8, borderTopWidth: 1, paddingTop: 8, flexWrap: 'wrap' },
   timelineActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9 },
-  timelineActionText: { fontSize: 12, fontWeight: '700' },
+  timelineActionText: { fontSize: 12, fontWeight: '700', textAlign: 'right' },
 
   // Export box
   exportBox: { borderRadius: 14, borderWidth: 1, padding: 16, marginBottom: 14, gap: 10 },

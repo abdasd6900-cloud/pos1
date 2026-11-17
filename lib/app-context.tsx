@@ -225,6 +225,7 @@ interface AppData {
   createCustomerFiles: () => void;
   mergeDuplicateCustomers: () => number;
   recordPayment: (customerId: string, amount: number) => Transaction;
+  updatePayment: (id: string, amount: number) => void;
   addCustomerBalance: (customerId: string, amount: number, note: string, settleDebt?: boolean) => Transaction;
   redeemLoyalty: (customerId: string, points: number) => void;
 
@@ -1751,6 +1752,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
     return txn;
   }, [transactions, customers, settings, currentStaffId, currentStaff, addAuditEntry]);
+
+  const updatePayment: AppData['updatePayment'] = useCallback((id, amount) => {
+    const txn = transactions.find((t) => t.id === id);
+    if (!txn || txn.type !== 'payment' || amount <= 0) return;
+    const debtDifference = -amount - txn.debtChange;
+    const updated: Transaction = { ...txn, paid: amount, debtChange: -amount };
+
+    setTransactions((prev) => {
+      const next = prev.map((t) => t.id === id ? updated : t);
+      storage.saveTransactions(next);
+      return next;
+    });
+
+    if (txn.customerId && debtDifference !== 0) {
+      setCustomers((prev) => {
+        const next = prev.map((c) => c.id === txn.customerId ? {
+          ...c,
+          debt: Math.max(0, c.debt + debtDifference),
+          updatedAt: Date.now(),
+        } : c);
+        storage.saveCustomers(next);
+        return next;
+      });
+    }
+
+    addAuditEntry('update', 'transaction', id, `تعديل دفعة: ${txn.paid} → ${amount}`);
+  }, [transactions, addAuditEntry]);
 
   const deleteTransaction: AppData['deleteTransaction'] = useCallback((id) => {
     const txn = transactions.find((t) => t.id === id);
@@ -4086,6 +4114,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         createCustomerFiles,
         mergeDuplicateCustomers,
         recordPayment,
+        updatePayment,
         addCustomerBalance,
         redeemLoyalty,
         addSupplier,
