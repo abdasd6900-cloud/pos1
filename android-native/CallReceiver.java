@@ -35,6 +35,14 @@ public class CallReceiver extends BroadcastReceiver {
         Log.i(TAG, "Incoming call received");
 
         android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+
+        // Skip if CallScreeningService is active — it handles call rejection via the modern API
+        boolean callScreeningActive = prefs.getBoolean("call_screening_active", false);
+        if (callScreeningActive) {
+            Log.i(TAG, "CallScreeningService is active, skipping legacy CallReceiver");
+            return;
+        }
+
         boolean callRejectionEnabled = prefs.getBoolean("call_rejection_enabled", false);
         boolean autoResponderEnabled = prefs.getBoolean("auto_responder_enabled", false);
 

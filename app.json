@@ -27,6 +27,7 @@
         "RECEIVE_WAP_PUSH",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_DATA_SYNC",
+        "FOREGROUND_SERVICE_SPECIAL_USE",
         "RECEIVE_BOOT_COMPLETED",
         "READ_PHONE_STATE",
         "ANSWER_PHONE_CALLS",
@@ -62,7 +63,9 @@
       "typedRoutes": true
     },
     "extra": {
-      "eas": {}
+      "eas": {
+        "projectId": "pkpgxtvdxkqfadpqvvoz"
+      }
     }
   }
 }

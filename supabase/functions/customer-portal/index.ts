@@ -1,9 +1,3 @@
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
-
 interface Customer {
   id: string;
   name: string;
@@ -50,12 +44,60 @@ interface TelecomSale {
   createdAt: number;
 }
 
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const allowedOrigins = (Deno.env.get("CUSTOMER_PORTAL_ORIGINS") || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  let allowOrigin = "null";
+  if (origin && allowedOrigins.includes(origin)) {
+    allowOrigin = origin;
+  }
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+    "Vary": "Origin",
+  };
+}
+
 Deno.serve(async (req: Request) => {
+  const origin = req.headers.get("Origin");
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  if (req.method !== "GET") {
+    return new Response(
+      JSON.stringify({ error: "Method not allowed" }),
+      { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !anonKey) {
+      return new Response(
+        JSON.stringify({ error: "Server configuration error" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const userToken = authHeader.replace("Bearer ", "");
+
     const url = new URL(req.url);
     const customerId = url.searchParams.get("id");
     if (!customerId) {
@@ -65,22 +107,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceRoleKey) {
-      return new Response(
-        JSON.stringify({ error: "Server configuration error" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    // Fetch data_sync rows for customers, transactions, telecomSales, and settings
+    // Validate the user's JWT and fetch their data_sync rows via RLS-scoped access
     const collections = ["customers", "transactions", "telecomSales", "settings"];
-    const fetchUrl = `${supabaseUrl}/rest/v1/data_sync?collection=in.(${collections.join(",")})&select=collection,data`;
+    const filterParam = `in.(${collections.map((c) => `"${c}"`).join(",")})`;
+    const fetchUrl = `${supabaseUrl}/rest/v1/data_sync?collection=${filterParam}&select=collection,data`;
     const resp = await fetch(fetchUrl, {
       headers: {
-        "apikey": serviceRoleKey,
-        "Authorization": `Bearer ${serviceRoleKey}`,
+        "apikey": anonKey,
+        "Authorization": `Bearer ${userToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -171,7 +205,7 @@ Deno.serve(async (req: Request) => {
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-  } catch (err) {
+  } catch {
     return new Response(
       JSON.stringify({ error: "Server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },

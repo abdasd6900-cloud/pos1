@@ -281,10 +281,10 @@ public class LayanRechargeModule extends ReactContextBaseJavaModule {
             "try {" +
             "  LayanBridge.onLog('Starting Layan login sequence');" +
             "  // Step 1: Select Arabic language if language selector exists" +
-            "  var langBtn = document.querySelector('a[href*=\"lang=ar\"], button:contains(\"\\u0639\\u0631\\u0628\\u064a\"), [data-lang=\"ar\"]');" +
+            "  var langBtn = (function(){var el=document.querySelector('a[href*=\"lang=ar\"], [data-lang=\"ar\"]');if(el)return el;var bs=document.querySelectorAll('button');var ts=['\\u0639\\u0631\\u0628\\u064a'];for(var i=0;i<bs.length;i++){var t=(bs[i].textContent||'').trim();for(var j=0;j<ts.length;j++){if(t.indexOf(ts[j])>=0)return bs[i];}}return null;})();" +
             "  if (langBtn) { langBtn.click(); LayanBridge.onLog('Selected Arabic'); }" +
             "  // Step 2: Click login/sign-in button" +
-            "  var loginLink = document.querySelector('a[href*=\"login\"], a[href*=\"Login\"], button:contains(\"\\u062f\\u062e\\u0648\\u0644\"), a:contains(\"\\u062f\\u062e\\u0648\\u0644\"), a:contains(\"Login\"), a:contains(\"login\"));" +
+            "  var loginLink = (function(){var el=document.querySelector('a[href*=\"login\"], a[href*=\"Login\"]');if(el)return el;var bs=document.querySelectorAll('a, button');var ts=['\\u062f\\u062e\\u0648\\u0644','Login','login'];for(var i=0;i<bs.length;i++){var t=(bs[i].textContent||'').trim();for(var j=0;j<ts.length;j++){if(t.indexOf(ts[j])>=0)return bs[i];}}return null;})();" +
             "  if (loginLink) { loginLink.click(); LayanBridge.onLog('Clicked login link'); }" +
             "  else { LayanBridge.onLog('No login link found, might already on login page'); }" +
             "  // Step 3: Wait and fill credentials" +
@@ -306,7 +306,7 @@ public class LayanRechargeModule extends ReactContextBaseJavaModule {
             "    LayanBridge.onLog('Filled: user=' + userFilled + ' pass=' + passFilled);" +
             "    // Step 4: Click the sign-in / register / submit button" +
             "    setTimeout(function() {" +
-            "      var submitBtn = document.querySelector('button[type=\"submit\"], input[type=\"submit\"], button:contains(\"\\u062a\\u0633\\u062c\\u064a\\u0644\"), button:contains(\"\\u062f\\u062e\\u0648\\u0644\"), button:contains(\"Login\"), button:contains(\"login\"), button:contains(\"Sign in\"), button:contains(\"\\u062a\\u0623\\u0643\\u064a\\u062f\"');" +
+            "      var submitBtn = (function(){var el=document.querySelector('button[type=\"submit\"], input[type=\"submit\"]');if(el)return el;var bs=document.querySelectorAll('button');var ts=['\\u062a\\u0633\\u062c\\u064a\\u0644','\\u062f\\u062e\\u0648\\u0644','Login','login','Sign in','\\u062a\\u0623\\u0643\\u064a\\u062f'];for(var i=0;i<bs.length;i++){var t=(bs[i].textContent||'').trim();for(var j=0;j<ts.length;j++){if(t.indexOf(ts[j])>=0)return bs[i];}}return null;})();" +
             "      if (submitBtn) { submitBtn.click(); LayanBridge.onLog('Clicked submit button'); }" +
             "      else {" +
             "        var form = document.querySelector('form');" +
@@ -315,7 +315,7 @@ public class LayanRechargeModule extends ReactContextBaseJavaModule {
             "      }" +
             "      // Step 5: Wait for WhatsApp confirmation dialog, click Continue" +
             "      setTimeout(function() {" +
-            "        var continueBtn = document.querySelector('button:contains(\"Continue\"), button:contains(\"\\u0645\\u062a\\u0627\\u0628\\u0639\\u0629\"), button:contains(\"\\u062a\\u0623\\u0643\\u064a\\u062f\"), button:contains(\"OK\"), button:contains(\"\\u0645\\u0648\\u0627\\u0641\\u0642\"), a:contains(\"Continue\"), [role=\"button\"]');" +
+            "        var continueBtn = (function(){var el=document.querySelector('[role=\"button\"]');if(el)return el;var bs=document.querySelectorAll('button, a');var ts=['Continue','\\u0645\\u062a\\u0627\\u0628\\u0639\\u0629','\\u062a\\u0623\\u0643\\u064a\\u062f','OK','\\u0645\\u0648\\u0627\\u0641\\u0642'];for(var i=0;i<bs.length;i++){var t=(bs[i].textContent||'').trim();for(var j=0;j<ts.length;j++){if(t.indexOf(ts[j])>=0)return bs[i];}}return null;})();" +
             "        if (continueBtn) { continueBtn.click(); LayanBridge.onLog('Clicked continue/confirm for WhatsApp'); }" +
             "        else { LayanBridge.onLog('No continue button found (may not be needed)'); }" +
             "        LayanBridge.onResult(JSON.stringify({success: true, step: 'login_submitted', message: 'WhatsApp code sent'}));" +
@@ -362,7 +362,7 @@ public class LayanRechargeModule extends ReactContextBaseJavaModule {
             "  LayanBridge.onLog('Code filled: ' + codeFilled);" +
             "  // Click code validation button" +
             "  setTimeout(function() {" +
-            "    var validateBtn = document.querySelector('button:contains(\"code validati\"), button:contains(\"Code Validati\"), button:contains(\"\\u062a\\u062d\\u0642\\u0642\"), button:contains(\"\\u062a\\u0623\\u0643\\u064a\\u062f\"), button[type=\"submit\"], button:contains(\"OK\"), button:contains(\"\\u0645\\u0648\\u0627\\u0641\\u0642\"));" +
+            "    var validateBtn = (function(){var el=document.querySelector('button[type=\"submit\"]');if(el)return el;var bs=document.querySelectorAll('button');var ts=['code validati','Code Validati','\\u062a\\u062d\\u0642\\u0642','\\u062a\\u0623\\u0643\\u064a\\u062f','OK','\\u0645\\u0648\\u0627\\u0641\\u0642'];for(var i=0;i<bs.length;i++){var t=(bs[i].textContent||'').trim();for(var j=0;j<ts.length;j++){if(t.indexOf(ts[j])>=0)return bs[i];}}return null;})();" +
             "    if (validateBtn) { validateBtn.click(); LayanBridge.onLog('Clicked code validation button'); }" +
             "    else { LayanBridge.onLog('No validation button found'); }" +
             "  }, 1000);" +
@@ -406,7 +406,7 @@ public class LayanRechargeModule extends ReactContextBaseJavaModule {
             "      searchInput.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true}));" +
             "      searchInput.dispatchEvent(new KeyboardEvent('keypress', {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true}));" +
             "      searchInput.dispatchEvent(new KeyboardEvent('keyup', {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true}));" +
-            "      var searchBtn = document.querySelector('button[type=\"submit\"], button:contains(\"\\u0628\\u062d\\u062b\"), button:contains(\"Search\"), [role=\"search\"] button');" +
+            "      var searchBtn = (function(){var el=document.querySelector('button[type=\"submit\"], [role=\"search\"] button');if(el)return el;var bs=document.querySelectorAll('button');var ts=['\\u0628\\u062d\\u062b','Search'];for(var i=0;i<bs.length;i++){var t=(bs[i].textContent||'').trim();for(var j=0;j<ts.length;j++){if(t.indexOf(ts[j])>=0)return bs[i];}}return null;})();" +
             "      if (searchBtn) searchBtn.click();" +
             "      LayanBridge.onLog('Triggered search');" +
             "      // Wait for dropdown results, click the first matching item" +

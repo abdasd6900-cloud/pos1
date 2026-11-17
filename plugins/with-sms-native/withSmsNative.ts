@@ -90,6 +90,7 @@ const mergeManifest: ConfigPlugin<void> = (config) => {
       'android.permission.RECEIVE_WAP_PUSH',
       'android.permission.FOREGROUND_SERVICE',
       'android.permission.FOREGROUND_SERVICE_DATA_SYNC',
+      'android.permission.FOREGROUND_SERVICE_SPECIAL_USE',
       'android.permission.RECEIVE_BOOT_COMPLETED',
       'android.permission.READ_PHONE_STATE',
       'android.permission.ANSWER_PHONE_CALLS',

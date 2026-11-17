@@ -53,6 +53,12 @@ public class CallScreeningModule extends ReactContextBaseJavaModule implements A
             RoleManager rm = (RoleManager) getReactApplicationContext()
                 .getSystemService(Context.ROLE_SERVICE);
             boolean held = rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING);
+
+            // Persist the screening-active flag so CallReceiver can skip when screening is active
+            android.content.SharedPreferences prefs = getReactApplicationContext()
+                .getSharedPreferences("sahab_prefs", Context.MODE_PRIVATE);
+            prefs.edit().putBoolean("call_screening_active", held).apply();
+
             promise.resolve(held);
         } catch (Exception e) {
             Log.e(TAG, "isCallScreeningRoleHeld error: " + e.getMessage());
@@ -101,6 +107,11 @@ public class CallScreeningModule extends ReactContextBaseJavaModule implements A
 
         boolean granted = resultCode == Activity.RESULT_OK;
         Log.i(TAG, "Call screening role request result: " + granted);
+
+        // Persist the screening-active flag
+        android.content.SharedPreferences prefs = getReactApplicationContext()
+            .getSharedPreferences("sahab_prefs", Context.MODE_PRIVATE);
+        prefs.edit().putBoolean("call_screening_active", granted).apply();
 
         if (pendingPromise != null) {
             pendingPromise.resolve(granted);
