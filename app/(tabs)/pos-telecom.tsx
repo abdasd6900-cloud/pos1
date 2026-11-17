@@ -11,6 +11,7 @@ import {
 import * as XLSX from 'xlsx';
 import { createWorker } from 'tesseract.js';
 import { useApp } from '@/lib/app-context';
+import { GlobalSearch } from '@/components/GlobalSearch';
 import { useTheme } from '@/lib/theme-context';
 import { formatCurrency, fillSmsTemplate, normalizePhoneNumber } from '@/lib/format';
 import { createEscalationState } from '@/lib/debt-escalation';
@@ -1705,6 +1706,13 @@ export default function TelecomPOSScreen() {
             <TouchableOpacity onPress={resetForm} style={styles.editCancelBtn}>
               <XCircle size={18} color={colors.primary} strokeWidth={2} />
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Quick global search */}
+        {!showForm && !editingSaleId && (
+          <View style={{ paddingHorizontal: isMobileLayout ? 0 : 8, marginBottom: 12 }}>
+            <GlobalSearch />
           </View>
         )}
 

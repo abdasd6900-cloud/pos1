@@ -9,6 +9,7 @@ import {
   TrendingUp, ShoppingCart as CartIcon, DollarSign, ListFilter,
 } from 'lucide-react-native';
 import { useApp } from '@/lib/app-context';
+import { GlobalSearch } from '@/components/GlobalSearch';
 import { useTheme } from '@/lib/theme-context';
 import { formatCurrency, normalizePhoneNumber } from '@/lib/format';
 import type { Product, Customer, CartItem, PaymentMethod, Transaction } from '@/types';
@@ -1197,6 +1198,9 @@ export default function RetailPOSScreen() {
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 150 }} showsVerticalScrollIndicator={false}>
         {readOnlyBanner}
+        <View style={{ marginBottom: 10 }}>
+          <GlobalSearch />
+        </View>
         {productSearchBar}
         {summaryCards}
         {actionsRow}
