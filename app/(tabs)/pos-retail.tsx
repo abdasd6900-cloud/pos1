@@ -10,6 +10,7 @@ import {
 } from 'lucide-react-native';
 import { useApp } from '@/lib/app-context';
 import { GlobalSearch } from '@/components/GlobalSearch';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme-context';
 import { formatCurrency, normalizePhoneNumber } from '@/lib/format';
 import type { Product, Customer, CartItem, PaymentMethod, Transaction } from '@/types';
@@ -1167,6 +1168,8 @@ export default function RetailPOSScreen() {
         <View style={styles.webSplit}>
           <View style={styles.webLeftPanel}>
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+              {summaryCards}
+              {actionsRow}
               {productSearchBar}
               {productGridContent}
               {recentTransactionsContent}
@@ -1196,14 +1199,15 @@ export default function RetailPOSScreen() {
     );
   }
 
+  const insets = useSafeAreaInsets();
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 150 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         {readOnlyBanner}
         <View style={{ marginBottom: 10 }}>
           <GlobalSearch />
         </View>
-        {productSearchBar}
         {summaryCards}
         {actionsRow}
         {productGridContent}
@@ -1214,6 +1218,9 @@ export default function RetailPOSScreen() {
         {txnSearchBar}
         {recentTransactionsContent}
       </ScrollView>
+      <View style={[styles.floatingSearchBar, { backgroundColor: colors.surface, borderColor: colors.border, bottom: insets.bottom || 0 }]}>
+        {productSearchBar}
+      </View>
       {modals}
     </View>
   );
@@ -1224,6 +1231,7 @@ const styles = StyleSheet.create({
   readOnlyBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, marginBottom: 12 },
   readOnlyText: { fontSize: 13, fontWeight: '600', fontFamily: 'Cairo-SemiBold', flex: 1 },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, marginBottom: 10 },
+  floatingSearchBar: { position: 'absolute', left: 8, right: 8, borderRadius: 12, borderWidth: 1, paddingHorizontal: 4, paddingVertical: 2, elevation: 8, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: -2 }, zIndex: 100 },
   searchInput: { flex: 1, fontSize: 16, fontFamily: 'Cairo-Regular', padding: 0 },
   productGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   productGridWeb: { gap: 8 },

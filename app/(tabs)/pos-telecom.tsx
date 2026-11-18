@@ -1,4 +1,5 @@
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Platform, Linking, Alert, useWindowDimensions, PermissionsAndroid } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   Smartphone, CreditCard, Wallet, BookOpen, Check, MessageSquare,
@@ -43,6 +44,7 @@ export default function TelecomPOSScreen() {
   const { colors } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isMobileLayout = Platform.OS !== 'web' || windowWidth < 1200;
+  const insets = useSafeAreaInsets();
 
   const [saleMode, setSaleMode] = useState<TelecomSaleMode>('sell_sim');
   const [selectedCompany, setSelectedCompany] = useState<TelecomCompany | null>(null);
@@ -1795,10 +1797,20 @@ export default function TelecomPOSScreen() {
           </View>
         )}
 
-        {/* Quick global search */}
-        {!showForm && !editingSaleId && (
-          <View style={{ paddingHorizontal: isMobileLayout ? 0 : 8, marginBottom: 12 }}>
-            <GlobalSearch />
+        {/* Summary cards on desktop (replaces global search) */}
+        {!isMobileLayout && !showForm && !editingSaleId && (
+          <View style={styles.mobileSummaryGrid}>
+            {[
+              { label: 'الإجمالي', value: telecomSales.reduce((sum, sale) => sum + sale.total, 0), color: colors.primary },
+              { label: 'المدفوع', value: telecomSales.reduce((sum, sale) => sum + sale.paid, 0), color: colors.success },
+              { label: 'الديون', value: telecomSales.reduce((sum, sale) => sum + sale.remaining, 0), color: colors.danger },
+              { label: 'الربح', value: telecomSales.reduce((sum, sale) => sum + sale.salePrice - sale.cost, 0), color: colors.info },
+            ].map((card) => (
+              <View key={card.label} style={[styles.mobileSummaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.mobileSummaryLabel, { color: colors.textMuted }]}>{card.label}</Text>
+                <Text style={[styles.mobileSummaryValue, { color: card.color }]}>{formatCurrency(card.value, settings.currency)}</Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -3327,6 +3339,11 @@ export default function TelecomPOSScreen() {
           </View>
         )}
       </BaseModal>
+      {isMobileLayout && !showForm && !editingSaleId && (
+        <View style={[styles.floatingSearchBar, { bottom: insets.bottom || 0 }]}>
+          <GlobalSearch />
+        </View>
+      )}
     </View>
   );
 }
@@ -3505,6 +3522,7 @@ const styles = StyleSheet.create({
   mobileSummaryLabel: { fontSize: 11, fontFamily: 'Cairo-Regular' },
   mobileSummaryValue: { fontSize: 15, fontWeight: '700', fontFamily: 'Cairo-Bold', marginTop: 2 },
   mobileActionsWrap: { flexDirection: 'row', gap: 8, marginBottom: 12, position: 'relative', zIndex: 500, elevation: 500 },
+  floatingSearchBar: { position: 'absolute', left: 8, right: 8, borderRadius: 12, paddingHorizontal: 4, paddingVertical: 2, elevation: 8, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: -2 }, zIndex: 100 },
   mobileNewSaleBtn: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 10 },
   mobileNewSaleText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', fontFamily: 'Cairo-Bold' },
   mobileMoreWrap: { position: 'relative', zIndex: 300 },
