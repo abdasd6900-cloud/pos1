@@ -33,8 +33,17 @@ class NoopRealtimeTransport {
   CLOSED = 3;
 }
 
+const silentFetch: typeof fetch = (input, init) =>
+  fetch(input, init).catch((err) => {
+    return new Response(JSON.stringify({ error: { message: 'Network request failed' } }), {
+      status: 0,
+      headers: { 'Content-Type': 'application/json' },
+    }) as unknown as Response;
+  });
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: { persistSession: !isServer, autoRefreshToken: !isServer, detectSessionInUrl: false },
+  fetch: silentFetch,
   realtime: (isServer || isWeb)
     ? { transport: NoopRealtimeTransport as unknown as import('@supabase/supabase-js').WebSocketLikeConstructor }
     : undefined,
