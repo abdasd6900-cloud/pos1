@@ -414,6 +414,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const smsEventSeenIdsRef = useRef<Set<number>>(new Set());
   const smsMessagesRef = useRef<SmsMessage[]>([]);
   const customerFilesBuildingRef = useRef(false);
+  const deletedCustomerIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     void storage.getCustomerFiles().then(setCustomerFiles);
@@ -535,7 +536,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         if (remote && Object.keys(remote).length > 0) {
           mergeRemote(setProducts, remote.products as Product[], storage.saveProducts);
-          mergeRemote(setCustomers, remote.customers as Customer[], storage.saveCustomers);
+          if (remote.customers) {
+            const filtered = (remote.customers as Customer[]).filter((c) => !deletedCustomerIdsRef.current.has(c.id));
+            mergeRemote(setCustomers, filtered, storage.saveCustomers);
+          }
           mergeRemote(setTransactions, remote.transactions as Transaction[], storage.saveTransactions);
           if (remote.settings) { const s = remote.settings as unknown as Settings; setSettings(s); storage.saveSettings(s); }
           mergeRemote(setAuditLog, remote.auditLog as AuditEntry[], storage.saveAuditLog);
@@ -597,7 +601,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remoteChangeHandlerRef.current = remoteHandler;
           switch (collection) {
             case 'products': mergeRemote(setProducts, data as Product[], storage.saveProducts); break;
-            case 'customers': mergeRemote(setCustomers, data as Customer[], storage.saveCustomers); break;
+            case 'customers': {
+              const filtered = (data as Customer[]).filter((c) => !deletedCustomerIdsRef.current.has(c.id));
+              mergeRemote(setCustomers, filtered, storage.saveCustomers);
+              break;
+            }
             case 'transactions': mergeRemote(setTransactions, data as Transaction[], storage.saveTransactions); break;
             case 'settings': { const s = data as unknown as Settings; setSettings(s); storage.saveSettings(s); break; }
             case 'auditLog': mergeRemote(setAuditLog, data as AuditEntry[], storage.saveAuditLog); break;
@@ -1260,6 +1268,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [addAuditEntry]);
 
   const deleteCustomer: AppData['deleteCustomer'] = useCallback((id) => {
+    deletedCustomerIdsRef.current.add(id);
     setCustomers((prev) => { const next = prev.filter((c) => c.id !== id); storage.saveCustomers(next); return next; });
     addAuditEntry('delete', 'customer', id, 'حذف عميل');
   }, [addAuditEntry]);
@@ -1283,6 +1292,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let mergedCount = 0;
     const idsToDelete = new Set<string>();
     const customerMergeMap = new Map<string, string>();
+    const primaryUpdates = new Map<string, Partial<Customer>>();
 
     for (const [, group] of groups) {
       if (group.length <= 1) continue;
@@ -1311,24 +1321,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const mergedCreditLimit = Math.max(...group.map((c) => c.creditLimit));
       const mergedDiscount = Math.max(...group.map((c) => c.discountPercent));
 
-      setCustomers((prev) => prev.map((c) => c.id === primary.id ? {
-        ...c,
+      primaryUpdates.set(primary.id, {
         debt: mergedDebt,
         balance: mergedBalance,
         loyaltyPoints: mergedLoyalty,
-        notes: mergedNotes || c.notes,
+        notes: mergedNotes || primary.notes,
         subscriptionNumber: mergedSub,
         subscriptionExpiry: mergedSubExpiry,
         tier: mergedTier,
         creditLimit: mergedCreditLimit,
         discountPercent: mergedDiscount,
         updatedAt: Date.now(),
-      } : c));
+      });
 
       mergedCount += duplicates.length;
     }
 
     if (mergedCount === 0) return 0;
+
+    for (const id of idsToDelete) deletedCustomerIdsRef.current.add(id);
 
     setTelecomSales((prev) => {
       const next = prev.map((s) => {
@@ -1366,14 +1377,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return next;
     });
 
-    setCustomers((prev) => {
-      const next = prev.filter((c) => !idsToDelete.has(c.id));
-      storage.saveCustomers(next);
-      return next;
+    const mergedCustomers = customers
+      .filter((c) => !idsToDelete.has(c.id))
+      .map((c) => {
+        const updates = primaryUpdates.get(c.id);
+        return updates ? { ...c, ...updates } : c;
+      });
+
+    setCustomers(() => {
+      storage.saveCustomers(mergedCustomers);
+      return mergedCustomers;
     });
+    void pushCollection('customers', mergedCustomers);
 
     const nextFiles = buildCustomerFiles(
-      customers.filter((c) => !idsToDelete.has(c.id)),
+      mergedCustomers,
       transactions, telecomSales, pendingOperations, customerFiles,
     );
     setCustomerFiles(nextFiles);
