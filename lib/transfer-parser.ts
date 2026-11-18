@@ -11,6 +11,51 @@ export interface ParsedTransferNotification {
 }
 
 const BANK_PATTERNS: { bank: string; patterns: RegExp[] }[] = [
+  // ===== Palestinian Banks =====
+  {
+    bank: 'بنك فلسطين',
+    patterns: [
+      // "بنك فلسطين: تم إيداع مبلغ 70.00 ILS من محمد أحمد - مرجع BP123456"
+      /(?:بنك\s*فلسطين|Bank\s*of\s*Palestine|BOP).*?(?:تم\s*إيداع|إيداع|تحويل|استلام).*?مبلغ[:\s]*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:من|from)\s+([^\d\n,]+)/i,
+      /(?:بنك\s*فلسطين|BOP).*?(?:من|from)\s+([^\d]+?)\s+مبلغ[:\s]*([\d.,]+)/i,
+      // "تم إيداع 70 ILS لحسابك من محمد أحمد - بنك فلسطين"
+      /تم\s*إيداع\s*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:لحسابك|في\s*حسابك)?\s*(?:من|from)\s+([^\d\n,]+).*?بنك\s*فلسطين/i,
+    ],
+  },
+  {
+    bank: 'بنك القدس',
+    patterns: [
+      /(?:بنك\s*القدس|Bank\s*of\s*Jerusalem|BOJ).*?(?:تم\s*إيداع|إيداع|تحويل|استلام).*?مبلغ[:\s]*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:من|from)\s+([^\d\n,]+)/i,
+      /(?:بنك\s*القدس|BOJ).*?(?:من|from)\s+([^\d]+?)\s+مبلغ[:\s]*([\d.,]+)/i,
+    ],
+  },
+  {
+    bank: 'البنك العربي - فلسطين',
+    patterns: [
+      /(?:البنك\s*العربي|Arab\s*Bank).*?(?:تم\s*إيداع|إيداع|تحويل|استلام).*?مبلغ[:\s]*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:من|from)\s+([^\d\n,]+)/i,
+      /(?:البنك\s*العربي|Arab\s*Bank).*?(?:من|from)\s+([^\d]+?)\s+مبلغ[:\s]*([\d.,]+)/i,
+    ],
+  },
+  {
+    bank: 'بنك الإسكان',
+    patterns: [
+      /(?:بنك\s*الإسكان|Housing\s*Bank).*?(?:تم\s*إيداع|إيداع|تحويل|استلام).*?مبلغ[:\s]*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:من|from)\s+([^\d\n,]+)/i,
+      /(?:بنك\s*الإسكان|Housing\s*Bank).*?(?:من|from)\s+([^\d]+?)\s+مبلغ[:\s]*([\d.,]+)/i,
+    ],
+  },
+  {
+    bank: 'بنك التمويل',
+    patterns: [
+      /(?:بنك\s*التمويل|TFB).*?(?:تم\s*إيداع|إيداع|تحويل|استلام).*?مبلغ[:\s]*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:من|from)\s+([^\d\n,]+)/i,
+    ],
+  },
+  {
+    bank: 'بنك الصناعة',
+    patterns: [
+      /(?:بنك\s*الصناعة|IB).*?(?:تم\s*إيداع|إيداع|تحويل).*?مبلغ[:\s]*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:من|from)\s+([^\d\n,]+)/i,
+    ],
+  },
+  // ===== Saudi Banks =====
   {
     bank: 'الراجحي',
     patterns: [
@@ -40,12 +85,6 @@ const BANK_PATTERNS: { bank: string; patterns: RegExp[] }[] = [
     ],
   },
   {
-    bank: 'البنك العربي',
-    patterns: [
-      /(?:البنك\s*العربي|Arab\s*Bank).*?(?:من|from)\s+([^\d]+?)\s+مبلغ[:\s]*([\d.,]+)/i,
-    ],
-  },
-  {
     bank: 'أنماء',
     patterns: [
       /(?:أنماء|Alinma).*?(?:من|from)\s+([^\d]+?)\s+مبلغ[:\s]*([\d.,]+)/i,
@@ -67,6 +106,30 @@ const BANK_PATTERNS: { bank: string; patterns: RegExp[] }[] = [
 
 // Palestinian / wallet transfer patterns — sender identified by phone number
 const WALLET_PATTERNS: { bank: string; patterns: RegExp[] }[] = [
+  {
+    bank: 'بال بي (PalPay)',
+    patterns: [
+      // "PalPay: استلمت مبلغ ILS 70.00 من 00970595337894 رصيدك الحالي ILS 319.58"
+      /(?:pal\s*pay|palpay|بال\s*بي).*?استلمت\s*مبلغ\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*من\s*(\d{5,15})/i,
+      /استلمت\s*مبلغ\s*(?:ILS|USD|JOD|شيكل|₪|\$)\s*([\d.,]+)\s*من\s*(\d{5,15}).*?(?:pal\s*pay|palpay|بال\s*بي)/i,
+    ],
+  },
+  {
+    bank: 'جوال بي (Jawwal Pay)',
+    patterns: [
+      // "Jawwal Pay: تم استلام مبلغ 70.00 ILS من 0595337894"
+      /(?:jawwal\s*pay|jowal\s*pay|جوال\s*بي).*?(?:تم\s*استلام|استلمت)\s*مبلغ\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*من\s*(\d{5,15})/i,
+      /(?:تم\s*استلام|استلمت)\s*مبلغ\s*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*من\s*(\d{5,15}).*?(?:jawwal\s*pay|جوال\s*بي)/i,
+    ],
+  },
+  {
+    bank: 'مال شات (MalChat)',
+    patterns: [
+      // "MalChat: استلمت 70 شيكل من 0595337894"
+      /(?:mal\s*chat|malchat|مال\s*شات).*?استلمت\s*(?:مبلغ\s*)?([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*من\s*(\d{5,15})/i,
+      /استلمت\s*(?:مبلغ\s*)?([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*من\s*(\d{5,15}).*?(?:mal\s*chat|malchat|مال\s*شات)/i,
+    ],
+  },
   {
     bank: 'محفظة',
     patterns: [
@@ -105,7 +168,7 @@ function extractCurrency(text: string): string {
   for (const [key, val] of Object.entries(CURRENCY_MAP)) {
     if (text.includes(key)) return val;
   }
-  return 'SAR';
+  return 'ILS';
 }
 
 function extractReference(text: string): string {
@@ -125,7 +188,7 @@ function cleanName(raw: string): string {
 
 export function parseTransferSms(sms: string): ParsedTransferNotification {
   const empty: ParsedTransferNotification = {
-    isTransfer: false, senderName: '', senderPhone: '', amount: 0, currency: 'SAR', bankName: '', reference: '',
+    isTransfer: false, senderName: '', senderPhone: '', amount: 0, currency: 'ILS', bankName: '', reference: '',
   };
 
   if (!sms || sms.length < 10) return empty;

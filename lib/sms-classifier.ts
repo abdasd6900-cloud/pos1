@@ -15,6 +15,12 @@ const BANK_SENDER_PATTERNS = [
   'الراجحي', 'الأهلي', 'stc pay', 'stcpay', 'بنك البلاد', 'البنك العربي',
   'أنماء', 'الرياض', 'ساب', 'sabb', 'بنك', 'bank', 'محفظة', 'wallet',
   'jawwal', 'jawwal pay', 'palpay', 'pal tel', 'حوالة', 'تحويل',
+  // Palestinian banks
+  'بنك فلسطين', 'bop', 'بنك القدس', 'boj', 'بنك الإسكان', 'housing bank',
+  'بنك التمويل', 'tfb', 'بنك الصناعة',
+  // Palestinian wallets
+  'بال بي', 'جوال بي', 'مال شات', 'malchat',
+  'استلمت مبلغ', 'تم إيداع', 'تم استلام مبلغ',
 ];
 
 export interface ClassificationResult {

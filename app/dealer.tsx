@@ -234,7 +234,6 @@ function LoginScreen({ onLogin, error, setError }: { onLogin: (t: string, d: Dea
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
-              autoDir="rtl"
             />
           </View>
         </View>
@@ -1184,7 +1183,6 @@ function FormField({ label, value, onChangeText, keyboardType, multiline, placeh
         keyboardType={keyboardType || 'default'}
         multiline={multiline}
         textAlign="right"
-        autoDir="rtl"
       />
     </View>
   );

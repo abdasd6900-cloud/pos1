@@ -982,9 +982,9 @@ function TelecomTimelineCard({
 }
 
 const styles = StyleSheet.create({
-  rtlContent: { writingDirection: 'rtl' },
+  rtlContent: {},
   // Header
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14, writingDirection: 'rtl' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   avatarLarge: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   avatarLargeText: { fontSize: 22, fontWeight: '700' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
