@@ -34,6 +34,9 @@ jobs:
           echo "EXPO_PUBLIC_SUPABASE_URL=https://pkpgxtvdxkqfadpqvvoz.supabase.co" > .env
           echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBrcGd4dHZkeGtxZmFkcHF2dm96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQyMzkyMDgsImV4cCI6MjEwOTgxNTIwOH0.QU67gkKEd0fB8Mtv1yOHdlBViUTJKpUbEm7gZq2qvic" >> .env
 
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --no-install
+
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
 
