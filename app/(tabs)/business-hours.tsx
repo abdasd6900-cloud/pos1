@@ -137,7 +137,10 @@ export default function BusinessHoursScreen() {
           </View>
           <Switch
             value={settings.enableBusinessHours}
-            onValueChange={(v) => updateSettings({ enableBusinessHours: v })}
+            onValueChange={(v) => {
+              updateSettings({ enableBusinessHours: v });
+              updateBusinessHours({ autoMode: v });
+            }}
             trackColor={{ false: colors.border, true: colors.primary }}
           />
         </View>
