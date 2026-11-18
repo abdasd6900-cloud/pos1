@@ -122,6 +122,39 @@ const mergeManifest: ConfigPlugin<void> = (config) => {
       }
     }
 
+    // Android 11+ (API 30+) package visibility: the system must be able to
+    // resolve our SMS-handling components for Telephony.Sms.getDefaultSmsPackage()
+    // to recognise this app as an eligible default SMS handler. Without these
+    // <queries> entries the app appears greyed-out in the system SMS picker.
+    if (!manifest.manifest.queries) {
+      manifest.manifest.queries = [];
+    }
+
+    const queries = manifest.manifest.queries;
+    const hasQueryIntent = (action: string) =>
+      queries.some((q) =>
+        q.intent?.some((i) => i.action?.some((a) => a.$?.['android:name'] === action))
+      );
+
+    const queryIntents = [
+      'android.provider.Telephony.SMS_DELIVER',
+      'android.provider.Telephony.WAP_PUSH_DELIVER',
+      'android.intent.action.RESPOND_VIA_MESSAGE',
+      'android.intent.action.SENDTO',
+    ];
+
+    for (const action of queryIntents) {
+      if (!hasQueryIntent(action)) {
+        queries.push({
+          intent: [
+            {
+              action: [{ $: { 'android:name': action } }],
+            },
+          ],
+        });
+      }
+    }
+
     const application = manifest.manifest.application?.[0];
     if (!application) {
       return modConfig;
