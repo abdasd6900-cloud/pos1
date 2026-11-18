@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { sendWebNotification } from '@/lib/notifications';
-import { useAuth } from '@/lib/auth-context';
 
 export interface IncomingSms {
   id: string;
@@ -34,8 +33,7 @@ const BATCH_LIMIT = 20;
 const MAX_PROCESSED_IDS = 500;
 const processedIdsRef = new Set<number>();
 
-export function useIncomingSms() {
-  const { session } = useAuth();
+export function useIncomingSms(session: { user: { id: string } } | null) {
   const [incoming, setIncoming] = useState<IncomingSms | null>(null);
   const [queue, setQueue] = useState<IncomingSms[]>([]);
 

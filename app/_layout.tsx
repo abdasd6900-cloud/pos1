@@ -130,7 +130,7 @@ function AppShell() {
   const router = useRouter();
   const [locked, setLocked] = useState(false);
   const { update, applyUpdate, dismissUpdate } = useUpdateNotification();
-  const { currentMessage, dismiss: dismissIncomingMessage } = useIncomingSms();
+  const { currentMessage, dismiss: dismissIncomingMessage } = useIncomingSms(session);
   const bgTimestampRef = useRef<number | null>(null);
 
   useEffect(() => {
