@@ -1710,7 +1710,7 @@ const styles = StyleSheet.create({
   statsBar: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    direction: 'ltr',
+    writingDirection: 'ltr',
     gap: 10,
     marginHorizontal: 16,
     marginTop: 12,
