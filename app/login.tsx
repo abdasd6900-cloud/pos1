@@ -1,9 +1,10 @@
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Platform, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
-import { useState, useCallback, useRef } from 'react';
-import { Store, Phone, Lock, User, ShoppingCart, Smartphone, ArrowRight, AlertCircle, Key } from 'lucide-react-native';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Store, Phone, Lock, User, ShoppingCart, Smartphone, ArrowRight, AlertCircle, Key, Fingerprint } from 'lucide-react-native';
 import { useAuth, type SignUpData } from '@/lib/auth-context';
 import { palette } from '@/lib/color-system';
 import { AppLogo } from '@/components/AppLogo';
+import { isBiometricAvailable, isBiometricEnabled, saveCredentials, tryBiometricLogin, getBiometricType } from '@/lib/biometric';
 
 export default function LoginScreen() {
   const { signIn, signUp } = useAuth();
@@ -16,9 +17,41 @@ export default function LoginScreen() {
   const [activationKey, setActivationKey] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState('البصمة');
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
   const colors = palette.light;
+
+  useEffect(() => {
+    (async () => {
+      const available = await isBiometricAvailable();
+      setBiometricAvailable(available);
+      if (available) {
+        const type = await getBiometricType();
+        setBiometricLabel(type === 'face' ? 'التعرف على الوجه' : type === 'iris' ? 'قزحية العين' : 'البصمة');
+        const enabled = await isBiometricEnabled();
+        setBiometricEnabled(enabled);
+      }
+    })();
+  }, []);
+
+  const handleBiometricLogin = useCallback(async () => {
+    setSubmitting(true);
+    setError('');
+    const creds = await tryBiometricLogin();
+    if (!creds) {
+      setError('تعذر تسجيل الدخول بالبصمة. استخدم رقم الجوال وكلمة المرور');
+      setSubmitting(false);
+      return;
+    }
+    const { error } = await signIn(creds.phone, creds.password);
+    if (error) {
+      setError(error);
+      setSubmitting(false);
+    }
+  }, [signIn]);
 
   const revealPassword = () => {
     if (Platform.OS !== 'web') {
@@ -34,8 +67,14 @@ export default function LoginScreen() {
     setSubmitting(true);
     setError('');
     const { error } = await signIn(phone.trim(), password.trim());
-    if (error) setError(error);
-    setSubmitting(false);
+    if (error) {
+      setError(error);
+      setSubmitting(false);
+    } else {
+      if (biometricAvailable) {
+        await saveCredentials(phone.trim(), password.trim());
+      }
+    }
   }, [phone, password, signIn]);
 
   const handleSignUp = useCallback(async () => {
@@ -247,6 +286,26 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
+        {mode === 'login' && biometricAvailable && biometricEnabled && (
+          <TouchableOpacity
+            onPress={handleBiometricLogin}
+            disabled={submitting}
+            style={[styles.biometricBtn, { borderColor: colors.primary, opacity: submitting ? 0.6 : 1 }]}
+            activeOpacity={0.7}
+          >
+            <Fingerprint size={24} color={colors.primary} strokeWidth={2} />
+            <Text style={[styles.biometricText, { color: colors.primary }]}>
+              دخول بـ{biometricLabel}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {mode === 'login' && biometricAvailable && !biometricEnabled && (
+          <Text style={[styles.hintText, { color: colors.accent }]}>
+            يمكنك تفعيل الدخول بالبصمة من الإعدادات بعد تسجيل الدخول
+          </Text>
+        )}
+
         {mode === 'login' && (
           <Text style={[styles.hintText, { color: colors.textMuted }]}>
             رقم الجوال هو اسم المستخدم وكلمة المرور
@@ -293,4 +352,6 @@ const styles = StyleSheet.create({
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 14, marginTop: 4 },
   submitText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', fontFamily: 'Cairo-Bold' },
   hintText: { fontSize: 12, textAlign: 'center', fontFamily: 'Cairo-Regular' },
+  biometricBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 14, borderRadius: 14, borderWidth: 2, marginTop: 4 },
+  biometricText: { fontSize: 15, fontWeight: '700', fontFamily: 'Cairo-SemiBold' },
 });

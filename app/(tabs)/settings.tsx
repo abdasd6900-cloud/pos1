@@ -9,10 +9,11 @@ import {
   ClipboardCheck, Tag, Paperclip, Plus, Pencil,
   Send, RefreshCw, AlertCircle, CheckCircle,
   Inbox,
-  UserCog, LogOut, Image as ImageIcon, X, Camera,
+  UserCog, LogOut, Image as ImageIcon, X, Camera, Fingerprint,
 } from 'lucide-react-native';
 import { useSmsGateway } from '@/lib/sms-gateway';
 import { createSmsAppShortcut, isDefaultSmsApp, requestDefaultSmsApp, hasSmsPermissions, requestSmsPermissions } from '@/lib/native-bridge';
+import { isBiometricAvailable, isBiometricEnabled as getBiometricEnabled, setBiometricEnabled, getBiometricType, clearCredentials } from '@/lib/biometric';
 import type { TelecomCompany, AutoReplyTemplates } from '@/types';
 import { useApp } from '@/lib/app-context';
 import { useTheme } from '@/lib/theme-context';
@@ -51,6 +52,9 @@ export default function SettingsScreen() {
   const [companySupportPhone, setCompanySupportPhone] = useState('');
   const [showAutoReplyModal, setShowAutoReplyModal] = useState(false);
   const [autoReplyDraft, setAutoReplyDraft] = useState<AutoReplyTemplates>(DEFAULT_AUTO_REPLY_TEMPLATES);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [biometricOn, setBiometricOn] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState('البصمة');
   const [backupExists, setBackupExists] = useState(false);
   const [backupMsg, setBackupMsg] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
@@ -72,6 +76,32 @@ export default function SettingsScreen() {
   useEffect(() => {
     hasBackup().then(setBackupExists);
   }, [hasBackup]);
+
+  useEffect(() => {
+    (async () => {
+      const available = await isBiometricAvailable();
+      setBiometricSupported(available);
+      if (available) {
+        const type = await getBiometricType();
+        setBiometricLabel(type === 'face' ? 'التعرف على الوجه' : type === 'iris' ? 'قزحية العين' : 'البصمة');
+        const enabled = await getBiometricEnabled();
+        setBiometricOn(enabled);
+      }
+    })();
+  }, []);
+
+  const handleBiometricToggle = async (enabled: boolean) => {
+    if (enabled) {
+      await setBiometricEnabled(true);
+      setBiometricOn(true);
+      showToast(`تم تفعيل الدخول بـ${biometricLabel}. سيتم تسجيل بياناتك عند تسجيل الدخول القادم`);
+    } else {
+      await setBiometricEnabled(false);
+      await clearCredentials();
+      setBiometricOn(false);
+      showToast('تم إيقاف الدخول بالبصمة وحذف البيانات المحفوظة');
+    }
+  };
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -403,10 +433,32 @@ export default function SettingsScreen() {
               />
             </>
           )}
+          {biometricSupported && (
+            <>
+              <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <View style={[styles.settingIcon, { backgroundColor: biometricOn ? colors.primary + '20' : colors.surfaceAlt }]}>
+                    <Fingerprint size={20} color={biometricOn ? colors.primary : colors.textMuted} strokeWidth={2} />
+                  </View>
+                  <View>
+                    <Text style={[styles.settingLabel, { color: colors.text }]}>الدخول بالبصمة</Text>
+                    <Text style={[styles.settingHint, { color: colors.textMuted }]}>
+                      {biometricOn ? `مفعّل - سجل دخولك بـ${biometricLabel}` : 'سجل دخولك بلمسة بدلاً من كتابة البيانات'}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={biometricOn}
+                  onValueChange={handleBiometricToggle}
+                  trackColor={{ false: colors.surfaceAlt, true: colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+            </>
+          )}
         </View>
       </View>
-
-      {/* Business Mode */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>نوع النشاط التجاري</Text>
         <TouchableOpacity onPress={() => setShowBusinessMode(true)} style={[styles.card, { backgroundColor: colors.surface }]} activeOpacity={0.7}>

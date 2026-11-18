@@ -57,7 +57,8 @@
       "expo-status-bar",
       "expo-dev-client",
       "./plugins/with-sms-native/withSmsNative.js",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-local-authentication"
     ],
     "experiments": {
       "typedRoutes": true
