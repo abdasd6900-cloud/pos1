@@ -8,6 +8,8 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
+import { storage } from '@/lib/storage';
+import type { Customer } from '@/types';
 import { BaseModal } from '@/components/BaseModal';
 import { EmptyState } from '@/components/EmptyState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -877,6 +879,32 @@ function AddDealerModal({ visible, onClose, onCreated, colors, ownerId }: { visi
   const [creditLimit, setCreditLimit] = useState('0');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [showCustomerList, setShowCustomerList] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      void storage.getCustomers().then((c) => setCustomers(c));
+    } else {
+      setName(''); setPhone(''); setPassword(''); setCreditLimit('0');
+      setShowCustomerList(false); setCustomerSearch('');
+      setError('');
+    }
+  }, [visible]);
+
+  const filteredCustomers = customers.filter((c) => {
+    if (!customerSearch.trim()) return true;
+    const q = customerSearch.trim().toLowerCase();
+    return c.name.toLowerCase().includes(q) || c.phone.includes(q);
+  });
+
+  const selectCustomer = (c: Customer) => {
+    setName(c.name);
+    setPhone(c.phone);
+    setShowCustomerList(false);
+    setCustomerSearch('');
+  };
 
   const handleCreate = async () => {
     if (!name.trim() || !phone.trim() || !password.trim()) {
@@ -925,6 +953,65 @@ function AddDealerModal({ visible, onClose, onCreated, colors, ownerId }: { visi
         </View>
       ) : null}
       <View style={{ gap: 10 }}>
+        {/* Customer picker */}
+        <View>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>اختيار من الزبائن</Text>
+          <TouchableOpacity
+            onPress={() => setShowCustomerList(!showCustomerList)}
+            style={[styles.textInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+          >
+            <Text style={{ fontSize: 15, fontFamily: 'Cairo-Regular', color: showCustomerList ? colors.primary : colors.textMuted }}>
+              {showCustomerList ? 'إخفاء القائمة' : 'إظهار قائمة الزبائن'}
+            </Text>
+            <Search size={16} color={colors.textMuted} strokeWidth={2} />
+          </TouchableOpacity>
+        </View>
+
+        {showCustomerList && (
+          <View style={{ gap: 6 }}>
+            <View style={[styles.textInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }]}>
+              <Search size={16} color={colors.textMuted} strokeWidth={2} />
+              <TextInput
+                value={customerSearch}
+                onChangeText={setCustomerSearch}
+                placeholder="ابحث بالاسم أو الهاتف..."
+                placeholderTextColor={colors.textMuted}
+                style={{ flex: 1, fontSize: 14, fontFamily: 'Cairo-Regular', color: colors.text, paddingVertical: 4 }}
+              />
+            </View>
+            <View style={{ maxHeight: 200, borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden' }}>
+              <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                {filteredCustomers.length === 0 ? (
+                  <View style={{ padding: 16, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 13, fontFamily: 'Cairo-Regular', color: colors.textMuted }}>لا يوجد زبائن مطابقون</Text>
+                  </View>
+                ) : (
+                  filteredCustomers.map((c) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => selectCustomer(c)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border + '40' }}
+                    >
+                      <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', fontFamily: 'Cairo-Bold', color: colors.primary }}>{c.name.charAt(0)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontFamily: 'Cairo-SemiBold', color: colors.text }}>{c.name}</Text>
+                        <Text style={{ fontSize: 12, fontFamily: 'Cairo-Regular', color: colors.textMuted }}>{c.phone}</Text>
+                      </View>
+                      {c.tier === 'vip' && (
+                        <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', fontFamily: 'Cairo-Bold', color: colors.warning }}>VIP</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        )}
+
         <View>
           <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>اسم الموزع</Text>
           <TextInput value={name} onChangeText={setName} placeholder="اسم الموزع" placeholderTextColor={colors.textMuted} style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
