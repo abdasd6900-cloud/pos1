@@ -2421,22 +2421,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Only adjust debt for non-cancelled sales
       if (oldOperationType !== 'cancelled' && newOperationType !== 'cancelled') {
-        // Reverse old debt from old customer
-        if (oldCustomerId && oldDebtChange !== 0) {
-          setCustomers((prev) => {
-            const next = prev.map((c) => c.id === oldCustomerId ? { ...c, debt: Math.max(0, c.debt - oldDebtChange), updatedAt: now } : c);
-            storage.saveCustomers(next);
-            return next;
+        const reversal = oldCustomerId ? (oldDebtChange !== 0 ? -oldDebtChange : 0) : 0;
+        const addition = newCustomerId ? (newDebtChange !== 0 ? newDebtChange : 0) : 0;
+
+        setCustomers((prev) => {
+          const next = prev.map((c) => {
+            if (oldCustomerId && oldCustomerId === newCustomerId) {
+              if (reversal === 0 && addition === 0) return c;
+              return { ...c, debt: Math.max(0, c.debt + reversal + addition), updatedAt: now };
+            }
+            if (c.id === oldCustomerId && reversal !== 0) {
+              return { ...c, debt: Math.max(0, c.debt + reversal), updatedAt: now };
+            }
+            if (c.id === newCustomerId && addition !== 0) {
+              return { ...c, debt: Math.max(0, c.debt + addition), updatedAt: now };
+            }
+            return c;
           });
-        }
-        // Apply new debt to new customer
-        if (newCustomerId && newDebtChange !== 0) {
-          setCustomers((prev) => {
-            const next = prev.map((c) => c.id === newCustomerId ? { ...c, debt: Math.max(0, c.debt + newDebtChange), updatedAt: now } : c);
-            storage.saveCustomers(next);
-            return next;
-          });
-        }
+          storage.saveCustomers(next);
+          return next;
+        });
       }
     }
 
