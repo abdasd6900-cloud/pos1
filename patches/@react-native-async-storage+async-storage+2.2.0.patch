@@ -1,5 +1,5 @@
 diff --git a/node_modules/@react-native-async-storage/async-storage/android/build.gradle b/node_modules/@react-native-async-storage/async-storage/android/build.gradle
-index 4560dc7..65c10eb 100644
+index 4560dc7..2a72eef 100644
 --- a/node_modules/@react-native-async-storage/async-storage/android/build.gradle
 +++ b/node_modules/@react-native-async-storage/async-storage/android/build.gradle
 @@ -45,7 +45,7 @@ android {
@@ -37,3 +37,20 @@ index 4560dc7..65c10eb 100644
              }
  
              if (!isNewArchitectureEnabled) {
+@@ -102,11 +103,12 @@ repositories {
+ }
+ 
+ dependencies {
+-    if (useNextStorage) {
+-        def room_version = project.ext.AsyncStorageConfig.roomVersion
++    def room_version = project.ext.AsyncStorageConfig.roomVersion
++
++    implementation "androidx.room:room-runtime:$room_version"
++    implementation "androidx.room:room-ktx:$room_version"
+ 
+-        implementation "androidx.room:room-runtime:$room_version"
+-        implementation "androidx.room:room-ktx:$room_version"
++    if (useNextStorage) {
+         ksp "androidx.room:room-compiler:$room_version"
+ 
+         implementation project.ext.AsyncStorageLibs.coroutines
