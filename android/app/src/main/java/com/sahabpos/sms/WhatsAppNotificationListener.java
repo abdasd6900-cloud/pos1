@@ -63,6 +63,26 @@ public class WhatsAppNotificationListener extends NotificationListenerService {
     private static final String WHATSAPP_PKG = "com.whatsapp";
     private static final String WHATSAPP_BUSINESS_PKG = "com.whatsapp.w4b";
 
+    // Palestinian bank / wallet app package names
+    // Bank of Palestine (BOP) — Con Cordis mobile app
+    private static final String BOP_PKG = "finance.bop.concordis";
+    // Bank of Palestine (older package)
+    private static final String BOP_PKG_ALT = "com.bop.boptelebank";
+    // PalPay (PalPay Mobile Wallet)
+    private static final String PALPAY_PKG = "com.paltel.palpay";
+    private static final String PALPAY_PKG_ALT = "com.palpay";
+    // Bank of Jerusalem
+    private static final String BOJ_PKG = "com.boj.mobilebanking";
+    // Arab Bank Palestine
+    private static final String ARAB_BANK_PKG = "com.arabbank.mobile";
+    // Housing Bank
+    private static final String HOUSING_PKG = "com.housingbank.mobile";
+
+    private static final String[] BANK_PKGS = {
+        BOP_PKG, BOP_PKG_ALT, PALPAY_PKG, PALPAY_PKG_ALT,
+        BOJ_PKG, ARAB_BANK_PKG, HOUSING_PKG
+    };
+
     // Voice / image indicators in notification text
     private static final String[] VOICE_INDICATORS = {
         "رسالة صوتية", "رساله صوتيه", "رسالة صوتيه", "رساله صوتية",
@@ -93,10 +113,21 @@ public class WhatsAppNotificationListener extends NotificationListenerService {
         if (sbn == null) return;
 
         String pkg = sbn.getPackageName();
-        if (!WHATSAPP_PKG.equals(pkg) && !WHATSAPP_BUSINESS_PKG.equals(pkg)) return;
+        boolean isWhatsApp = WHATSAPP_PKG.equals(pkg) || WHATSAPP_BUSINESS_PKG.equals(pkg);
+        boolean isBankApp = false;
+        for (String bankPkg : BANK_PKGS) {
+            if (bankPkg.equals(pkg)) { isBankApp = true; break; }
+        }
+        if (!isWhatsApp && !isBankApp) return;
 
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        boolean monitoringEnabled = prefs.getBoolean("whatsapp_monitoring_enabled", false);
+        // WhatsApp requires whatsapp_monitoring_enabled; bank notifications require transfer_detection_enabled
+        boolean monitoringEnabled;
+        if (isWhatsApp) {
+            monitoringEnabled = prefs.getBoolean("whatsapp_monitoring_enabled", false);
+        } else {
+            monitoringEnabled = prefs.getBoolean("transfer_detection_enabled", false);
+        }
         if (!monitoringEnabled) return;
 
         Notification notification = sbn.getNotification();
@@ -137,6 +168,18 @@ public class WhatsAppNotificationListener extends NotificationListenerService {
 
         if (supabaseUrl == null || supabaseUrl.isEmpty()) {
             Log.w(TAG, "Supabase URL not configured, skipping");
+            return;
+        }
+
+        // For bank/wallet app notifications: push as customerReply with channel "bank_notification"
+        // so the app context runs parseTransferSms on the message text.
+        if (isBankApp) {
+            // Bank notifications have the bank name in the title and transaction details in the text
+            // Use the notification title as senderName, and the full text as the message
+            String bankSenderName = title.isEmpty() ? pkg : title;
+            String bankText = title.isEmpty() ? text : title + ": " + text;
+            pushCustomerReply("", bankSenderName, bankText, "bank_notification", supabaseUrl, supabaseAnonKey);
+            Log.i(TAG, "Bank/wallet notification captured from " + pkg + ": " + text.substring(0, Math.min(text.length(), 80)));
             return;
         }
 

@@ -97,7 +97,7 @@ export function useIncomingSms(session: { user: { id: string } } | null) {
           const title = evt.senderName
             ? `رسالة من ${evt.senderName}`
             : `رسالة من ${evt.senderPhone}`;
-          const isBusiness = evt.eventType === 'customerReply' || evt.eventType === 'transaction' || evt.eventType === 'esim';
+          const isBusiness = evt.eventType === 'customerReply' || evt.eventType === 'transaction' || evt.eventType === 'esim' || evt.source === 'bank_notification';
           const body = isBusiness ? `[عمل] ${evt.message}` : evt.message;
           sendWebNotification(title, body, isBusiness);
         }

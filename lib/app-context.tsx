@@ -644,7 +644,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             case 'phoneNumbers': mergeRemote(setPhoneNumbers, data as PhoneNumberEntry[], storage.savePhoneNumbers); break;
             case 'customerReplies': {
               const reply = data as { senderPhone?: string; senderName?: string; message?: string; timestamp?: number; channel?: string };
-              if (reply && reply.senderPhone && reply.message) {
+              if (reply && reply.message && (reply.senderPhone || reply.channel === 'bank_notification' || reply.senderName)) {
                 const smsClassResult = classifySmsMessage(reply.message, reply.senderPhone);
                 const smsMsg: SmsMessage = {
                   id: storage.generateId(),
