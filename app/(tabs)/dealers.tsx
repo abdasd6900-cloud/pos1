@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { storage } from '@/lib/storage';
-import type { Customer } from '@/types';
+import type { Customer, TelecomSale } from '@/types';
 import { BaseModal } from '@/components/BaseModal';
 import { EmptyState } from '@/components/EmptyState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -882,6 +882,8 @@ function AddDealerModal({ visible, onClose, onCreated, colors, ownerId }: { visi
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [showCustomerList, setShowCustomerList] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [importedCount, setImportedCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -889,6 +891,8 @@ function AddDealerModal({ visible, onClose, onCreated, colors, ownerId }: { visi
     } else {
       setName(''); setPhone(''); setPassword(''); setCreditLimit('0');
       setShowCustomerList(false); setCustomerSearch('');
+      setSelectedCustomerId(null);
+      setImportedCount(null);
       setError('');
     }
   }, [visible]);
@@ -902,6 +906,7 @@ function AddDealerModal({ visible, onClose, onCreated, colors, ownerId }: { visi
   const selectCustomer = (c: Customer) => {
     setName(c.name);
     setPhone(c.phone);
+    setSelectedCustomerId(c.id);
     setShowCustomerList(false);
     setCustomerSearch('');
   };
@@ -920,20 +925,75 @@ function AddDealerModal({ visible, onClose, onCreated, colors, ownerId }: { visi
     const hash = await crypto.subtle.digest('SHA-256', data);
     const passwordHash = Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-    const { error: insertError } = await supabase.from('dealers').insert({
+    const { data: inserted, error: insertError } = await supabase.from('dealers').insert({
       owner_user_id: ownerId,
       name: name.trim(),
       phone: phone.replace(/\D/g, ''),
       password_hash: passwordHash,
       credit_limit: parseFloat(creditLimit) || 0,
-    });
+    }).select('id').single();
 
-    if (insertError) {
+    if (insertError || !inserted) {
       setError('تعذر إنشاء الموزع');
       setCreating(false);
       return;
     }
+
+    const dealerId = inserted.id;
+
+    // If a customer was selected, import all their phone numbers
+    if (selectedCustomerId) {
+      const [telecomSales, transactions] = await Promise.all([
+        storage.getTelecomSales(),
+        storage.getTransactions(),
+      ]);
+
+      // Collect unique phone numbers associated with this customer
+      const phoneSet = new Map<string, { name: string; company?: string }>();
+
+      // From telecom sales
+      (telecomSales as TelecomSale[]).forEach((sale) => {
+        if (sale.customerId === selectedCustomerId && sale.customerPhone) {
+          const cleanPhone = sale.customerPhone.replace(/\D/g, '');
+          if (cleanPhone && !phoneSet.has(cleanPhone)) {
+            phoneSet.set(cleanPhone, { name: sale.customerName || name.trim(), company: sale.companyName });
+          }
+        }
+      });
+
+      // From transactions (customerName matches)
+      transactions.forEach((txn) => {
+        if (txn.customerId === selectedCustomerId && txn.customerName) {
+          // Transactions don't carry phone directly, but the customer record does
+        }
+      });
+
+      // Include the customer's own phone if not already included
+      const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
+      if (selectedCustomer?.phone) {
+        const cleanPhone = selectedCustomer.phone.replace(/\D/g, '');
+        if (cleanPhone && !phoneSet.has(cleanPhone)) {
+          phoneSet.set(cleanPhone, { name: selectedCustomer.name });
+        }
+      }
+
+      // Insert all collected numbers as dealer_customers
+      const rows = Array.from(phoneSet.entries()).map(([phoneNumber, info]) => ({
+        dealer_id: dealerId,
+        phone_number: phoneNumber,
+        customer_name: info.name,
+        company_name: info.company || null,
+        status: 'active',
+      }));
+
+      if (rows.length > 0) {
+        await supabase.from('dealer_customers').insert(rows);
+        setImportedCount(rows.length);
+      }
+    }
+
     setName(''); setPhone(''); setPassword(''); setCreditLimit('0');
+    setSelectedCustomerId(null);
     setCreating(false);
     onCreated();
   };
@@ -1009,6 +1069,15 @@ function AddDealerModal({ visible, onClose, onCreated, colors, ownerId }: { visi
                 )}
               </ScrollView>
             </View>
+          </View>
+        )}
+
+        {selectedCustomerId && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.success + '15', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}>
+            <Check size={16} color={colors.success} strokeWidth={2} />
+            <Text style={{ flex: 1, fontSize: 12, fontFamily: 'Cairo-Regular', color: colors.success }}>
+              سيتم استيراد جميع أرقام هذا الزبون تلقائياً إلى صفحة الموزع
+            </Text>
           </View>
         )}
 
