@@ -2403,6 +2403,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setTimeout(() => { void logOutboundSmsRef.current(sale.customerPhone, transferMsg, 'sms'); }, 3000);
       }
     }
+
+    if (sale.operationType === 'activation' && sale.simNumber && sale.customerPhone) {
+      const welcomeMsg = `أهلا وسهلا بكم في العبادله تيلكوم\nتم تفعيل الشريحه الخاصه بكم على الرقم : "${sale.simNumber}"\nفي حال تعرض للحظر  يرجى ارسال رقمك الى الرقم 0599991274 باللغه الانجليزيه دون أي اضافات.\nشكرا لثقتكم بنا`;
+      setTimeout(() => { void logOutboundSmsRef.current(sale.customerPhone, welcomeMsg, 'sms'); }, 2000);
+    }
     return sale;
   }, [addAuditEntry, settings]);
 

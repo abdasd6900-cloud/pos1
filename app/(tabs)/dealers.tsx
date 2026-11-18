@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { storage } from '@/lib/storage';
+import { enqueueSmsOutbox } from '@/lib/sms-gateway';
 import type { Customer, TelecomSale, Bundle, AgentBundle } from '@/types';
 import { BaseModal } from '@/components/BaseModal';
 import { EmptyState } from '@/components/EmptyState';
@@ -303,6 +304,11 @@ export default function DealersManagementScreen() {
         });
         setDealers((prev) => prev.map((d) => d.id === dealer.id ? { ...d, balance: newBalance } : d));
       }
+
+      if (extra?.phoneAssigned && req.contact_phone) {
+        const welcomeMsg = `أهلا وسهلا بكم في العبادله تيلكوم\nتم تفعيل الشريحه الخاصه بكم على الرقم : "${extra.phoneAssigned}"\nفي حال تعرض للحظر  يرجى ارسال رقمك الى الرقم 0599991274 باللغه الانجليزيه دون أي اضافات.\nشكرا لثقتكم بنا`;
+        void enqueueSmsOutbox(req.contact_phone, welcomeMsg);
+      }
     }
 
     setEsimRequests((prev) => prev.map((e) => e.id === req.id ? { ...e, ...updates } : e));
@@ -351,6 +357,11 @@ export default function DealersManagementScreen() {
           related_request_id: req.id,
         });
         setDealers((prev) => prev.map((d) => d.id === dealer.id ? { ...d, balance: newBalance } : d));
+      }
+
+      if (extra?.phoneAssigned && req.contact_phone) {
+        const welcomeMsg = `أهلا وسهلا بكم في العبادله تيلكوم\nتم تفعيل الشريحه الخاصه بكم على الرقم : "${extra.phoneAssigned}"\nفي حال تعرض للحظر  يرجى ارسال رقمك الى الرقم 0599991274 باللغه الانجليزيه دون أي اضافات.\nشكرا لثقتكم بنا`;
+        void enqueueSmsOutbox(req.contact_phone, welcomeMsg);
       }
     }
 
