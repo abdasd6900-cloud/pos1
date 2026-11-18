@@ -154,12 +154,15 @@ Deno.serve(async (req: Request) => {
 
     // ============ DASHBOARD ============
     if (path === "/dashboard" && method === "GET") {
-      const [reqResp, custResp, txnResp, notifResp, simResp] = await Promise.all([
+      const [reqResp, custResp, txnResp, notifResp, simResp, pendingResp, commissionResp, totalReqResp] = await Promise.all([
         fetch(`${supabaseUrl}/rest/v1/dealer_recharge_requests?${dealerFilter}&order=created_at.desc&limit=5`, { headers }),
         fetch(`${supabaseUrl}/rest/v1/dealer_customers?${dealerFilter}&order=created_at.desc`, { headers }),
         fetch(`${supabaseUrl}/rest/v1/dealer_transactions?${dealerFilter}&order=created_at.desc&limit=10`, { headers }),
         fetch(`${supabaseUrl}/rest/v1/dealer_notifications?${dealerFilter}&read=eq.false&order=created_at.desc&limit=5`, { headers }),
         fetch(`${supabaseUrl}/rest/v1/dealer_plastic_sims?${dealerFilter}&status=eq.in_stock`, { headers }),
+        fetch(`${supabaseUrl}/rest/v1/dealer_recharge_requests?${dealerFilter}&status=eq.pending&select=id`, { headers }),
+        fetch(`${supabaseUrl}/rest/v1/dealer_transactions?${dealerFilter}&type=eq.commission&select=amount,commission_amount`, { headers }),
+        fetch(`${supabaseUrl}/rest/v1/dealer_recharge_requests?${dealerFilter}&select=id`, { headers }),
       ]);
 
       const requests = await reqResp.json();
@@ -167,15 +170,19 @@ Deno.serve(async (req: Request) => {
       const transactions = await txnResp.json();
       const notifications = await notifResp.json();
       const sims = await simResp.json();
+      const pendingRows = await pendingResp.json();
+      const commissionRows = await commissionResp.json();
+      const totalReqRows = await totalReqResp.json();
 
-      const pendingCount = Array.isArray(requests) ? requests.filter((r: any) => r.status === "pending").length : 0;
+      const pendingCount = Array.isArray(pendingRows) ? pendingRows.length : 0;
       const activeCount = Array.isArray(customers) ? customers.filter((c: any) => c.status === 'active').length : 0;
       const simCount = Array.isArray(sims) ? sims.length : 0;
       const unreadCount = Array.isArray(notifications) ? notifications.length : 0;
+      const totalRequests = Array.isArray(totalReqRows) ? totalReqRows.length : 0;
 
-      // Calculate total commission earned
-      const totalCommission = Array.isArray(transactions)
-        ? transactions.filter((t: any) => t.type === "commission").reduce((sum: number, t: any) => sum + Number(t.commission_amount || t.amount || 0), 0)
+      // Calculate total commission earned from ALL commission transactions
+      const totalCommission = Array.isArray(commissionRows)
+        ? commissionRows.reduce((sum: number, t: any) => sum + Number(t.commission_amount || t.amount || 0), 0)
         : 0;
 
       return json({
@@ -186,6 +193,7 @@ Deno.serve(async (req: Request) => {
         plastic_sims: simCount,
         unread_notifications: unreadCount,
         total_commission: totalCommission,
+        total_requests: totalRequests,
         recent_requests: requests,
         recent_transactions: transactions,
       });

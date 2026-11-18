@@ -490,6 +490,8 @@ function DashboardTab({ token, dealer, onDealerUpdate }: { token: string; dealer
         <SummaryCard icon={<TrendingUp size={20} color={C.primary} strokeWidth={2} />} label="عمولات مكتسبة" value={`₪${Number(data.total_commission || 0).toFixed(2)}`} color={C.primary} />
         <SummaryCard icon={<Clock size={20} color={C.warning} strokeWidth={2} />} label="طلبات معلقة" value={String(data.pending_requests)} color={C.warning} />
         <SummaryCard icon={<Users size={20} color={C.info} strokeWidth={2} />} label="زبائن نشطون" value={String(data.active_customers)} color={C.info} />
+        <SummaryCard icon={<Send size={20} color={C.accent} strokeWidth={2} />} label="إجمالي الطلبات" value={String(data.total_requests || 0)} color={C.accent} />
+        <SummaryCard icon={<Smartphone size={20} color={C.success} strokeWidth={2} />} label="شرائح متوفرة" value={String(data.plastic_sims || 0)} color={C.success} />
       </View>
 
       {/* Recent requests */}
