@@ -94,10 +94,10 @@ export async function pushCollection(collection: SyncCollectionName, data: SyncD
     );
 
     if (error) {
-      console.error('pushCollection error', collection, error.message);
+      console.warn('pushCollection error', collection, error.message);
     }
   } catch (e) {
-    console.error('pushCollection error', collection, e);
+    console.warn('pushCollection error', collection, e);
   }
 }
 
@@ -130,7 +130,7 @@ export async function pullAllCollections(): Promise<Partial<Record<SyncCollectio
     await AsyncStorage.setItem(LAST_PULL_KEY, new Date().toISOString());
     return result;
   } catch (e) {
-    console.error('pullAllCollections error', e);
+    console.warn('pullAllCollections error', e);
     return {};
   }
 }
@@ -165,7 +165,7 @@ export async function pullCollection(collection: SyncCollectionName): Promise<Sy
     }
     return row.data;
   } catch (e) {
-    console.error('pullCollection error', collection, e);
+    console.warn('pullCollection error', collection, e);
     return null;
   }
 }
