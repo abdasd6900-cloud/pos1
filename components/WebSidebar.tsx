@@ -111,6 +111,8 @@ function WebSidebarInner({ onWidthChange }: WebSidebarProps) {
 
     list.push(...common);
 
+    list.push({ label: 'الموزعون', route: 'dealers', icon: UsersRound });
+
     if (profile?.role === 'admin') {
       list.push({ label: 'لوحة المدير', route: 'admin', icon: KeyRound });
     }

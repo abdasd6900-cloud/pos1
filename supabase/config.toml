@@ -3,3 +3,6 @@ verify_jwt = true
 
 [functions.customer-portal]
 verify_jwt = false
+
+[functions.dealer-portal]
+verify_jwt = false

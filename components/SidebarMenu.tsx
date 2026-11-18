@@ -75,6 +75,7 @@ export function SidebarMenu({ visible, onClose, businessMode, isAdmin, storeName
       { label: 'الإعدادات', route: 'settings', icon: Settings },
     );
 
+    common.push({ label: 'الموزعون', route: 'dealers', icon: UsersRound });
     if (isAdmin) common.push({ label: 'لوحة المدير', route: 'admin', icon: KeyRound });
     return common;
   }, [businessMode, isAdmin]);
