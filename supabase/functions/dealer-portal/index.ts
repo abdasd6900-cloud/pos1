@@ -173,6 +173,11 @@ Deno.serve(async (req: Request) => {
       const simCount = Array.isArray(sims) ? sims.length : 0;
       const unreadCount = Array.isArray(notifications) ? notifications.length : 0;
 
+      // Calculate total commission earned
+      const totalCommission = Array.isArray(transactions)
+        ? transactions.filter((t: any) => t.type === "commission").reduce((sum: number, t: any) => sum + Number(t.commission_amount || t.amount || 0), 0)
+        : 0;
+
       return json({
         balance: Number(dealer.balance),
         credit_limit: Number(dealer.credit_limit),
@@ -180,6 +185,7 @@ Deno.serve(async (req: Request) => {
         active_customers: activeCount,
         plastic_sims: simCount,
         unread_notifications: unreadCount,
+        total_commission: totalCommission,
         recent_requests: requests,
         recent_transactions: transactions,
       });
@@ -403,6 +409,258 @@ Deno.serve(async (req: Request) => {
       const resp = await fetch(`${supabaseUrl}/rest/v1/dealer_transactions?${dealerFilter}&order=created_at.desc&limit=100`, { headers });
       const data = await resp.json();
       return json(data);
+    }
+
+    // ============ CUSTOM PRICES ============
+    if (path === "/custom-prices" && method === "GET") {
+      const resp = await fetch(`${supabaseUrl}/rest/v1/dealer_custom_prices?${dealerFilter}`, { headers });
+      const data = await resp.json();
+      return json(data);
+    }
+
+    if (path === "/custom-prices" && method === "POST") {
+      const body = await req.json();
+      if (!body.pricing_id || body.custom_sale_price === undefined) return json({ error: "pricing_id و custom_sale_price مطلوبة" }, 400);
+      const insertBody = {
+        dealer_id: dealer.id,
+        pricing_id: body.pricing_id,
+        custom_sale_price: body.custom_sale_price,
+      };
+      const resp = await fetch(`${supabaseUrl}/rest/v1/dealer_custom_prices?on_conflict=dealer_id,pricing_id`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json", Prefer: "return=representation,resolution=merge-duplicates" },
+        body: JSON.stringify(insertBody),
+      });
+      const data = await resp.json();
+      if (!resp.ok) return json({ error: "فشل حفظ السعر المخصص" }, 500);
+      return json(data[0]);
+    }
+
+    if (path.startsWith("/custom-prices/") && method === "DELETE") {
+      const id = path.split("/")[2];
+      await fetch(`${supabaseUrl}/rest/v1/dealer_custom_prices?id=eq.${id}&${dealerFilter}`, { method: "DELETE", headers });
+      return json({ success: true });
+    }
+
+    // ============ CUSTOMER DEBTS ============
+    if (path === "/debts" && method === "GET") {
+      const resp = await fetch(`${supabaseUrl}/rest/v1/dealer_customer_debts?${dealerFilter}&order=created_at.desc`, { headers });
+      const data = await resp.json();
+      return json(data);
+    }
+
+    if (path === "/debts" && method === "POST") {
+      const body = await req.json();
+      const insertBody = {
+        dealer_id: dealer.id,
+        customer_id: body.customer_id || null,
+        amount: body.amount || 0,
+        paid_amount: body.paid_amount || 0,
+        payment_status: body.payment_status || "debt",
+        description: body.description || null,
+        related_request_id: body.related_request_id || null,
+      };
+      const resp = await fetch(`${supabaseUrl}/rest/v1/dealer_customer_debts`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(insertBody),
+      });
+      const data = await resp.json();
+      if (!resp.ok) return json({ error: "فشل إضافة الدين" }, 500);
+      return json(data[0]);
+    }
+
+    if (path.startsWith("/debts/") && method === "PUT") {
+      const id = path.split("/")[2];
+      const body = await req.json();
+      const updateBody: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (body.paid_amount !== undefined) updateBody.paid_amount = body.paid_amount;
+      if (body.payment_status !== undefined) updateBody.payment_status = body.payment_status;
+      const resp = await fetch(`${supabaseUrl}/rest/v1/dealer_customer_debts?id=eq.${id}&${dealerFilter}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(updateBody),
+      });
+      const data = await resp.json();
+      if (!resp.ok) return json({ error: "فشل تحديث الدين" }, 500);
+      return json(data[0]);
+    }
+
+    // ============ ESIM REQUESTS ============
+    if (path === "/esim-requests" && method === "GET") {
+      const resp = await fetch(`${supabaseUrl}/rest/v1/dealer_esim_requests?${dealerFilter}&order=created_at.desc`, { headers });
+      const data = await resp.json();
+      return json(data);
+    }
+
+    if (path === "/esim-requests" && method === "POST") {
+      const body = await req.json();
+      if (!body.customer_name) return json({ error: "اسم الزبون مطلوب" }, 400);
+      const insertBody = {
+        dealer_id: dealer.id,
+        pricing_id: body.pricing_id || null,
+        customer_name: body.customer_name,
+        contact_phone: body.contact_phone || null,
+        company_name: body.company_name || null,
+        bundle_name: body.bundle_name || null,
+        sale_price: body.sale_price || 0,
+        status: "pending",
+      };
+      const resp = await fetch(`${supabaseUrl}/rest/v1/dealer_esim_requests`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(insertBody),
+      });
+      const data = await resp.json();
+      if (!resp.ok) return json({ error: "فشل إنشاء طلب الشريحة الإلكترونية" }, 500);
+
+      // Sync to main app via sync_events
+      const syncBody = {
+        event_id: `dealer_esim_${data[0]?.id}_${Date.now()}`,
+        event_type: "dealer_esim_request",
+        payload: {
+          ...insertBody,
+          id: data[0]?.id,
+          dealer_id: dealer.id,
+          dealer_name: dealer.name,
+          dealer_phone: dealer.phone,
+          created_at: data[0]?.created_at,
+        },
+        source: "web",
+        user_id: dealer.owner_user_id,
+      };
+      await fetch(`${supabaseUrl}/rest/v1/sync_events`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(syncBody),
+      }).catch(() => {});
+
+      return json(data[0]);
+    }
+
+    // ============ OWNER COMMISSION ============
+    if (path === "/commission" && method === "POST") {
+      const body = await req.json();
+      const { customer_phone, amount_paid, dealer_cost } = body;
+      if (!customer_phone || amount_paid === undefined || dealer_cost === undefined) {
+        return json({ error: "customer_phone, amount_paid, dealer_cost مطلوبة" }, 400);
+      }
+      // Find which dealer owns this customer by phone number
+      const cleanPhone = String(customer_phone).replace(/\D/g, "");
+      const custResp = await fetch(`${supabaseUrl}/rest/v1/dealer_customers?or=(phone_number.eq.${cleanPhone},contact_phone.eq.${cleanPhone})&select=dealer_id,dealer_customers!inner(*)`, { headers });
+      let dealerId: string | null = null;
+      if (custResp.ok) {
+        const custData = await custResp.json();
+        if (Array.isArray(custData) && custData.length > 0) {
+          dealerId = custData[0].dealer_id;
+        }
+      }
+      // Fallback: also check dealer_recharge_requests for this phone
+      if (!dealerId) {
+        const reqResp = await fetch(`${supabaseUrl}/rest/v1/dealer_recharge_requests?contact_phone=eq.${cleanPhone}&select=dealer_id&limit=1`, { headers });
+        if (reqResp.ok) {
+          const reqData = await reqResp.json();
+          if (Array.isArray(reqData) && reqData.length > 0) {
+            dealerId = reqData[0].dealer_id;
+          }
+        }
+      }
+      if (!dealerId) return json({ success: true, commission: 0, message: "الرقم لا يتبع لأي موزع" });
+
+      // Get dealer details
+      const dealerResp = await fetch(`${supabaseUrl}/rest/v1/dealers?id=eq.${dealerId}&active=eq.true&select=*`, { headers });
+      const dealersArr = await dealerResp.json() as DealerRow[];
+      if (dealersArr.length === 0) return json({ success: true, commission: 0, message: "الموزع غير نشط" });
+      const targetDealer = dealersArr[0];
+
+      const commission = Number(amount_paid) - Number(dealer_cost);
+      if (commission <= 0) return json({ success: true, commission: 0, message: "لا يوجد فرق سعر" });
+
+      const newBalance = Number(targetDealer.balance) + commission;
+      await fetch(`${supabaseUrl}/rest/v1/dealers?id=eq.${targetDealer.id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ balance: newBalance, updated_at: new Date().toISOString() }),
+      });
+
+      await fetch(`${supabaseUrl}/rest/v1/dealer_transactions`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify({
+          dealer_id: targetDealer.id,
+          type: "commission",
+          amount: commission,
+          commission_amount: commission,
+          balance_after: newBalance,
+          description: `عمولة شحن مباشر - الرقم ${cleanPhone}`,
+        }),
+      });
+
+      await fetch(`${supabaseUrl}/rest/v1/dealer_notifications`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dealer_id: targetDealer.id,
+          type: "commission_credit",
+          title: "تم إضافة عمولة لرصيدك",
+          body: `تم شحن الرقم ${cleanPhone} مباشرة من المالك. تم إضافة ₪${commission.toFixed(2)} لرصيدك.`,
+          related_phone: cleanPhone,
+        }),
+      });
+
+      return json({ success: true, commission, new_balance: newBalance, dealer_name: targetDealer.name });
+    }
+
+    // ============ DASHBOARD WITH PROFITS ============
+    if (path === "/profits" && method === "GET") {
+      const [txnResp, customPricesResp, pricingResp] = await Promise.all([
+        fetch(`${supabaseUrl}/rest/v1/dealer_transactions?${dealerFilter}&order=created_at.desc&limit=200`, { headers }),
+        fetch(`${supabaseUrl}/rest/v1/dealer_custom_prices?${dealerFilter}`, { headers }),
+        fetch(`${supabaseUrl}/rest/v1/dealer_pricing?owner_user_id=eq.${dealer.owner_user_id}&active=eq.true`, { headers }),
+      ]);
+      const transactions = await txnResp.json();
+      const customPrices = await customPricesResp.json();
+      const pricing = await pricingResp.json();
+
+      const customPriceMap: Record<string, number> = {};
+      if (Array.isArray(customPrices)) {
+        for (const cp of customPrices) {
+          customPriceMap[cp.pricing_id] = Number(cp.custom_sale_price);
+        }
+      }
+
+      const pricingMap: Record<string, { dealer_price: number; sale_price: number; company_name: string; bundle_name: string }> = {};
+      if (Array.isArray(pricing)) {
+        for (const p of pricing) {
+          pricingMap[p.id] = { dealer_price: Number(p.dealer_price), sale_price: Number(p.sale_price), company_name: p.company_name, bundle_name: p.bundle_name };
+        }
+      }
+
+      const profitEntries = Object.keys(pricingMap).map((pid) => {
+        const p = pricingMap[pid];
+        const effectiveSale = customPriceMap[pid] || p.sale_price;
+        return {
+          pricing_id: pid,
+          company_name: p.company_name,
+          bundle_name: p.bundle_name,
+          dealer_price: p.dealer_price,
+          sale_price: effectiveSale,
+          profit: effectiveSale - p.dealer_price,
+          is_custom: !!customPriceMap[pid],
+        };
+      });
+
+      const totalProfit = profitEntries.reduce((sum: number, e: any) => sum + e.profit, 0);
+      const totalCommission = Array.isArray(transactions)
+        ? transactions.filter((t: any) => t.type === "commission").reduce((sum: number, t: any) => sum + Number(t.commission_amount || t.amount), 0)
+        : 0;
+
+      return json({
+        pricing_profits: profitEntries,
+        total_potential_profit: totalProfit,
+        total_commission_earned: totalCommission,
+        custom_prices_count: Object.keys(customPriceMap).length,
+      });
     }
 
     return json({ error: "المسار غير موجود" }, 404);

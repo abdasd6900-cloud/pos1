@@ -1515,6 +1515,22 @@ export default function TelecomPOSScreen() {
       }
     }
 
+    // Check if this customer's phone belongs to a dealer's customer and notify dealer with commission
+    if (customerPhone.trim() && Platform.OS === 'web') {
+      try {
+        const dealerApiUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/dealer-portal/commission`;
+        void fetch(dealerApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_phone: customerPhone.trim(),
+            amount_paid: effectivePaid,
+            dealer_cost: totalCost,
+          }),
+        }).catch(() => {});
+      } catch {}
+    }
+
     let createdReminder = false;
     if (reminderEnabled && debtChange > 0 && customerId && reminderDate) {
       const reminder = addDebtReminder({

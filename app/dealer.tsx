@@ -76,6 +76,44 @@ interface DealerNotification {
   title: string;
   body: string;
   read: boolean;
+  related_phone?: string;
+  created_at: string;
+}
+
+interface DealerCustomPrice {
+  id: string;
+  dealer_id: string;
+  pricing_id: string;
+  custom_sale_price: number;
+}
+
+interface DealerCustomerDebt {
+  id: string;
+  dealer_id: string;
+  customer_id: string | null;
+  amount: number;
+  paid_amount: number;
+  payment_status: 'full' | 'partial' | 'debt';
+  description: string | null;
+  related_request_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DealerEsimRequest {
+  id: string;
+  dealer_id: string;
+  pricing_id: string | null;
+  customer_name: string;
+  contact_phone: string | null;
+  company_name: string | null;
+  bundle_name: string | null;
+  sale_price: number;
+  status: string;
+  owner_reply: string | null;
+  barcode_image_url: string | null;
+  phone_number_assigned: string | null;
+  completed_at: string | null;
   created_at: string;
 }
 
@@ -109,7 +147,7 @@ const API_BASE = process.env.EXPO_PUBLIC_SUPABASE_URL
   ? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/dealer-portal`
   : '';
 
-type Tab = 'dashboard' | 'customers' | 'requests' | 'offers' | 'sims' | 'notifications' | 'transactions';
+type Tab = 'dashboard' | 'customers' | 'requests' | 'offers' | 'sims' | 'debts' | 'notifications' | 'transactions';
 
 // ============ MAIN COMPONENT ============
 export default function DealerPortalPage() {
@@ -345,6 +383,7 @@ function DealerDashboard({
     { key: 'requests', label: 'الطلبات', icon: <Send size={18} color={C.textSecondary} strokeWidth={2} /> },
     { key: 'offers', label: 'العروض', icon: <Tag size={18} color={C.textSecondary} strokeWidth={2} /> },
     { key: 'sims', label: 'الشرائح', icon: <Smartphone size={18} color={C.textSecondary} strokeWidth={2} /> },
+    { key: 'debts', label: 'الديون', icon: <Wallet size={18} color={C.textSecondary} strokeWidth={2} /> },
     { key: 'notifications', label: 'الإشعارات', icon: <Bell size={18} color={C.textSecondary} strokeWidth={2} /> },
     { key: 'transactions', label: 'الحركات', icon: <Wallet size={18} color={C.textSecondary} strokeWidth={2} /> },
   ];
@@ -392,6 +431,7 @@ function DealerDashboard({
         {activeTab === 'requests' && <RequestsTab token={token} dealer={dealer} />}
         {activeTab === 'offers' && <OffersTab token={token} />}
         {activeTab === 'sims' && <SimsTab token={token} />}
+        {activeTab === 'debts' && <DebtsTab token={token} />}
         {activeTab === 'notifications' && <NotificationsTab token={token} />}
         {activeTab === 'transactions' && <TransactionsTab token={token} />}
       </ScrollView>
@@ -447,9 +487,9 @@ function DashboardTab({ token, dealer, onDealerUpdate }: { token: string; dealer
       {/* Summary cards */}
       <View style={styles.cardGrid}>
         <SummaryCard icon={<Wallet size={20} color={C.success} strokeWidth={2} />} label="الرصيد" value={`₪${Number(data.balance).toFixed(2)}`} color={C.success} />
+        <SummaryCard icon={<TrendingUp size={20} color={C.primary} strokeWidth={2} />} label="عمولات مكتسبة" value={`₪${Number(data.total_commission || 0).toFixed(2)}`} color={C.primary} />
         <SummaryCard icon={<Clock size={20} color={C.warning} strokeWidth={2} />} label="طلبات معلقة" value={String(data.pending_requests)} color={C.warning} />
-        <SummaryCard icon={<Users size={20} color={C.primary} strokeWidth={2} />} label="زبائن نشطون" value={String(data.active_customers)} color={C.primary} />
-        <SummaryCard icon={<Smartphone size={20} color={C.info} strokeWidth={2} />} label="شرائح متوفرة" value={String(data.plastic_sims)} color={C.info} />
+        <SummaryCard icon={<Users size={20} color={C.info} strokeWidth={2} />} label="زبائن نشطون" value={String(data.active_customers)} color={C.info} />
       </View>
 
       {/* Recent requests */}
@@ -754,17 +794,60 @@ function NewRequestModal({ offers, onClose, onSubmit }: { offers: PricingEntry[]
 function OffersTab({ token }: { token: string }) {
   const api = useApi(token);
   const [offers, setOffers] = useState<PricingEntry[]>([]);
+  const [customPrices, setCustomPrices] = useState<DealerCustomPrice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingPrice, setEditingPrice] = useState<{ pricingId: string; currentPrice: number } | null>(null);
+  const [newPrice, setNewPrice] = useState('');
+  const [esimModal, setEsimModal] = useState<PricingEntry | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const resp = await api('/offers');
-        const d = await resp.json();
-        if (resp.ok) setOffers(d);
-      } catch {} finally { setLoading(false); }
-    })();
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [offersResp, pricesResp] = await Promise.all([
+        api('/offers'),
+        api('/custom-prices'),
+      ]);
+      const offData = await offersResp.json();
+      const priceData = await pricesResp.json();
+      if (offersResp.ok) setOffers(offData);
+      if (pricesResp.ok) setCustomPrices(priceData);
+    } catch {} finally { setLoading(false); }
   }, [api]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const getCustomPrice = (pricingId: string): number | null => {
+    const cp = customPrices.find((c) => c.pricing_id === pricingId);
+    return cp ? Number(cp.custom_sale_price) : null;
+  };
+
+  const handleSavePrice = async () => {
+    if (!editingPrice) return;
+    const price = parseFloat(newPrice);
+    if (isNaN(price) || price < 0) return;
+    await api('/custom-prices', {
+      method: 'POST',
+      body: JSON.stringify({ pricing_id: editingPrice.pricingId, custom_sale_price: price }),
+    });
+    setEditingPrice(null);
+    setNewPrice('');
+    void load();
+  };
+
+  const handleEsimRequest = async (offer: PricingEntry, customerName: string, contactPhone: string) => {
+    await api('/esim-requests', {
+      method: 'POST',
+      body: JSON.stringify({
+        pricing_id: offer.id,
+        customer_name: customerName,
+        contact_phone: contactPhone,
+        company_name: offer.company_name,
+        bundle_name: offer.bundle_name,
+        sale_price: getCustomPrice(offer.id) || offer.sale_price,
+      }),
+    });
+    setEsimModal(null);
+  };
 
   if (loading) return <LoadingState />;
 
@@ -783,30 +866,225 @@ function OffersTab({ token }: { token: string }) {
         Object.entries(grouped).map(([company, items]) => (
           <View key={company} style={styles.offerGroup}>
             <Text style={styles.offerGroupTitle}>{company}</Text>
-            {items.map((o) => (
-              <View key={o.id} style={[styles.offerCard, { backgroundColor: C.surface, borderColor: C.border }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.offerName}>{o.bundle_name}</Text>
-                  <Text style={styles.offerDuration}>{o.duration_days} يوم{o.bundle_type === 'offer' ? ' — عرض خاص' : ''}</Text>
+            {items.map((o) => {
+              const customPrice = getCustomPrice(o.id);
+              const effectiveSale = customPrice ?? o.sale_price;
+              const profit = effectiveSale - o.dealer_price;
+              return (
+                <View key={o.id} style={[styles.offerCard, { backgroundColor: C.surface, borderColor: C.border }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.offerName}>{o.bundle_name}</Text>
+                    <Text style={styles.offerDuration}>{o.duration_days} يوم{o.bundle_type === 'offer' ? ' — عرض خاص' : ''}</Text>
+                  </View>
+                  <View style={styles.offerPrices}>
+                    <View style={styles.priceCol}>
+                      <Text style={styles.priceLabel}>سعر الموزع</Text>
+                      <Text style={[styles.priceValue, { color: C.warning }]}>₪{o.dealer_price}</Text>
+                    </View>
+                    <View style={styles.priceCol}>
+                      <Text style={styles.priceLabel}>{customPrice ? 'سعري المخصص' : 'سعر البيع'}</Text>
+                      <Text style={[styles.priceValue, { color: customPrice ? C.primary : C.success }]}>₪{effectiveSale}</Text>
+                    </View>
+                    <View style={styles.priceCol}>
+                      <Text style={styles.priceLabel}>ربحي</Text>
+                      <Text style={[styles.priceValue, { color: profit > 0 ? C.success : C.danger }]}>₪{profit.toFixed(2)}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.offerActions}>
+                    <TouchableOpacity
+                      style={[styles.offerActionBtn, { backgroundColor: C.primary + '15', borderColor: C.primary + '40' }]}
+                      onPress={() => { setEditingPrice({ pricingId: o.id, currentPrice: customPrice ?? o.sale_price }); setNewPrice(String(customPrice ?? o.sale_price)); }}
+                    >
+                      <Tag size={13} color={C.primary} strokeWidth={2} />
+                      <Text style={[styles.offerActionText, { color: C.primary }]}>{customPrice ? 'تعديل سعري' : 'تحديد سعري'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.offerActionBtn, { backgroundColor: C.info + '15', borderColor: C.info + '40' }]}
+                      onPress={() => setEsimModal(o)}
+                    >
+                      <Smartphone size={13} color={C.info} strokeWidth={2} />
+                      <Text style={[styles.offerActionText, { color: C.info }]}>طلب eSIM</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <View style={styles.offerPrices}>
-                  <View style={styles.priceCol}>
-                    <Text style={styles.priceLabel}>سعر الموزع</Text>
-                    <Text style={[styles.priceValue, { color: C.warning }]}>₪{o.dealer_price}</Text>
-                  </View>
-                  <View style={styles.priceCol}>
-                    <Text style={styles.priceLabel}>سعر البيع</Text>
-                    <Text style={[styles.priceValue, { color: C.success }]}>₪{o.sale_price}</Text>
-                  </View>
-                  <View style={styles.priceCol}>
-                    <Text style={styles.priceLabel}>ربحك</Text>
-                    <Text style={[styles.priceValue, { color: C.primary }]}>₪{(o.sale_price - o.dealer_price).toFixed(2)}</Text>
-                  </View>
-                </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         ))
+      )}
+
+      {/* Custom Price Modal */}
+      {editingPrice && (
+        <ModalForm title="تحديد سعر البيع الخاص بك" onClose={() => { setEditingPrice(null); setNewPrice(''); }} onSubmit={handleSavePrice} submitLabel="حفظ السعر">
+          <FormField label="سعر البيع الجديد (₪)" value={newPrice} onChangeText={setNewPrice} keyboardType="numeric" />
+          <View style={[styles.replyBox, { backgroundColor: C.info + '10', borderColor: C.info + '30' }]}>
+            <TrendingUp size={14} color={C.info} strokeWidth={2} />
+            <Text style={styles.replyText}>سيتم حساب ربحك بناءً على هذا السعر بدلاً من السعر الافتراضي</Text>
+          </View>
+        </ModalForm>
+      )}
+
+      {/* eSIM Request Modal */}
+      {esimModal && (
+        <EsimRequestModal offer={esimModal} customPrice={getCustomPrice(esimModal.id)} onClose={() => setEsimModal(null)} onSubmit={handleEsimRequest} />
+      )}
+    </View>
+  );
+}
+
+function EsimRequestModal({ offer, customPrice, onClose, onSubmit }: { offer: PricingEntry; customPrice: number | null; onClose: () => void; onSubmit: (offer: PricingEntry, customerName: string, contactPhone: string) => void }) {
+  const [customerName, setCustomerName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const salePrice = customPrice ?? offer.sale_price;
+  const profit = salePrice - offer.dealer_price;
+
+  return (
+    <ModalForm title={`طلب شريحة إلكترونية — ${offer.company_name} ${offer.bundle_name}`} onClose={onClose} onSubmit={() => { if (customerName.trim()) onSubmit(offer, customerName, contactPhone); }} submitLabel="إرسال الطلب">
+      <FormField label="اسم الزبون" value={customerName} onChangeText={setCustomerName} />
+      <FormField label="رقم التواصل" value={contactPhone} onChangeText={setContactPhone} keyboardType="phone-pad" />
+      <View style={styles.offerPrices}>
+        <View style={styles.priceCol}>
+          <Text style={styles.priceLabel}>سعر البيع</Text>
+          <Text style={[styles.priceValue, { color: C.success }]}>₪{salePrice}</Text>
+        </View>
+        <View style={styles.priceCol}>
+          <Text style={styles.priceLabel}>سعر الموزع</Text>
+          <Text style={[styles.priceValue, { color: C.warning }]}>₪{offer.dealer_price}</Text>
+        </View>
+        <View style={styles.priceCol}>
+          <Text style={styles.priceLabel}>ربحك</Text>
+          <Text style={[styles.priceValue, { color: C.primary }]}>₪{profit.toFixed(2)}</Text>
+        </View>
+      </View>
+      <View style={[styles.replyBox, { backgroundColor: C.info + '10', borderColor: C.info + '30' }]}>
+        <Smartphone size={14} color={C.info} strokeWidth={2} />
+        <Text style={styles.replyText}>سيصل الطلب للبرنامج الرئيسي وسيتم التعامل معه كمعاملة جديدة. سيتم إرسال صورة الباركود مع الرد.</Text>
+      </View>
+    </ModalForm>
+  );
+}
+
+// ============ DEBTS TAB ============
+function DebtsTab({ token }: { token: string }) {
+  const api = useApi(token);
+  const [debts, setDebts] = useState<DealerCustomerDebt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [collectingDebt, setCollectingDebt] = useState<DealerCustomerDebt | null>(null);
+  const [collectAmount, setCollectAmount] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const resp = await api('/debts');
+      const d = await resp.json();
+      if (resp.ok) setDebts(d);
+    } catch {} finally { setLoading(false); }
+  }, [api]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const handleCollect = async () => {
+    if (!collectingDebt) return;
+    const amount = parseFloat(collectAmount) || 0;
+    if (amount <= 0) return;
+    const newPaid = Number(collectingDebt.paid_amount) + amount;
+    const remaining = Number(collectingDebt.amount) - newPaid;
+    const newStatus = remaining <= 0 ? 'full' : 'partial';
+    await api(`/debts/${collectingDebt.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ paid_amount: newPaid, payment_status: newStatus }),
+    });
+    setCollectingDebt(null);
+    setCollectAmount('');
+    void load();
+  };
+
+  if (loading) return <LoadingState />;
+
+  const totalDebt = debts.reduce((sum, d) => sum + (Number(d.amount) - Number(d.paid_amount)), 0);
+  const statusColors: Record<string, string> = { full: C.success, partial: C.warning, debt: C.danger };
+  const statusLabels: Record<string, string> = { full: 'مدفوع كامل', partial: 'مدفوع جزئي', debt: 'دين' };
+
+  return (
+    <View style={styles.tabContent}>
+      <Text style={styles.sectionTitle}>ديون الزبائن ({debts.length})</Text>
+      <View style={[styles.summaryCard, { backgroundColor: C.surface, borderColor: C.border, marginBottom: 8 }]}>
+        <View style={[styles.summaryIcon, { backgroundColor: C.danger + '15' }]}>
+          <Wallet size={20} color={C.danger} strokeWidth={2} />
+        </View>
+        <Text style={styles.summaryLabel}>إجمالي الديون المتبقية</Text>
+        <Text style={[styles.summaryValue, { color: C.danger }]}>₪{totalDebt.toFixed(2)}</Text>
+      </View>
+      {debts.length === 0 ? (
+        <EmptyState icon={<Wallet size={32} color={C.textMuted} strokeWidth={1.5} />} text="لا توجد ديون — سيظهر هنا ما يستحق على زبائنك" />
+      ) : (
+        debts.map((debt) => {
+          const remaining = Number(debt.amount) - Number(debt.paid_amount);
+          const color = statusColors[debt.payment_status] || C.textMuted;
+          return (
+            <View key={debt.id} style={[styles.card, { backgroundColor: C.surface, borderColor: C.border }]}>
+              <View style={styles.cardHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>₪{Number(debt.amount).toFixed(2)}</Text>
+                  {debt.description && <Text style={styles.cardSubtitle}>{debt.description}</Text>}
+                  <Text style={styles.notifTime}>{new Date(debt.created_at).toLocaleString('ar')}</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: color + '20' }]}>
+                  <Text style={[styles.statusText, { color }]}>{statusLabels[debt.payment_status] || debt.payment_status}</Text>
+                </View>
+              </View>
+              {debt.paid_amount > 0 && (
+                <View style={styles.reqPriceRow}>
+                  <Text style={styles.reqPriceLabel}>المدفوع: ₪{Number(debt.paid_amount).toFixed(2)}</Text>
+                  <Text style={[styles.reqPriceValue, { color: C.warning }]}>المتبقي: ₪{remaining.toFixed(2)}</Text>
+                </View>
+              )}
+              {remaining > 0 && (
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: C.success + '15', borderColor: C.success + '40', borderWidth: 1, marginTop: 8 }]}
+                  onPress={() => { setCollectingDebt(debt); setCollectAmount(remaining.toString()); }}
+                >
+                  <Wallet size={14} color={C.success} strokeWidth={2} />
+                  <Text style={[styles.actionBtnText, { color: C.success }]}>تحصيل</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        })
+      )}
+
+      {/* Collect Modal */}
+      {collectingDebt && (
+        <ModalForm
+          title="تحصيل دين"
+          onClose={() => { setCollectingDebt(null); setCollectAmount(''); }}
+          onSubmit={handleCollect}
+          submitLabel="تأكيد التحصيل"
+        >
+          <View style={[styles.replyBox, { backgroundColor: C.surfaceAlt }]}>
+            <Text style={[styles.replyText, { color: C.text }]}>
+              المبلغ الأصلي: ₪{Number(collectingDebt.amount).toFixed(2)}
+            </Text>
+            <Text style={[styles.replyText, { color: C.warning }]}>
+              المتبقي: ₪{(Number(collectingDebt.amount) - Number(collectingDebt.paid_amount)).toFixed(2)}
+            </Text>
+          </View>
+          <FormField label="مبلغ التحصيل (₪)" value={collectAmount} onChangeText={setCollectAmount} keyboardType="numeric" />
+          <View style={styles.collectActions}>
+            <TouchableOpacity
+              onPress={() => setCollectAmount((Number(collectingDebt.amount) - Number(collectingDebt.paid_amount)).toString())}
+              style={[styles.collectBtn, { backgroundColor: C.primary }]}
+            >
+              <Text style={styles.collectBtnText}>تحصيل كامل</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setCollectAmount(((Number(collectingDebt.amount) - Number(collectingDebt.paid_amount)) / 2).toFixed(2))}
+              style={[styles.collectBtn, { backgroundColor: C.accent }]}
+            >
+              <Text style={styles.collectBtnText}>نصف المبلغ</Text>
+            </TouchableOpacity>
+          </View>
+        </ModalForm>
       )}
     </View>
   );
@@ -971,6 +1249,7 @@ function TransactionsTab({ token }: { token: string }) {
     recharge: 'شحن',
     topup: 'إيداع رصيد',
     adjustment: 'تسوية',
+    commission: 'عمولة',
   };
   const typeColors: Record<string, string> = {
     recharge: C.danger,
@@ -1066,14 +1345,16 @@ function TransactionCard({ txn }: { txn: DealerTransaction }) {
     recharge: 'شحن',
     topup: 'إيداع',
     adjustment: 'تسوية',
+    commission: 'عمولة',
   };
   const typeColors: Record<string, string> = {
     recharge: C.danger,
     topup: C.success,
     adjustment: C.warning,
+    commission: C.primary,
   };
   const color = typeColors[txn.type] || C.textMuted;
-  const isPositive = txn.type === 'topup';
+  const isPositive = txn.type === 'topup' || txn.type === 'commission';
 
   return (
     <View style={[styles.card, { backgroundColor: C.surface, borderColor: C.border }]}>
@@ -1270,13 +1551,19 @@ const styles = StyleSheet.create({
   // Offers
   offerGroup: { marginBottom: 16, gap: 6 },
   offerGroupTitle: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold', color: C.primary, marginBottom: 4 },
-  offerCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
+  offerCard: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
   offerName: { fontSize: 14, fontWeight: '600', fontFamily: 'Cairo-SemiBold', color: C.text },
   offerDuration: { fontSize: 11, fontFamily: 'Cairo-Regular', color: C.textMuted, marginTop: 2 },
   offerPrices: { flexDirection: 'row', gap: 12 },
+  offerActions: { flexDirection: 'row', gap: 6, marginTop: 4 },
+  offerActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 },
+  offerActionText: { fontSize: 11, fontWeight: '600', fontFamily: 'Cairo-SemiBold' },
   priceCol: { alignItems: 'center' },
   priceLabel: { fontSize: 10, fontFamily: 'Cairo-Regular', color: C.textMuted },
   priceValue: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold', marginTop: 2 },
+  collectActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  collectBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  collectBtnText: { fontSize: 13, fontWeight: '700', fontFamily: 'Cairo-Bold', color: '#fff' },
 
   // SIM
   simIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
