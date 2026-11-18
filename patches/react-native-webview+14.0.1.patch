@@ -1,20 +1,8 @@
 diff --git a/node_modules/react-native-webview/android/build.gradle b/node_modules/react-native-webview/android/build.gradle
-index ae14145..6f1be38 100644
+index ae14145..6f3be38 100644
 --- a/node_modules/react-native-webview/android/build.gradle
 +++ b/node_modules/react-native-webview/android/build.gradle
-@@ -57,7 +57,7 @@ apply plugin: 'com.android.library'
- if (isNewArchitectureEnabled()) {
-     apply plugin: 'com.facebook.react'
- }
--apply plugin: 'kotlin-android'
-+// kotlin-android removed — expo module plugin already applies it
- 
- android {
-     if (supportsNamespace()) {
-@@ -73,11 +73,11 @@ android {
-         }
-     }
- 
+@@ -73,7 +73,7 @@ android {
 -    compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
 +    compileSdk getExtOrIntegerDefault('compileSdkVersion')
  
@@ -25,4 +13,3 @@ index ae14145..6f1be38 100644
 +        targetSdk getExtOrIntegerDefault('targetSdkVersion')
          buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
      }
- 
