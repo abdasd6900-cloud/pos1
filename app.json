@@ -2,7 +2,7 @@
   "expo": {
     "name": "سحاب",
     "slug": "sahab-pos",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "sahabpos",
@@ -13,11 +13,7 @@
     },
     "android": {
       "package": "com.sahab.pos",
-      "versionCode": 11,
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#0E7C6B"
-      },
+      "versionCode": 12,
       "permissions": [
         "SEND_SMS",
         "RECEIVE_SMS",

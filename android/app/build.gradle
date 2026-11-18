@@ -1,4 +1,5 @@
 apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
@@ -91,7 +92,7 @@ android {
         applicationId 'com.sahab.pos'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 11
+        versionCode 12
         versionName "1.0.1"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
@@ -104,15 +105,12 @@ android {
             keyPassword 'android'
         }
         release {
-            // Production keystore — set via gradle.properties or environment variables
-            // To generate: keytool -genkeypair -v -storetype PKCS12 -keystore release.keystore -alias sahab -keyalg RSA -keysize 2048 -validity 10000
             if (project.hasProperty('SAHAB_UPLOAD_STORE_FILE') && file(project.property('SAHAB_UPLOAD_STORE_FILE')).exists()) {
                 storeFile file(project.property('SAHAB_UPLOAD_STORE_FILE'))
                 storePassword project.property('SAHAB_UPLOAD_STORE_PASSWORD')
                 keyAlias project.property('SAHAB_UPLOAD_KEY_ALIAS')
                 keyPassword project.property('SAHAB_UPLOAD_KEY_PASSWORD')
             } else {
-                // Fallback to debug keystore if release keystore not configured
                 storeFile file('debug.keystore')
                 storePassword 'android'
                 keyAlias 'androiddebugkey'

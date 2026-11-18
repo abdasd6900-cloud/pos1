@@ -289,7 +289,7 @@ public class AreenRechargeModule extends ReactContextBaseJavaModule {
             "  }" +
             "  AreenBridge.onLog('Filled: user=' + userFilled + ' pass=' + passFilled);" +
             "  setTimeout(function() {" +
-            "    var submitBtn = document.querySelector('button[type=\"submit\"], input[type=\"submit\"], button:contains(\"' + '\\u062f' + '\\u062e' + '\\u0648' + '\\u0644\"), button:contains(\"Login\"), button:contains(\"login\"), a:contains(\"' + '\\u062f' + '\\u062e' + '\\u0648' + '\\u0644\"));" +
+            "    var submitBtn = (function(){var el=document.querySelector('button[type=\"submit\"], input[type=\"submit\"]');if(el)return el;var bs=document.querySelectorAll('button, a');var ts=['' + '\\u062d' + '\\u062e' + '\\u0648' + '\\u0644','Login','login'];for(var i=0;i<bs.length;i++){var t=(bs[i].textContent||'').trim();for(var j=0;j<ts.length;j++){if(t.indexOf(ts[j])>=0)return bs[i];}}return null;})();" +
             "    if (submitBtn) { submitBtn.click(); AreenBridge.onLog('Clicked submit'); }" +
             "    else {" +
             "      var form = document.querySelector('form');" +

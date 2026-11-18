@@ -259,7 +259,7 @@ public class SkyRechargeModule extends ReactContextBaseJavaModule {
             "try {" +
             "  SkyBridge.onLog('Starting login sequence');" +
             "  // Step 1: Click login button" +
-            "  var loginLink = document.querySelector('a[href*=\"login\"], a[href*=\"Login\"], button:contains(\"' + '\\u062f' + '\\u062e' + '\\u0648' + '\\u0644\"], a:contains(\"' + '\\u062f' + '\\u062e' + '\\u0648' + '\\u0644\"], a:contains(\"Login\"], a:contains(\"login\"));" +
+            "  var loginLink = (function(){ var s='a[href*=\"login\"], a[href*=\"Login\"]'; var el=document.querySelector(s); if(el) return el; var btns=document.querySelectorAll('a, button'); var texts=['" + "\\u062f" + "\\u062e" + "\\u0648" + "\\u0644','Login','login']; for(var i=0;i<btns.length;i++){ var t=(btns[i].textContent||'').trim(); for(var j=0;j<texts.length;j++){ if(t.indexOf(texts[j])>=0) return btns[i]; } } return null; })();" +
             "  if (loginLink) { loginLink.click(); SkyBridge.onLog('Clicked login link'); }" +
             "  else { SkyBridge.onLog('No login link found, might already on login page'); }" +
             "  // Step 2: Wait and fill credentials + TOTP" +
@@ -284,7 +284,7 @@ public class SkyRechargeModule extends ReactContextBaseJavaModule {
             "    SkyBridge.onLog('Filled: user=' + userFilled + ' pass=' + passFilled + ' otp=' + otpFilled);" +
             "    // Step 3: Submit the form" +
             "    setTimeout(function() {" +
-            "      var submitBtn = document.querySelector('button[type=\"submit\"], input[type=\"submit\"], button:contains(\"' + '\\u062f' + '\\u062e' + '\\u0648' + '\\u0644\"], button:contains(\"Login\"], button:contains(\"login\"], button:contains(\"' + '\\u062a' + '\\u0623' + '\\u0643' + '\\u064a' + '\\u062f\"');" +
+            "      var submitBtn = (function(){ var s='button[type=\"submit\"], input[type=\"submit\"]'; var el=document.querySelector(s); if(el) return el; var btns=document.querySelectorAll('button'); var texts=['" + "\\u062f" + "\\u062e" + "\\u0648" + "\\u0644','Login','login','" + "\\u062a" + "\\u0623" + "\\u0643" + "\\u064a" + "\\u062f']; for(var i=0;i<btns.length;i++){ var t=(btns[i].textContent||'').trim(); for(var j=0;j<texts.length;j++){ if(t.indexOf(texts[j])>=0) return btns[i]; } } return null; })();" +
             "      if (submitBtn) { submitBtn.click(); SkyBridge.onLog('Clicked submit button'); }" +
             "      else {" +
             "        // Try submitting the form directly" +
@@ -338,7 +338,7 @@ public class SkyRechargeModule extends ReactContextBaseJavaModule {
             "      searchInput.dispatchEvent(new KeyboardEvent('keypress', {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true}));" +
             "      searchInput.dispatchEvent(new KeyboardEvent('keyup', {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true}));" +
             "      // Also try clicking a search button" +
-            "      var searchBtn = document.querySelector('button[type=\"submit\"], button:contains(\"' + '\\u0628' + '\\u062d' + '\\u062b' + '\"), button:contains(\"Search\"], [role=\"search\"] button');" +
+            "      var searchBtn = (function(){ var s='button[type=\"submit\"], [role=\"search\"] button'; var el=document.querySelector(s); if(el) return el; var btns=document.querySelectorAll('button'); var texts=['" + "\\u0628" + "\\u062d" + "\\u062b','Search']; for(var i=0;i<btns.length;i++){ var t=(btns[i].textContent||'').trim(); for(var j=0;j<texts.length;j++){ if(t.indexOf(texts[j])>=0) return btns[i]; } } return null; })();" +
             "      if (searchBtn) searchBtn.click();" +
             "      SkyBridge.onLog('Triggered search');" +
             "      // Step 2: Wait for results, then click recharge button" +
