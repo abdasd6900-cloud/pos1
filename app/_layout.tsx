@@ -71,6 +71,13 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         if (parsed.protocol !== 'sahabpos:') return;
 
         const pathParts = parsed.pathname.split('/').filter(Boolean);
+
+        // Shortcut: sahabpos://messages — open the messages tab directly
+        if (pathParts[0] === 'messages') {
+          router.replace('/(tabs)/messages');
+          return;
+        }
+
         if (pathParts[0] !== 'screenshot') return;
 
         const params = parsed.searchParams;

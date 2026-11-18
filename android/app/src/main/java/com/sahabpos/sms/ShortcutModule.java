@@ -1,12 +1,9 @@
 package com.sahabpos.sms;
 
-import android.app.Activity;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.graphics.drawable.Icon;
+import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 
@@ -35,26 +32,21 @@ public class ShortcutModule extends ReactContextBaseJavaModule {
     public void createSmsShortcut(Promise promise) {
         try {
             Context context = getReactApplicationContext();
-            Intent smsIntent = new Intent(Intent.ACTION_MAIN);
-            smsIntent.addCategory(Intent.CATEGORY_APP_MESSAGING);
-
-            ResolveInfo defaultSmsApp = findDefaultSmsApp(context);
-            if (defaultSmsApp != null) {
-                String packageName = defaultSmsApp.activityInfo.packageName;
-                String className = defaultSmsApp.activityInfo.name;
-                smsIntent.setClassName(packageName, className);
-            }
 
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                 promise.resolve(false);
                 return;
             }
 
+            Intent messagesIntent = new Intent(Intent.ACTION_VIEW);
+            messagesIntent.setData(Uri.parse("sahabpos://messages"));
+            messagesIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
             android.content.pm.ShortcutInfo shortcut = new android.content.pm.ShortcutInfo.Builder(context, "sms_app_shortcut")
                     .setShortLabel("الرسائل")
-                    .setLongLabel("برنامج الرسائل")
+                    .setLongLabel("رسائل سحاب")
                     .setIcon(Icon.createWithResource(context, android.R.drawable.ic_dialog_email))
-                    .setIntent(smsIntent)
+                    .setIntent(messagesIntent)
                     .build();
 
             android.content.pm.ShortcutManager shortcutManager = context.getSystemService(android.content.pm.ShortcutManager.class);
@@ -91,16 +83,5 @@ public class ShortcutModule extends ReactContextBaseJavaModule {
         } catch (Exception e) {
             promise.resolve(false);
         }
-    }
-
-    private ResolveInfo findDefaultSmsApp(Context context) {
-        Intent intent = new Intent(Intent.ACTION_MAIN);
-        intent.addCategory(Intent.CATEGORY_APP_MESSAGING);
-        PackageManager pm = context.getPackageManager();
-        java.util.List<ResolveInfo> apps = pm.queryIntentActivities(intent, 0);
-        if (apps != null && !apps.isEmpty()) {
-            return apps.get(0);
-        }
-        return null;
     }
 }

@@ -701,7 +701,7 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
-                <ActionRow icon={<Smartphone size={20} color={colors.accent} strokeWidth={2} />} label="اختصار الرسائل للشاشة الرئيسية" hint="إنشاء اختصار لبرنامج الرسائل الخارجي للوصول السريع" onPress={handleCreateShortcut} colors={colors} />
+                <ActionRow icon={<Smartphone size={20} color={colors.accent} strokeWidth={2} />} label="اختصار الرسائل للشاشة الرئيسية" hint="إنشاء اختصار يفتح شاشة الرسائل داخل سحاب مباشرة" onPress={handleCreateShortcut} colors={colors} />
                 <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
                 <ActionRow
                   icon={<MessageSquare size={20} color={defaultSmsStatus === 'default' ? colors.success : colors.warning} strokeWidth={2} />}
