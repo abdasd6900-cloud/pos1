@@ -608,6 +608,24 @@ Deno.serve(async (req: Request) => {
         }),
       });
 
+      // Notify the owner via sync_events
+      await fetch(`${supabaseUrl}/rest/v1/sync_events`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_type: "dealer_commission",
+          payload: {
+            dealer_id: targetDealer.id,
+            dealer_name: targetDealer.name,
+            customer_phone: cleanPhone,
+            commission,
+            amount_paid: Number(amount_paid),
+            dealer_cost: Number(dealer_cost),
+          },
+          processed: false,
+        }),
+      });
+
       return json({ success: true, commission, new_balance: newBalance, dealer_name: targetDealer.name });
     }
 

@@ -314,6 +314,7 @@ export interface TelecomSale {
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   paymentDate: number | null;
+  walletType: WalletType | null;
   reminderDate: number | null;
   debtChange: number;
   followUpStatus: FollowUpStatus;
@@ -671,6 +672,7 @@ export interface Transaction {
   staffName: string;
   promotionApplied: string | null;
   discountAmount: number;
+  walletType: WalletType | null;
   createdAt: number;
 }
 

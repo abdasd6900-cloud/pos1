@@ -186,6 +186,7 @@ export default function RetailPOSScreen() {
           staffName: currentStaff?.name ?? '',
           promotionApplied: null,
           discountAmount: 0,
+          walletType: null,
         });
         added++;
       }
@@ -348,6 +349,7 @@ export default function RetailPOSScreen() {
       staffName: currentStaff?.name ?? '',
       promotionApplied: null,
       discountAmount,
+      walletType: null,
     });
 
     if (settings.enableSms && customerId && customerPhone.trim()) {

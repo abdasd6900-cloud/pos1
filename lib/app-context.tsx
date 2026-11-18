@@ -1432,6 +1432,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       staffName: currentStaff?.name ?? '',
       promotionApplied: null,
       discountAmount: 0,
+      walletType: null,
     };
     setTransactions((prev) => { const next = [txn, ...prev]; storage.saveTransactions(next); return next; });
     setCustomers((prev) => {
@@ -1507,6 +1508,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       staffName: currentStaff?.name ?? '',
       promotionApplied: null,
       discountAmount: 0,
+      walletType: null,
     };
     setTransactions((prev) => { const next = [txn, ...prev]; storage.saveTransactions(next); return next; });
     setSuppliers((prev) => {
@@ -1556,6 +1558,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       staffName: currentStaff?.name ?? '',
       promotionApplied: null,
       discountAmount: 0,
+      walletType: null,
     };
     setTransactions((prev) => { const next = [txn, ...prev]; storage.saveTransactions(next); return next; });
 
@@ -1694,6 +1697,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       staffName: currentStaff?.name ?? '',
       promotionApplied: null,
       discountAmount: 0,
+      walletType: null,
     };
     setTransactions((prev) => { const next = [txn, ...prev]; storage.saveTransactions(next); return next; });
     setCustomers((prev) => {
@@ -1767,6 +1771,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       staffName: currentStaff?.name ?? '',
       promotionApplied: null,
       discountAmount: 0,
+      walletType: null,
     };
 
     setTransactions((prev) => { const next = [txn, ...prev]; storage.saveTransactions(next); return next; });
@@ -1999,6 +2004,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       staffName: currentStaff?.name ?? '',
       promotionApplied: null,
       discountAmount: 0,
+      walletType: null,
     };
     setTransactions((prev) => { const next = [txn, ...prev]; storage.saveTransactions(next); return next; });
     setSuppliers((prev) => {
@@ -3644,6 +3650,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         staffName: '',
         promotionApplied: null,
         discountAmount: 0,
+        walletType: null,
       });
     }
     await storage.saveProducts(demoProducts);

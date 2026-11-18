@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Users, Phone, Plus, Search, Trash2, Power, AlertCircle, Check,
   Clock, X, Wallet, Send, Tag, Smartphone, MessageSquare, ChevronLeft,
+  CreditCard, Image as ImageIcon,
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
@@ -66,7 +67,37 @@ interface PlasticSim {
   assigned_phone: string;
 }
 
-type Tab = 'dealers' | 'requests' | 'pricing' | 'sims';
+interface EsimRequest {
+  id: string;
+  dealer_id: string;
+  pricing_id: string | null;
+  customer_name: string;
+  contact_phone: string | null;
+  company_name: string | null;
+  bundle_name: string | null;
+  sale_price: number;
+  status: string;
+  owner_reply: string | null;
+  barcode_image_url: string | null;
+  phone_number_assigned: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+interface CustomerDebt {
+  id: string;
+  dealer_id: string;
+  customer_id: string | null;
+  amount: number;
+  paid_amount: number;
+  payment_status: 'full' | 'partial' | 'debt';
+  description: string | null;
+  related_request_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+type Tab = 'dealers' | 'requests' | 'pricing' | 'sims' | 'esim' | 'debts';
 
 export default function DealersManagementScreen() {
   const { session } = useAuth();
@@ -76,6 +107,8 @@ export default function DealersManagementScreen() {
   const [requests, setRequests] = useState<RechargeRequest[]>([]);
   const [pricing, setPricing] = useState<PricingEntry[]>([]);
   const [sims, setSims] = useState<PlasticSim[]>([]);
+  const [esimRequests, setEsimRequests] = useState<EsimRequest[]>([]);
+  const [debts, setDebts] = useState<CustomerDebt[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -84,6 +117,7 @@ export default function DealersManagementScreen() {
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [editingPricing, setEditingPricing] = useState<PricingEntry | null>(null);
   const [processingRequest, setProcessingRequest] = useState<RechargeRequest | null>(null);
+  const [processingEsim, setProcessingEsim] = useState<EsimRequest | null>(null);
   const lastPendingIdRef = useRef<string | null>(null);
 
   // Poll for new pending recharge requests and show browser notifications
@@ -148,11 +182,13 @@ export default function DealersManagementScreen() {
     setLoading(true);
     setError('');
     try {
-      const [dealersRes, reqRes, pricingRes, simsRes] = await Promise.all([
+      const [dealersRes, reqRes, pricingRes, simsRes, esimRes, debtsRes] = await Promise.all([
         supabase.from('dealers').select('*').eq('owner_user_id', session.user.id).order('created_at', { ascending: false }),
         supabase.from('dealer_recharge_requests').select('*, dealer_id').order('created_at', { ascending: false }).limit(100),
         supabase.from('dealer_pricing').select('*').eq('owner_user_id', session.user.id).order('company_name', { ascending: true }),
         supabase.from('dealer_plastic_sims').select('*').order('created_at', { ascending: false }),
+        supabase.from('dealer_esim_requests').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('dealer_customer_debts').select('*').order('created_at', { ascending: false }).limit(100),
       ]);
 
       if (dealersRes.data) setDealers(dealersRes.data as Dealer[]);
@@ -165,6 +201,14 @@ export default function DealersManagementScreen() {
       if (simsRes.data) {
         const dealerIds = new Set((dealersRes.data || []).map((d) => d.id));
         setSims((simsRes.data as PlasticSim[]).filter((s) => dealerIds.has(s.dealer_id)));
+      }
+      if (esimRes.data) {
+        const dealerIds = new Set((dealersRes.data || []).map((d) => d.id));
+        setEsimRequests((esimRes.data as EsimRequest[]).filter((e) => dealerIds.has(e.dealer_id)));
+      }
+      if (debtsRes.data) {
+        const dealerIds = new Set((dealersRes.data || []).map((d) => d.id));
+        setDebts((debtsRes.data as CustomerDebt[]).filter((db) => dealerIds.has(db.dealer_id)));
       }
     } catch {
       setError('تعذر تحميل البيانات');
@@ -181,6 +225,8 @@ export default function DealersManagementScreen() {
   }, [fetchData]);
 
   const pendingCount = requests.filter((r) => r.status === 'pending').length;
+  const pendingEsimCount = esimRequests.filter((e) => e.status === 'pending').length;
+  const totalDebtRemaining = debts.reduce((sum, d) => sum + (Number(d.amount) - Number(d.paid_amount)), 0);
   const filteredDealers = dealers.filter((d) => {
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
@@ -212,6 +258,52 @@ export default function DealersManagementScreen() {
     });
 
     setDealers((prev) => prev.map((d) => d.id === dealer.id ? { ...d, balance: newBalance } : d));
+  };
+
+  const processEsimRequest = async (req: EsimRequest, action: 'complete' | 'reject', extra?: { reply?: string; phoneAssigned?: string; barcodeUrl?: string }) => {
+    const updates: any = { updated_at: new Date().toISOString() };
+    if (action === 'reject') { updates.status = 'rejected'; updates.owner_reply = extra?.reply || ''; }
+    if (action === 'complete') {
+      updates.status = 'completed';
+      updates.completed_at = new Date().toISOString();
+      updates.phone_number_assigned = extra?.phoneAssigned || '';
+      updates.barcode_image_url = extra?.barcodeUrl || null;
+      updates.owner_reply = extra?.reply || '';
+    }
+
+    const { error: updateError } = await supabase.from('dealer_esim_requests').update(updates).eq('id', req.id);
+    if (updateError) { setError('تعذر تحديث طلب eSIM'); return; }
+
+    const notifTitle = action === 'complete' ? 'تم استكمال طلب eSIM' : 'تم رفض طلب eSIM';
+    const notifBody = action === 'complete'
+      ? `تم تفعيل شريحة إلكترونية للزبون ${req.customer_name}${extra?.phoneAssigned ? ' — الرقم: ' + extra.phoneAssigned : ''}${extra?.barcodeUrl ? ' — تم إرسال صورة الباركود' : ''}`
+      : extra?.reply || `الزبون ${req.customer_name} — ${req.company_name || ''} ${req.bundle_name || ''}`;
+
+    await supabase.from('dealer_notifications').insert({
+      dealer_id: req.dealer_id,
+      type: action === 'complete' ? 'esim_completed' : 'esim_rejected',
+      title: notifTitle,
+      body: notifBody,
+    });
+
+    if (action === 'complete') {
+      const dealer = dealers.find((d) => d.id === req.dealer_id);
+      if (dealer) {
+        const newBalance = dealer.balance - Number(req.sale_price);
+        await supabase.from('dealers').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('id', dealer.id);
+        await supabase.from('dealer_transactions').insert({
+          dealer_id: dealer.id,
+          type: 'recharge',
+          amount: Number(req.sale_price),
+          balance_after: newBalance,
+          description: `eSIM ${req.customer_name} — ${req.company_name || ''} ${req.bundle_name || ''}`,
+        });
+        setDealers((prev) => prev.map((d) => d.id === dealer.id ? { ...d, balance: newBalance } : d));
+      }
+    }
+
+    setEsimRequests((prev) => prev.map((e) => e.id === req.id ? { ...e, ...updates } : e));
+    setProcessingEsim(null);
   };
 
   const processRequest = async (req: RechargeRequest, action: 'approve' | 'reject' | 'complete', extra?: { reply?: string; phoneAssigned?: string }) => {
@@ -283,9 +375,11 @@ export default function DealersManagementScreen() {
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: 'requests', label: 'الطلبات', icon: <Send size={18} color={tab === 'requests' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} />, badge: pendingCount },
+    { key: 'esim', label: 'eSIM', icon: <CreditCard size={18} color={tab === 'esim' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} />, badge: pendingEsimCount },
     { key: 'dealers', label: 'الموزعون', icon: <Users size={18} color={tab === 'dealers' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
     { key: 'pricing', label: 'التسعير', icon: <Tag size={18} color={tab === 'pricing' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
     { key: 'sims', label: 'الشرائح', icon: <Smartphone size={18} color={tab === 'sims' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
+    { key: 'debts', label: 'الديون', icon: <Wallet size={18} color={tab === 'debts' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
   ];
 
   return (
@@ -393,6 +487,23 @@ export default function DealersManagementScreen() {
             }
           />
         </>
+      ) : tab === 'esim' ? (
+        <FlatList
+          data={esimRequests}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <EsimRequestRow req={item} dealerName={dealerName(item.dealer_id)} colors={colors} onProcess={() => setProcessingEsim(item)} />
+          )}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, gap: 10 }}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <EmptyState icon={<CreditCard size={32} color={colors.textMuted} strokeWidth={2} />} title="لا توجد طلبات eSIM" subtitle="ستظهر طلبات الشرائح الإلكترونية من الموزعين هنا" />
+            </View>
+          }
+        />
       ) : tab === 'pricing' ? (
         <>
           <View style={styles.addActionArea}>
@@ -417,6 +528,30 @@ export default function DealersManagementScreen() {
             }
           />
         </>
+      ) : tab === 'debts' ? (
+        <FlatList
+          data={debts}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <DebtRow debt={item} dealerName={dealerName(item.dealer_id)} colors={colors} />
+          )}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, gap: 10 }}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          ListHeaderComponent={debts.length > 0 ? (
+            <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 10 }]}>
+              <Wallet size={20} color={colors.danger} strokeWidth={2} />
+              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>إجمالي الديون المتبقية</Text>
+              <Text style={[styles.summaryValue, { color: colors.danger }]}>₪{totalDebtRemaining.toFixed(2)}</Text>
+            </View>
+          ) : undefined}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <EmptyState icon={<Wallet size={32} color={colors.textMuted} strokeWidth={2} />} title="لا توجد ديون" subtitle="ستظهر ديون زبائن الموزعين هنا" />
+            </View>
+          }
+        />
       ) : (
         <FlatList
           data={sims}
@@ -439,11 +574,105 @@ export default function DealersManagementScreen() {
       <AddDealerModal visible={showDealerModal} onClose={() => setShowDealerModal(false)} onCreated={() => { setShowDealerModal(false); void fetchData(); }} colors={colors} ownerId={session?.user?.id || ''} />
       <PricingModal visible={showPricingModal} onClose={() => { setShowPricingModal(false); setEditingPricing(null); }} onSaved={() => { setShowPricingModal(false); setEditingPricing(null); void fetchData(); }} colors={colors} ownerId={session?.user?.id || ''} editing={editingPricing} />
       <ProcessRequestModal req={processingRequest} dealerName={processingRequest ? dealerName(processingRequest.dealer_id) : ''} colors={colors} onClose={() => setProcessingRequest(null)} onProcess={processRequest} />
+      <ProcessEsimModal req={processingEsim} dealerName={processingEsim ? dealerName(processingEsim.dealer_id) : ''} colors={colors} onClose={() => setProcessingEsim(null)} onProcess={processEsimRequest} />
     </ScrollView>
   );
 }
 
 // ============ ROW COMPONENTS ============
+function EsimRequestRow({ req, dealerName, colors, onProcess }: { req: EsimRequest; dealerName: string; colors: any; onProcess: () => void }) {
+  const statusColors: Record<string, string> = { pending: colors.warning, completed: colors.success, rejected: colors.danger };
+  const statusLabels: Record<string, string> = { pending: 'قيد الانتظار', completed: 'مكتمل', rejected: 'مرفوض' };
+  const color = statusColors[req.status] || colors.textMuted;
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.surface }]}>
+      <View style={styles.cardHeader}>
+        <View style={[styles.simIcon, { backgroundColor: (color) + '20' }]}>
+          <CreditCard size={18} color={color} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={styles.reqTopRow}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>{req.customer_name}</Text>
+            <View style={[styles.statusPill, { backgroundColor: color + '20' }]}>
+              <Text style={[styles.statusText, { color }]}>{statusLabels[req.status] || req.status}</Text>
+            </View>
+          </View>
+          <Text style={[styles.cardSub, { color: colors.textMuted }]}>الموزع: {dealerName}</Text>
+          {req.company_name && <Text style={[styles.cardSub, { color: colors.textMuted }]}>🏢 {req.company_name} — {req.bundle_name}</Text>}
+          {req.contact_phone && <Text style={[styles.cardSub, { color: colors.textMuted }]}>☎ {req.contact_phone}</Text>}
+          {req.sale_price > 0 && <Text style={[styles.cardSub, { color: colors.accent }]}>💰 سعر البيع: ₪{Number(req.sale_price).toFixed(2)}</Text>}
+          {req.phone_number_assigned && req.status === 'completed' && (
+            <Text style={[styles.cardSub, { color: colors.success }]}>✓ رقم مفعّل: {req.phone_number_assigned}</Text>
+          )}
+          {req.barcode_image_url && req.status === 'completed' && (
+            <Text style={[styles.cardSub, { color: colors.info }]}>📷 باركود: {req.barcode_image_url}</Text>
+          )}
+          <Text style={[styles.timeText, { color: colors.textMuted }]}>{new Date(req.created_at).toLocaleString('ar')}</Text>
+        </View>
+      </View>
+
+      {req.owner_reply && (
+        <View style={[styles.replyBox, { backgroundColor: colors.info + '10', borderColor: colors.info + '30' }]}>
+          <MessageSquare size={14} color={colors.info} strokeWidth={2} />
+          <Text style={[styles.replyText, { color: colors.info }]}>{req.owner_reply}</Text>
+        </View>
+      )}
+
+      {req.status === 'pending' && (
+        <TouchableOpacity style={[styles.processBtn, { backgroundColor: colors.primary }]} onPress={onProcess}>
+          <Text style={styles.processBtnText}>معالجة طلب eSIM</Text>
+        </TouchableOpacity>
+      )}
+      {req.status === 'completed' && (
+        <TouchableOpacity style={[styles.processBtn, { backgroundColor: colors.success + '20', borderColor: colors.success, borderWidth: 1 }]} onPress={onProcess}>
+          <Text style={[styles.processBtnText, { color: colors.success }]}>عرض / تعديل</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+function DebtRow({ debt, dealerName, colors }: { debt: CustomerDebt; dealerName: string; colors: any }) {
+  const statusColors: Record<string, string> = { full: colors.success, partial: colors.warning, debt: colors.danger };
+  const statusLabels: Record<string, string> = { full: 'مدفوع كامل', partial: 'مدفوع جزئي', debt: 'دين' };
+  const remaining = Number(debt.amount) - Number(debt.paid_amount);
+  const color = statusColors[debt.payment_status] || colors.textMuted;
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.surface }]}>
+      <View style={styles.cardHeader}>
+        <View style={[styles.simIcon, { backgroundColor: color + '20' }]}>
+          <Wallet size={18} color={color} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={styles.reqTopRow}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>₪{Number(debt.amount).toFixed(2)}</Text>
+            <View style={[styles.statusPill, { backgroundColor: color + '20' }]}>
+              <Text style={[styles.statusText, { color }]}>{statusLabels[debt.payment_status] || debt.payment_status}</Text>
+            </View>
+          </View>
+          <Text style={[styles.cardSub, { color: colors.textMuted }]}>الموزع: {dealerName}</Text>
+          {debt.description && <Text style={[styles.cardSub, { color: colors.textMuted }]}>{debt.description}</Text>}
+          {debt.paid_amount > 0 && (
+            <View style={styles.priceRow}>
+              <View style={styles.priceCol}>
+                <Text style={[styles.priceLabel, { color: colors.textMuted }]}>المدفوع</Text>
+                <Text style={[styles.priceValue, { color: colors.success }]}>₪{Number(debt.paid_amount).toFixed(2)}</Text>
+              </View>
+              <View style={styles.priceCol}>
+                <Text style={[styles.priceLabel, { color: colors.textMuted }]}>المتبقي</Text>
+                <Text style={[styles.priceValue, { color: colors.warning }]}>₪{remaining.toFixed(2)}</Text>
+              </View>
+            </View>
+          )}
+          <Text style={[styles.timeText, { color: colors.textMuted }]}>{new Date(debt.created_at).toLocaleString('ar')}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function RequestRow({ req, dealerName, colors, onProcess }: { req: RechargeRequest; dealerName: string; colors: any; onProcess: () => void }) {
   const statusColors: Record<string, string> = { pending: colors.warning, approved: colors.info, completed: colors.success, rejected: colors.danger };
   const statusLabels: Record<string, string> = { pending: 'قيد الانتظار', approved: 'موافق عليه', completed: 'مكتمل', rejected: 'مرفوض' };
@@ -872,6 +1101,71 @@ function ProcessRequestModal({ req, dealerName, colors, onClose, onProcess }: { 
   );
 }
 
+function ProcessEsimModal({ req, dealerName, colors, onClose, onProcess }: { req: EsimRequest | null; dealerName: string; colors: any; onClose: () => void; onProcess: (req: EsimRequest, action: 'complete' | 'reject', extra?: { reply?: string; phoneAssigned?: string; barcodeUrl?: string }) => void }) {
+  const [phoneAssigned, setPhoneAssigned] = useState('');
+  const [barcodeUrl, setBarcodeUrl] = useState('');
+  const [reply, setReply] = useState('');
+
+  useEffect(() => {
+    if (req) {
+      setPhoneAssigned(req.phone_number_assigned || '');
+      setBarcodeUrl(req.barcode_image_url || '');
+      setReply(req.owner_reply || '');
+    }
+  }, [req]);
+
+  if (!req) return null;
+
+  return (
+    <BaseModal visible={req !== null} onClose={onClose} title={`معالجة eSIM: ${req.customer_name}`}
+      footer={
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {req.status === 'pending' && (
+            <TouchableOpacity onPress={() => onProcess(req, 'reject', { reply })} style={[styles.submitBtn, { backgroundColor: colors.danger, flex: 1 }]}>
+              <Text style={styles.submitText}>رفض</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => onProcess(req, 'complete', { reply, phoneAssigned, barcodeUrl })} style={[styles.submitBtn, { backgroundColor: colors.success, flex: 1 }]}>
+            <Text style={styles.submitText}>{req.status === 'completed' ? 'تحديث' : 'استكمال'}</Text>
+          </TouchableOpacity>
+        </View>
+      }
+    >
+      <View style={{ gap: 12 }}>
+        <View style={[styles.reqDetailBox, { backgroundColor: colors.surfaceAlt }]}>
+          <Text style={[styles.reqDetailText, { color: colors.text }]}>الموزع: {dealerName}</Text>
+          <Text style={[styles.reqDetailText, { color: colors.textMuted }]}>الشركة: {req.company_name}</Text>
+          <Text style={[styles.reqDetailText, { color: colors.textMuted }]}>الحزمة: {req.bundle_name}</Text>
+          {req.contact_phone && <Text style={[styles.reqDetailText, { color: colors.textMuted }]}>رقم التواصل: {req.contact_phone}</Text>}
+          <Text style={[styles.reqDetailText, { color: colors.accent }]}>سعر البيع: ₪{Number(req.sale_price).toFixed(2)}</Text>
+        </View>
+
+        {req.barcode_image_url && req.status === 'completed' && (
+          <View style={[styles.replyBox, { backgroundColor: colors.info + '10', borderColor: colors.info + '30' }]}>
+            <ImageIcon size={14} color={colors.info} strokeWidth={2} />
+            <Text style={[styles.replyText, { color: colors.info }]}>باركود حالي: {req.barcode_image_url}</Text>
+          </View>
+        )}
+
+        <View>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>رقم الهاتف المفعّل</Text>
+          <TextInput value={phoneAssigned} onChangeText={setPhoneAssigned} placeholder="رقم الهاتف الجديد" placeholderTextColor={colors.textMuted} keyboardType="phone-pad" style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
+        </View>
+
+        <View>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>رابط صورة الباركود</Text>
+          <TextInput value={barcodeUrl} onChangeText={setBarcodeUrl} placeholder="https://..." placeholderTextColor={colors.textMuted} keyboardType="url" autoCapitalize="none" style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
+        </View>
+
+        <View>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>رد على الموزع</Text>
+          <TextInput value={reply} onChangeText={setReply} placeholder="رد اختياري..." placeholderTextColor={colors.textMuted} multiline style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, minHeight: 60 }]} />
+        </View>
+      </View>
+    </BaseModal>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 },
@@ -939,4 +1233,7 @@ const styles = StyleSheet.create({
   priceRowModal: { flexDirection: 'row', gap: 8 },
   reqDetailBox: { borderRadius: 10, padding: 12, gap: 4 },
   reqDetailText: { fontSize: 13, fontFamily: 'Cairo-Regular' },
+  summaryCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'transparent' },
+  summaryLabel: { flex: 1, fontSize: 13, fontFamily: 'Cairo-Regular' },
+  summaryValue: { fontSize: 18, fontWeight: '700', fontFamily: 'Cairo-Bold' },
 });

@@ -15,7 +15,8 @@ import { GlobalSearch } from '@/components/GlobalSearch';
 import { useTheme } from '@/lib/theme-context';
 import { formatCurrency, fillSmsTemplate, normalizePhoneNumber } from '@/lib/format';
 import { createEscalationState } from '@/lib/debt-escalation';
-import type { TelecomCompany, SimCard, SubAgent, Customer, TelecomSale, TelecomSaleMode, SimType, PaymentMethod, PaymentStatus, DebtReminderFrequency, AgentBundle, FollowUpStatus } from '@/types';
+import type { TelecomCompany, SimCard, SubAgent, Customer, TelecomSale, TelecomSaleMode, SimType, PaymentMethod, PaymentStatus, DebtReminderFrequency, AgentBundle, FollowUpStatus, WalletType } from '@/types';
+import { ELECTRONIC_WALLET_TYPES } from '@/types';
 import { BaseModal } from '@/components/BaseModal';
 import { EmptyState } from '@/components/EmptyState';
 import { CashCalculator } from '@/components/CashCalculator';
@@ -37,6 +38,7 @@ export default function TelecomPOSScreen() {
     addCustomer, updateCustomer, recordPayment,
     addDebtReminder, activeShift, currentStaff, readOnlyMode,
     agentBundles, logOutboundSms, updateSubAgent, phoneNumbers,
+    addWalletTransaction,
   } = useApp();
   const { colors } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -67,6 +69,7 @@ export default function TelecomPOSScreen() {
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('paid_full');
+  const [selectedWalletType, setSelectedWalletType] = useState<WalletType>('palpay');
   const [reminderDate, setReminderDate] = useState('');
   const [showCashCalc, setShowCashCalc] = useState(false);
   const [notes, setNotes] = useState('');
@@ -116,6 +119,7 @@ export default function TelecomPOSScreen() {
   const [collectSale, setCollectSale] = useState<TelecomSale | null>(null);
   const [collectAmount, setCollectAmount] = useState('');
   const [collectPaymentMethod, setCollectPaymentMethod] = useState<PaymentMethod>('cash');
+  const [collectWalletType, setCollectWalletType] = useState<WalletType>('palpay');
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
 
   const [cancelSale, setCancelSale] = useState<TelecomSale | null>(null);
@@ -584,6 +588,7 @@ export default function TelecomPOSScreen() {
             paymentMethod: 'cash',
             paymentStatus: 'paid_full',
             paymentDate: null,
+            walletType: null,
             reminderDate: null,
             debtChange: 0,
             followUpStatus: 'not_contacted',
@@ -750,6 +755,7 @@ export default function TelecomPOSScreen() {
           paymentMethod: 'cash',
           paymentStatus: 'paid_full',
           paymentDate: null,
+          walletType: null,
           reminderDate: null,
           debtChange: 0,
           followUpStatus: 'not_contacted',
@@ -1355,6 +1361,7 @@ export default function TelecomPOSScreen() {
     setPaidAmount('');
     setPaymentMethod('cash');
     setPaymentStatus('paid_full');
+    setSelectedWalletType('palpay');
     setReminderDate('');
     setReminderEnabled(false);
     setNotes('');
@@ -1441,6 +1448,7 @@ export default function TelecomPOSScreen() {
         paymentMethod,
         paymentStatus: effectiveRemaining > 0 ? (effectivePaid > 0 ? 'paid_partial' : 'unpaid') : 'paid_full',
         paymentDate: effectivePaid > 0 ? Date.now() : null,
+        walletType: paymentMethod === 'wallet' ? selectedWalletType : null,
         reminderDate: reminderDate ? new Date(reminderDate).getTime() : null,
         debtChange,
         carryoverDays: 0,
@@ -1483,6 +1491,7 @@ export default function TelecomPOSScreen() {
       paymentMethod,
       paymentStatus: effectiveRemaining > 0 ? (effectivePaid > 0 ? 'paid_partial' : 'unpaid') : 'paid_full',
       paymentDate: effectivePaid > 0 ? Date.now() : null,
+      walletType: paymentMethod === 'wallet' ? selectedWalletType : null,
       reminderDate: reminderDate ? new Date(reminderDate).getTime() : null,
       debtChange,
       followUpStatus: remaining > 0 ? 'not_contacted' : 'collected',
@@ -1513,6 +1522,18 @@ export default function TelecomPOSScreen() {
       if (cust) {
         updateCustomer(customerId, { balance: Math.max(0, cust.balance - effectivePaid), updatedAt: Date.now() });
       }
+    }
+
+    if (paymentMethod === 'wallet' && effectivePaid > 0) {
+      addWalletTransaction({
+        walletType: selectedWalletType,
+        type: 'sale',
+        amount: effectivePaid,
+        category: 'مبيعات اتصالات',
+        description: `${selectedCompany.name} - ${customerName.trim() || 'عميل'} - ${simNumber.trim()}`,
+        relatedTxnId: sale.id,
+        shiftId: activeShift?.id ?? null,
+      });
     }
 
     // Check if this customer's phone belongs to a dealer's customer and notify dealer with commission
@@ -1579,6 +1600,7 @@ export default function TelecomPOSScreen() {
     setSerialNumber(sale.serialNumber || '');
     setPaymentMethod('cash');
     setPaymentStatus('paid_full');
+    setSelectedWalletType('palpay');
     setPaidAmount('');
     setReminderDate('');
     setNotes('');
@@ -1616,6 +1638,7 @@ export default function TelecomPOSScreen() {
     setSimNumber(sale.simNumber);
     setSerialNumber(sale.serialNumber || '');
     setPaymentMethod(sale.paymentMethod);
+    setSelectedWalletType(sale.walletType ?? 'palpay');
     setPaymentStatus(sale.paymentStatus || (sale.remaining <= 0 ? 'paid_full' : sale.paid > 0 ? 'paid_partial' : 'unpaid'));
     setPaidAmount(sale.paid > 0 ? sale.paid.toString() : '');
     setReminderDate(sale.reminderDate ? new Date(sale.reminderDate).toISOString().split('T')[0] : '');
@@ -1663,6 +1686,7 @@ export default function TelecomPOSScreen() {
     setCollectSale(sale);
     setCollectAmount(sale.remaining.toString());
     setCollectPaymentMethod('cash');
+    setCollectWalletType('palpay');
   };
 
   const confirmCollectFromHistory = () => {
@@ -1671,13 +1695,25 @@ export default function TelecomPOSScreen() {
     if (amount <= 0) return;
     handleCollectDebt(collectSale.customerId, amount);
     if (amount >= collectSale.remaining) {
-      updateTelecomSale(collectSale.id, { remaining: 0, paid: collectSale.total, paymentMethod: collectPaymentMethod, debtChange: 0, followUpStatus: 'collected', paymentDate: Date.now() });
+      updateTelecomSale(collectSale.id, { remaining: 0, paid: collectSale.total, paymentMethod: collectPaymentMethod, walletType: collectPaymentMethod === 'wallet' ? collectWalletType : null, debtChange: 0, followUpStatus: 'collected', paymentDate: Date.now() });
     } else {
-      updateTelecomSale(collectSale.id, { remaining: collectSale.remaining - amount, paid: collectSale.paid + amount, paymentMethod: collectPaymentMethod, followUpStatus: 'contacted', paymentDate: Date.now() });
+      updateTelecomSale(collectSale.id, { remaining: collectSale.remaining - amount, paid: collectSale.paid + amount, paymentMethod: collectPaymentMethod, walletType: collectPaymentMethod === 'wallet' ? collectWalletType : null, followUpStatus: 'contacted', paymentDate: Date.now() });
+    }
+    if (collectPaymentMethod === 'wallet' && amount > 0) {
+      addWalletTransaction({
+        walletType: collectWalletType,
+        type: 'sale',
+        amount,
+        category: 'تحصيل دين اتصالات',
+        description: `${collectSale.companyName} - ${collectSale.customerName} - ${collectSale.simNumber}`,
+        relatedTxnId: collectSale.id,
+        shiftId: activeShift?.id ?? null,
+      });
     }
     setCollectSale(null);
     setCollectAmount('');
     setCollectPaymentMethod('cash');
+    setCollectWalletType('palpay');
   };
 
   const handleCancelSale = (sale: TelecomSale) => {
@@ -2486,6 +2522,20 @@ export default function TelecomPOSScreen() {
                 <Text style={[styles.paymentText3Col, { color: paymentMethod === 'usdt' ? '#FFFFFF' : colors.textSecondary }]}>USDT</Text>
               </TouchableOpacity>
             </View>
+            {paymentMethod === 'wallet' && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                {ELECTRONIC_WALLET_TYPES.map((w) => (
+                  <TouchableOpacity
+                    key={w.id}
+                    onPress={() => setSelectedWalletType(w.id)}
+                    style={[styles.walletChip, selectedWalletType === w.id ? { backgroundColor: w.color } : { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.walletChipText, { color: selectedWalletType === w.id ? '#FFFFFF' : colors.textSecondary }]}>{w.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
             {selectedCustomer && selectedCustomer.balance > 0 && (
               <TouchableOpacity
                 onPress={() => { setPaymentMethod('balance'); setPaymentStatus('paid_full'); setPaidAmount(total.toFixed(2)); }}
@@ -2946,7 +2996,7 @@ export default function TelecomPOSScreen() {
       {/* Collect Debt from History */}
       <BaseModal
         visible={!!collectSale}
-        onClose={() => { setCollectSale(null); setCollectAmount(''); setCollectPaymentMethod('cash'); }}
+        onClose={() => { setCollectSale(null); setCollectAmount(''); setCollectPaymentMethod('cash'); setCollectWalletType('palpay'); }}
         title="تحصيل دين"
         footer={
           <View style={styles.deleteFooter}>
@@ -3018,6 +3068,20 @@ export default function TelecomPOSScreen() {
                 <Text style={[styles.paymentText3Col, { color: collectPaymentMethod === 'usdt' ? '#FFFFFF' : colors.textSecondary }]}>USDT</Text>
               </TouchableOpacity>
             </View>
+            {collectPaymentMethod === 'wallet' && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                {ELECTRONIC_WALLET_TYPES.map((w) => (
+                  <TouchableOpacity
+                    key={w.id}
+                    onPress={() => setCollectWalletType(w.id)}
+                    style={[styles.walletChip, collectWalletType === w.id ? { backgroundColor: w.color } : { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.walletChipText, { color: collectWalletType === w.id ? '#FFFFFF' : colors.textSecondary }]}>{w.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
             <View style={styles.collectActions}>
               <TouchableOpacity
                 onPress={() => setCollectAmount(collectSale.remaining.toString())}
@@ -3513,6 +3577,8 @@ const styles = StyleSheet.create({
   paymentBtn3Col: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 7, borderRadius: 7, borderWidth: 1, borderColor: 'transparent' },
   mobilePaymentBtn3Col: { minWidth: 0, paddingVertical: 10, borderRadius: 10 },
   paymentText3Col: { fontSize: 11, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  walletChip: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: 'transparent' },
+  walletChipText: { fontSize: 10, fontWeight: '600', fontFamily: 'Cairo-SemiBold' },
   balanceBtn3Col: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 7, borderRadius: 7, borderWidth: 1, marginTop: 4 },
   calcBtn3Col: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   totalCard3Col: { padding: 8, borderRadius: 8, borderWidth: 1, gap: 4 },
