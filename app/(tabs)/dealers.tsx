@@ -3,13 +3,13 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Users, Phone, Plus, Search, Trash2, Power, AlertCircle, Check,
   Clock, X, Wallet, Send, Tag, Smartphone, MessageSquare, ChevronLeft,
-  CreditCard, Image as ImageIcon,
+  CreditCard, Image as ImageIcon, Download,
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { storage } from '@/lib/storage';
-import type { Customer, TelecomSale } from '@/types';
+import type { Customer, TelecomSale, Bundle, AgentBundle } from '@/types';
 import { BaseModal } from '@/components/BaseModal';
 import { EmptyState } from '@/components/EmptyState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -120,6 +120,7 @@ export default function DealersManagementScreen() {
   const [editingPricing, setEditingPricing] = useState<PricingEntry | null>(null);
   const [processingRequest, setProcessingRequest] = useState<RechargeRequest | null>(null);
   const [processingEsim, setProcessingEsim] = useState<EsimRequest | null>(null);
+  const [importing, setImporting] = useState(false);
   const lastPendingIdRef = useRef<string | null>(null);
 
   // Poll for new pending recharge requests and show browser notifications
@@ -187,7 +188,7 @@ export default function DealersManagementScreen() {
       const [dealersRes, reqRes, pricingRes, simsRes, esimRes, debtsRes] = await Promise.all([
         supabase.from('dealers').select('*').eq('owner_user_id', session.user.id).order('created_at', { ascending: false }),
         supabase.from('dealer_recharge_requests').select('*, dealer_id').order('created_at', { ascending: false }).limit(100),
-        supabase.from('dealer_pricing').select('*').eq('owner_user_id', session.user.id).order('company_name', { ascending: true }),
+        supabase.from('dealer_pricing').select('*').eq('owner_user_id', session.user.id).order('company_name', { ascending: false }),
         supabase.from('dealer_plastic_sims').select('*').order('created_at', { ascending: false }),
         supabase.from('dealer_esim_requests').select('*').order('created_at', { ascending: false }).limit(100),
         supabase.from('dealer_customer_debts').select('*').order('created_at', { ascending: false }).limit(100),
@@ -362,6 +363,74 @@ export default function DealersManagementScreen() {
     setPricing((prev) => prev.filter((p) => p.id !== id));
   };
 
+  const importFromInventory = async () => {
+    if (!session?.user?.id) return;
+    setImporting(true);
+    setError('');
+    try {
+      const [bundles, agentBundles] = await Promise.all([
+        storage.getBundles(),
+        storage.getAgentBundles(),
+      ]);
+
+      type ImportRow = { company_name: string; bundle_name: string; bundle_type: string; dealer_price: number; sale_price: number; cost: number; duration_days: number };
+      const entries: ImportRow[] = [];
+
+      for (const b of bundles as Bundle[]) {
+        if (!b.active) continue;
+        entries.push({
+          company_name: b.companyName,
+          bundle_name: b.name,
+          bundle_type: 'monthly',
+          dealer_price: b.price,
+          sale_price: 0,
+          cost: b.cost,
+          duration_days: b.durationDays,
+        });
+      }
+
+      for (const ab of agentBundles as AgentBundle[]) {
+        if (!ab.active) continue;
+        const monthPrice = ab.prices?.['month'] ?? ab.prices?.['1_month'] ?? Object.values(ab.prices)[0] ?? 0;
+        if (monthPrice <= 0) continue;
+        entries.push({
+          company_name: ab.companyName,
+          bundle_name: ab.bundleName,
+          bundle_type: ab.bundleType || 'offer',
+          dealer_price: monthPrice,
+          sale_price: 0,
+          cost: ab.cost,
+          duration_days: 30,
+        });
+      }
+
+      const existingKeys = new Set(pricing.map((p) => `${p.company_name}|${p.bundle_name}`));
+      const newEntries = entries.filter((e) => !existingKeys.has(`${e.company_name}|${e.bundle_name}`));
+
+      if (newEntries.length === 0) {
+        setError('جميع الحزم مستوردة مسبقاً');
+        setImporting(false);
+        return;
+      }
+
+      const rows = newEntries.map((e) => ({
+        owner_user_id: session.user.id,
+        ...e,
+        active: true,
+      }));
+
+      const { error: insertError } = await supabase.from('dealer_pricing').insert(rows);
+      if (insertError) {
+        setError('تعذر استيراد الحزم');
+      } else {
+        void fetchData();
+      }
+    } catch {
+      setError('تعذر استيراد الحزم');
+    }
+    setImporting(false);
+  };
+
   const deleteSim = async (id: string) => {
     await supabase.from('dealer_plastic_sims').delete().eq('id', id);
     setSims((prev) => prev.filter((s) => s.id !== id));
@@ -508,10 +577,14 @@ export default function DealersManagementScreen() {
         />
       ) : tab === 'pricing' ? (
         <>
-          <View style={styles.addActionArea}>
-            <TouchableOpacity onPress={() => { setEditingPricing(null); setShowPricingModal(true); }} style={[styles.addBtn, { backgroundColor: colors.primary }]}>
+          <View style={[styles.addActionArea, { flexDirection: 'row', gap: 8 }]}>
+            <TouchableOpacity onPress={() => { setEditingPricing(null); setShowPricingModal(true); }} style={[styles.addBtn, { backgroundColor: colors.primary, flex: 1 }]}>
               <Plus size={20} color="#FFFFFF" strokeWidth={2} />
               <Text style={styles.addBtnText}>إضافة تسعير</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={importFromInventory} disabled={importing} style={[styles.addBtn, { backgroundColor: colors.accent, flex: 1, opacity: importing ? 0.6 : 1 }]}>
+              {importing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Download size={20} color="#FFFFFF" strokeWidth={2} />}
+              <Text style={styles.addBtnText}>استيراد من المخزون</Text>
             </TouchableOpacity>
           </View>
           <FlatList
@@ -804,10 +877,6 @@ function PricingRow({ entry, colors, onEdit, onDelete }: { entry: PricingEntry; 
             <View style={styles.priceCol}>
               <Text style={[styles.priceLabel, { color: colors.textMuted }]}>سعر البيع</Text>
               <Text style={[styles.priceValue, { color: colors.success }]}>₪{entry.sale_price}</Text>
-            </View>
-            <View style={styles.priceCol}>
-              <Text style={[styles.priceLabel, { color: colors.textMuted }]}>التكلفة</Text>
-              <Text style={[styles.priceValue, { color: colors.danger }]}>₪{entry.cost}</Text>
             </View>
           </View>
         </View>
@@ -1108,7 +1177,6 @@ function PricingModal({ visible, onClose, onSaved, colors, ownerId, editing }: {
   const [bundleType, setBundleType] = useState(editing?.bundle_type || 'monthly');
   const [dealerPrice, setDealerPrice] = useState(String(editing?.dealer_price || '0'));
   const [salePrice, setSalePrice] = useState(String(editing?.sale_price || '0'));
-  const [cost, setCost] = useState(String(editing?.cost || '0'));
   const [duration, setDuration] = useState(String(editing?.duration_days || '30'));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1125,7 +1193,7 @@ function PricingModal({ visible, onClose, onSaved, colors, ownerId, editing }: {
       bundle_type: bundleType,
       dealer_price: parseFloat(dealerPrice) || 0,
       sale_price: parseFloat(salePrice) || 0,
-      cost: parseFloat(cost) || 0,
+      cost: 0,
       duration_days: parseInt(duration) || 30,
       active: true,
     };
@@ -1173,19 +1241,15 @@ function PricingModal({ visible, onClose, onSaved, colors, ownerId, editing }: {
         </View>
         <View style={styles.priceRowModal}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>سعر الموزع</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>سعر الموزع (تكلفته)</Text>
             <TextInput value={dealerPrice} onChangeText={setDealerPrice} keyboardType="numeric" style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>سعر البيع</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>سعر البيع للموزع</Text>
             <TextInput value={salePrice} onChangeText={setSalePrice} keyboardType="numeric" style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
           </View>
         </View>
         <View style={styles.priceRowModal}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>التكلفة</Text>
-            <TextInput value={cost} onChangeText={setCost} keyboardType="numeric" style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
-          </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>المدة (أيام)</Text>
             <TextInput value={duration} onChangeText={setDuration} keyboardType="numeric" style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
