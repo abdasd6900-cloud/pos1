@@ -1,0 +1,39 @@
+diff --git a/node_modules/@react-native-async-storage/async-storage/android/build.gradle b/node_modules/@react-native-async-storage/async-storage/android/build.gradle
+index 4560dc7..65c10eb 100644
+--- a/node_modules/@react-native-async-storage/async-storage/android/build.gradle
++++ b/node_modules/@react-native-async-storage/async-storage/android/build.gradle
+@@ -45,7 +45,7 @@ android {
+         }
+     }
+ 
+-    compileSdkVersion project.ext.AsyncStorageConfig.compileSdkVersion
++    compileSdk project.ext.AsyncStorageConfig.compileSdkVersion
+     // Used to override the NDK path/version by allowing users to customize
+     // the NDK path/version from their root project (e.g. for M1 support)
+     if (rootProject.hasProperty("ndkPath")) {
+@@ -57,14 +57,14 @@ android {
+ 
+ 
+     defaultConfig {
+-        minSdkVersion project.ext.AsyncStorageConfig.minSdkVersion
+-        targetSdkVersion project.ext.AsyncStorageConfig.targetSdkVersion
++        minSdk project.ext.AsyncStorageConfig.minSdkVersion
++        targetSdk project.ext.AsyncStorageConfig.targetSdkVersion
+         buildConfigField "Long", "AsyncStorage_db_size", "${project.ext.AsyncStorageConfig.databaseSizeMB}L"
+         buildConfigField "boolean", "AsyncStorage_useDedicatedExecutor", "${project.ext.AsyncStorageConfig.useDedicatedExecutor}"
+         buildConfigField "boolean", "AsyncStorage_useNextStorage", "${useNextStorage}"
+         buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", "${isNewArchitectureEnabled}"
+     }
+-    lintOptions {
++    lint {
+         abortOnError false
+     }
+ 
+@@ -83,6 +83,7 @@ android {
+                 srcDirs += 'src/kotlinPackage/java'
+             } else {
+                 srcDirs += 'src/javaPackage/java'
++                exclude '**/next/**'
+             }
+ 
+             if (!isNewArchitectureEnabled) {
