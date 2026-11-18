@@ -28,10 +28,10 @@ export function buildTransactionMessage(
   totalDebt?: number,
 ): string {
   const label = transactionType === 'return' ? 'مرتجع' : transactionType === 'payment' ? 'دفعة' : 'معاملة';
+  const debtToShow = totalDebt !== undefined && totalDebt > 0 ? totalDebt : remaining;
   let msg = `عزيزي ${customerName || 'العميل'}، تم تسجيل ${label}`;
   if (phone) msg += ` لرقم: ${phone}`;
-  msg += `، المبلغ: ${total.toFixed(2)}، المدفوع: ${paid.toFixed(2)}، الإجمالي: ${remaining.toFixed(2)}`;
-  if (totalDebt !== undefined && totalDebt > 0) msg += `، إجمالي الدين عليك: ${totalDebt.toFixed(2)}`;
+  msg += `، المبلغ: ${total.toFixed(2)}، المدفوع: ${paid.toFixed(2)}، الاجمالي: ${debtToShow.toFixed(2)}`;
   msg += '، شكراً لثقتكم بنا';
   return msg;
 }
