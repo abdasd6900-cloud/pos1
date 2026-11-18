@@ -146,7 +146,7 @@ public class SmsGatewayService extends Service {
                     continue;
                 }
 
-                boolean sent = sendSmsNative(phone, message);
+                boolean sent = sendSmsNative(phone, message, row.optString("event_id", ""), id);
 
                 if (sent) {
                     updateOutboxRow(id, "sent", null, true);
@@ -165,16 +165,38 @@ public class SmsGatewayService extends Service {
         }
     }
 
-    private boolean sendSmsNative(String phone, String message) {
+    private boolean sendSmsNative(String phone, String message, String eventId, String rowId) {
         try {
             SmsManager smsManager = SmsManager.getDefault();
+
+            // Create delivery intent that carries the event_id and row_id
+            Intent deliveryIntent = new Intent("com.sahabpos.sms.SMS_DELIVERED");
+            deliveryIntent.putExtra("phone", phone);
+            deliveryIntent.putExtra("event_id", eventId);
+            deliveryIntent.putExtra("row_id", rowId);
+            deliveryIntent.putExtra("timestamp", System.currentTimeMillis());
+            android.app.PendingIntent deliveredPI = android.app.PendingIntent.getBroadcast(
+                this, 0, deliveryIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+
+            Intent sentIntent = new Intent("com.sahabpos.sms.SMS_SENT");
+            sentIntent.putExtra("event_id", eventId);
+            sentIntent.putExtra("row_id", rowId);
+            android.app.PendingIntent sentPI = android.app.PendingIntent.getBroadcast(
+                this, 0, sentIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+
             if (message.length() > 70) {
                 java.util.ArrayList<String> parts = smsManager.divideMessage(message);
-                smsManager.sendMultipartTextMessage(phone, null, parts, null, null);
+                java.util.ArrayList<android.app.PendingIntent> sentIntents = new java.util.ArrayList<>();
+                java.util.ArrayList<android.app.PendingIntent> deliveredIntents = new java.util.ArrayList<>();
+                for (int i = 0; i < parts.size(); i++) {
+                    sentIntents.add(i == parts.size() - 1 ? sentPI : null);
+                    deliveredIntents.add(i == parts.size() - 1 ? deliveredPI : null);
+                }
+                smsManager.sendMultipartTextMessage(phone, null, parts, sentIntents, deliveredIntents);
             } else {
-                smsManager.sendTextMessage(phone, null, message, null, null);
+                smsManager.sendTextMessage(phone, null, message, sentPI, deliveredPI);
             }
-            Log.i(TAG, "SMS sent successfully");
+            Log.i(TAG, "SMS sent successfully with delivery tracking for event: " + eventId);
 
             // If we are the default SMS app, write to the sent store
             String myPackage = getPackageName();

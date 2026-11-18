@@ -93,7 +93,7 @@ export async function sendLocalNotification(title: string, body: string): Promis
   }
 }
 
-export function sendWebNotification(title: string, body: string): void {
+export function sendWebNotification(title: string, body: string, requireInteraction = false): void {
   if (Platform.OS !== 'web') return;
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
@@ -101,10 +101,16 @@ export function sendWebNotification(title: string, body: string): void {
     const notif = new Notification(title, {
       body,
       icon: '/assets/images/icon.png',
-      tag: 'sms-incoming',
-      requireInteraction: false,
+      tag: requireInteraction ? `sms-business-${Date.now()}` : 'sms-incoming',
+      requireInteraction,
     });
-    setTimeout(() => notif.close(), 8000);
+    if (!requireInteraction) {
+      setTimeout(() => notif.close(), 8000);
+    }
+    notif.onclick = () => {
+      window.focus();
+      notif.close();
+    };
   } catch {
     // ignore
   }

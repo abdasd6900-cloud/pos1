@@ -127,6 +127,7 @@ const AUTO_LOCK_SECONDS = 30;
 function AppShell() {
   const { isDark, colors } = useTheme();
   const { session } = useAuth();
+  const router = useRouter();
   const [locked, setLocked] = useState(false);
   const { update, applyUpdate, dismissUpdate } = useUpdateNotification();
   const { currentMessage, dismiss: dismissIncomingMessage } = useIncomingSms();
@@ -161,7 +162,11 @@ function AppShell() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <LockScreen visible={locked} onUnlock={() => setLocked(false)} />
       <UpdateModal update={update} onApply={applyUpdate} onDismiss={dismissUpdate} colors={colors} />
-      <IncomingSmsBanner message={currentMessage} onDismiss={dismissIncomingMessage} />
+      <IncomingSmsBanner
+        message={currentMessage}
+        onDismiss={dismissIncomingMessage}
+        onViewMessage={() => router.replace('/(tabs)/messages')}
+      />
     </>
   );
 }

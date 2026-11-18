@@ -4101,6 +4101,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [checkScheduledMessages]);
 
+  // Poll for SMS delivery status updates every 20 seconds
+  // Checks outbound messages with outboxEventId that are still in 'sent' or 'pending' state
+  // and updates their sendStatus to 'delivered' or 'failed' when the server confirms delivery
+  useEffect(() => {
+    const checkDeliveryStatuses = async () => {
+      const pendingOutbound = smsMessages.filter(
+        (m) => m.direction === 'outbound' && m.outboxEventId && (m.sendStatus === 'sent' || m.sendStatus === 'pending'),
+      );
+      if (pendingOutbound.length === 0) return;
+
+      const eventIds = pendingOutbound.map((m) => m.outboxEventId!);
+      const statuses = await fetchOutboxStatuses(eventIds);
+      if (Object.keys(statuses).length === 0) return;
+
+      let changed = false;
+      setSmsMessages((prev) => {
+        const next = prev.map((m) => {
+          if (!m.outboxEventId) return m;
+          const status = statuses[m.outboxEventId];
+          if (!status) return m;
+          if (status.delivery_status === 'delivered' && m.sendStatus !== 'delivered') {
+            changed = true;
+            return { ...m, sendStatus: 'delivered' as const };
+          }
+          if (status.delivery_status === 'failed' && m.sendStatus !== 'failed') {
+            changed = true;
+            return { ...m, sendStatus: 'failed' as const };
+          }
+          if (status.status === 'sent' && m.sendStatus === 'pending') {
+            changed = true;
+            return { ...m, sendStatus: 'sent' as const };
+          }
+          if (status.status === 'failed' && m.sendStatus !== 'failed') {
+            changed = true;
+            return { ...m, sendStatus: 'failed' as const };
+          }
+          return m;
+        });
+        if (changed) storage.saveSmsMessages(next);
+        return next;
+      });
+    };
+
+    const interval = setInterval(() => void checkDeliveryStatuses(), 20000);
+    return () => clearInterval(interval);
+  }, [smsMessages]);
+
   const importDeviceSmsMessages: AppData['importDeviceSmsMessages'] = useCallback(async () => {
     const result = await importDeviceSms();
     if (!result.success || !result.messages) {

@@ -93,12 +93,15 @@ export function useIncomingSms() {
         }
       }
 
-      // Show web notification for customer replies
+      // Show web notification for ALL incoming messages (not just customer replies)
       if (Platform.OS === 'web') {
         for (const evt of newEvents) {
-          if (evt.eventType === 'customerReply') {
-            sendWebNotification(`رسالة من ${evt.senderPhone}`, evt.message);
-          }
+          const title = evt.senderName
+            ? `رسالة من ${evt.senderName}`
+            : `رسالة من ${evt.senderPhone}`;
+          const isBusiness = evt.eventType === 'customerReply' || evt.eventType === 'transaction' || evt.eventType === 'esim';
+          const body = isBusiness ? `[عمل] ${evt.message}` : evt.message;
+          sendWebNotification(title, body, isBusiness);
         }
       }
 
@@ -113,21 +116,20 @@ export function useIncomingSms() {
     if (!session) return;
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    if (Platform.OS !== 'web') {
-      try {
-        channel = supabase
-          .channel('sms_inbox_events_rt')
-          .on(
-            'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'sms_inbox_events' },
-            () => {
-              void pollForNewEvents();
-            },
-          )
-          .subscribe();
-      } catch {
-        // realtime unavailable — polling will handle it
-      }
+    // Realtime subscription for instant delivery (works on both web and native)
+    try {
+      channel = supabase
+        .channel('sms_inbox_events_rt')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'sms_inbox_events' },
+          () => {
+            void pollForNewEvents();
+          },
+        )
+        .subscribe();
+    } catch {
+      // realtime unavailable — polling will handle it
     }
 
     const interval = setInterval(() => {

@@ -108,7 +108,9 @@ export async function enqueueSmsOutbox(phone: string, message: string): Promise<
 export interface OutboxStatusRow {
   event_id: string;
   status: 'pending' | 'sent' | 'failed';
+  delivery_status: 'sent' | 'delivered' | 'failed';
   last_error: string | null;
+  delivered_at: string | null;
 }
 
 export async function fetchOutboxStatuses(eventIds: string[]): Promise<Record<string, OutboxStatusRow>> {
@@ -116,7 +118,7 @@ export async function fetchOutboxStatuses(eventIds: string[]): Promise<Record<st
   try {
     const { data, error } = await supabase
       .from('sms_outbox')
-      .select('event_id, status, last_error')
+      .select('event_id, status, last_error, delivery_status, delivered_at')
       .in('event_id', eventIds);
     if (error || !data) return {};
     const map: Record<string, OutboxStatusRow> = {};
