@@ -26,7 +26,7 @@ import { isContactsSupported, getDeviceContacts, hasContactsPermission, type Dev
 type FilterMode = 'all' | 'vip' | 'debtors' | 'expiring';
 
 export default function CustomersScreen() {
-  const { customers, customerFiles, mergeDuplicateCustomers, transactions, telecomSales, addCustomer, updateCustomer, deleteCustomer, recordPayment, addCustomerBalance, redeemLoyalty, settings } = useApp();
+  const { customers, customerFiles, mergeDuplicateCustomers, transactions, telecomSales, addCustomer, updateCustomer, deleteCustomer, recordPayment, addCustomerBalance, redeemLoyalty, addTransaction, settings } = useApp();
   const { colors } = useTheme();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
@@ -899,7 +899,37 @@ export default function CustomersScreen() {
         onClose={() => setDebtCustomer(null)}
         onConfirm={(amount, note) => {
           if (debtCustomer) {
-            updateCustomer(debtCustomer.id, { debt: debtCustomer.debt + amount });
+            const balanceToUse = Math.min(debtCustomer.balance, amount);
+            const remainingDebt = amount - balanceToUse;
+            if (balanceToUse > 0) {
+              updateCustomer(debtCustomer.id, { balance: Math.max(0, debtCustomer.balance - balanceToUse), updatedAt: Date.now() });
+            }
+            addTransaction({
+              type: 'payment',
+              customerId: debtCustomer.id,
+              customerName: debtCustomer.name,
+              supplierId: null,
+              supplierName: '',
+              items: [],
+              total: 0,
+              paid: 0,
+              remaining: 0,
+              paymentMethod: 'debt',
+              splitPayment: null,
+              debtChange: remainingDebt,
+              loyaltyEarned: 0,
+              note: note || 'إضافة دين جديد',
+              smsSent: false,
+              returnReason: '',
+              originalTxnId: null,
+              currencyCode: settings.defaultCurrencyCode ?? 'SAR',
+              shiftId: null,
+              staffId: null,
+              staffName: '',
+              promotionApplied: null,
+              discountAmount: 0,
+              walletType: null,
+            });
             setDebtCustomer(null);
           }
         }}
