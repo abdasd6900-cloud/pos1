@@ -76,7 +76,7 @@ async function getDeviceId(): Promise<string> {
   return id;
 }
 
-export async function pushCollection(collection: SyncCollectionName, data: SyncData): Promise<void> {
+export async function pushCollection(collection: SyncCollectionName, data: SyncData, userId?: string): Promise<void> {
   try {
     const did = await getDeviceId();
     const now = new Date().toISOString();
@@ -88,6 +88,7 @@ export async function pushCollection(collection: SyncCollectionName, data: SyncD
         data: data as Record<string, unknown>,
         updated_at: now,
         updated_by: did,
+        user_id: userId || null,
       },
       { onConflict: 'collection,user_id' },
     );

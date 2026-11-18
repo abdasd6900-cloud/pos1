@@ -1059,12 +1059,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (syncPushTimerRef.current) return;
     syncPushTimerRef.current = setTimeout(() => {
       syncPushTimerRef.current = null;
+      const uid = session?.user?.id;
       for (const [col, d] of pendingSyncPushRef.current) {
-        void pushCollection(col, d);
+        void pushCollection(col, d, uid);
       }
       pendingSyncPushRef.current.clear();
     }, 2000);
-  }, []);
+  }, [session]);
 
   // Auto-push local state changes to cloud (skips during remote-pull echo)
   useEffect(() => { if (loaded) syncPush('products', products); }, [products, loaded, syncPush]);
@@ -1388,7 +1389,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       storage.saveCustomers(mergedCustomers);
       return mergedCustomers;
     });
-    void pushCollection('customers', mergedCustomers);
+    void pushCollection('customers', mergedCustomers, session?.user?.id);
 
     const nextFiles = buildCustomerFiles(
       mergedCustomers,
