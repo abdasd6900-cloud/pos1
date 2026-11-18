@@ -118,6 +118,8 @@ android {
                 keyAlias 'androiddebugkey'
                 keyPassword 'android'
             }
+            v1SigningEnabled true
+            v2SigningEnabled true
         }
     }
     buildTypes {
@@ -132,9 +134,6 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
-            // Explicitly enable both v1 and v2 APK signing schemes
-            v1SigningEnabled true
-            v2SigningEnabled true
         }
     }
     packagingOptions {
