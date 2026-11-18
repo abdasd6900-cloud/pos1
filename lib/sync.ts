@@ -24,9 +24,16 @@ export function buildTransactionMessage(
   total: number,
   paid: number,
   remaining: number,
+  phone?: string | null,
+  totalDebt?: number,
 ): string {
   const label = transactionType === 'return' ? 'مرتجع' : transactionType === 'payment' ? 'دفعة' : 'معاملة';
-  return `عزيزي ${customerName || 'العميل'}، تم تسجيل ${label}. المبلغ: ${total.toFixed(2)}، المدفوع: ${paid.toFixed(2)}، المتبقي: ${remaining.toFixed(2)}. شكراً لكم`;
+  let msg = `عزيزي ${customerName || 'العميل'}، تم تسجيل ${label}`;
+  if (phone) msg += ` لرقم: ${phone}`;
+  msg += `، المبلغ: ${total.toFixed(2)}، المدفوع: ${paid.toFixed(2)}، الإجمالي: ${remaining.toFixed(2)}`;
+  if (totalDebt !== undefined && totalDebt > 0) msg += `، إجمالي الدين عليك: ${totalDebt.toFixed(2)}`;
+  msg += '، شكراً لثقتكم بنا';
+  return msg;
 }
 
 export async function publishSyncEvent(

@@ -1635,12 +1635,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addAuditEntry('return', 'transaction', txn.id, `مرتجع - السبب: ${txn.returnReason}`);
     }
 
-    const customerPhone = txn.customerId ? customers.find((customer) => customer.id === txn.customerId)?.phone ?? null : null;
+    const saleCustomer = txn.customerId ? customers.find((customer) => customer.id === txn.customerId) : null;
+    const customerPhone = saleCustomer?.phone ?? null;
+    const postTxnDebt = saleCustomer ? Math.max(0, saleCustomer.debt + (txn.debtChange ?? 0)) : 0;
     void publishSyncEvent(
       'transaction',
       txn as unknown as Record<string, unknown>,
       customerPhone,
-      null,
+      settings?.enableSms && customerPhone && (txn.type === 'sale' || txn.type === 'return' || txn.type === 'payment')
+        ? buildTransactionMessage(txn.type, txn.customerName, txn.total, txn.paid, txn.remaining, customerPhone, postTxnDebt)
+        : null,
     );
 
     if (txn.customerId && txn.debtChange !== 0 && txn.type !== 'return') {
@@ -1699,12 +1703,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     addAuditEntry('payment', 'transaction', txn.id, `تسديد دين ${amount} - ${customer?.name ?? ''}`);
     const paymentPhone = customer?.phone ?? null;
+    const postPaymentDebt = customer ? Math.max(0, customer.debt - amount) : 0;
     void publishSyncEvent(
       'transaction',
       txn as unknown as Record<string, unknown>,
       paymentPhone,
       settings?.enableSms && paymentPhone
-        ? buildTransactionMessage('payment', txn.customerName, txn.total, txn.paid, txn.remaining)
+        ? buildTransactionMessage('payment', txn.customerName, txn.total, txn.paid, txn.remaining, paymentPhone, postPaymentDebt)
         : null,
     );
     return txn;
@@ -1785,13 +1790,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     addAuditEntry('return', 'transaction', txn.id, `مرتجع بقيمة ${returnTotal} - ${reason}`);
-    const returnPhone = original.customerId ? customers.find((c) => c.id === original.customerId)?.phone ?? null : null;
+    const returnCustomer = original.customerId ? customers.find((c) => c.id === original.customerId) : null;
+    const returnPhone = returnCustomer?.phone ?? null;
+    const postReturnDebt = returnCustomer ? Math.max(0, returnCustomer.debt + debtChange) : 0;
     void publishSyncEvent(
       'transaction',
       txn as unknown as Record<string, unknown>,
       returnPhone,
       settings?.enableSms && returnPhone
-        ? buildTransactionMessage('return', txn.customerName, txn.total, txn.paid, txn.remaining)
+        ? buildTransactionMessage('return', txn.customerName, txn.total, txn.paid, txn.remaining, returnPhone, postReturnDebt)
         : null,
     );
     return txn;
