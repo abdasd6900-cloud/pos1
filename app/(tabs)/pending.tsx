@@ -46,6 +46,37 @@ export default function PendingOperationsScreen() {
   const unmatchedNotifications = useMemo(() => transferNotifications.filter((n) => n.status === 'unmatched'), [transferNotifications]);
   const matchedNotifications = useMemo(() => transferNotifications.filter((n) => n.status !== 'unmatched'), [transferNotifications]);
 
+  type UnifiedItemType = 'pending_op' | 'freeze' | 'support' | 'unrecognized' | 'reactivation' | 'transfer';
+
+  interface UnifiedItem {
+    id: string;
+    type: UnifiedItemType;
+    isPending: boolean;
+    createdAt: number;
+    raw: PendingOperation | FreezeRequest | SupportTicket | UnrecognizedMessage | TelecomSale | TransferNotification;
+  }
+
+  const allPendingUnified = useMemo<UnifiedItem[]>(() => {
+    const items: UnifiedItem[] = [];
+    pendingOperations.forEach((o) => { if (o.status === 'pending') items.push({ id: o.id, type: 'pending_op', isPending: true, createdAt: o.createdAt, raw: o }); });
+    freezeRequests.forEach((r) => { if (r.status === 'pending') items.push({ id: r.id, type: 'freeze', isPending: true, createdAt: r.createdAt, raw: r }); });
+    supportTickets.forEach((t) => { if (['pending', 'forwarded', 'auto_forwarded', 'queued_off_hours'].includes(t.status)) items.push({ id: t.id, type: 'support', isPending: true, createdAt: t.createdAt, raw: t }); });
+    unrecognizedMessages.forEach((m) => { if (m.status === 'pending') items.push({ id: m.id, type: 'unrecognized', isPending: true, createdAt: m.createdAt, raw: m }); });
+    telecomSales.forEach((s) => { if (s.escalationState?.phase === 'reactivated') items.push({ id: s.id, type: 'reactivation', isPending: true, createdAt: s.escalationState.updatedAt, raw: s }); });
+    transferNotifications.forEach((n) => { if (['unmatched', 'matched'].includes(n.status)) items.push({ id: n.id, type: 'transfer', isPending: true, createdAt: n.receivedAt, raw: n }); });
+    return items.sort((a, b) => b.createdAt - a.createdAt);
+  }, [pendingOperations, freezeRequests, supportTickets, unrecognizedMessages, telecomSales, transferNotifications]);
+
+  const allExecutedUnified = useMemo<UnifiedItem[]>(() => {
+    const items: UnifiedItem[] = [];
+    pendingOperations.forEach((o) => { if (o.status !== 'pending') items.push({ id: o.id, type: 'pending_op', isPending: false, createdAt: o.executedAt ?? o.createdAt, raw: o }); });
+    freezeRequests.forEach((r) => { if (r.status !== 'pending') items.push({ id: r.id, type: 'freeze', isPending: false, createdAt: r.executedAt ?? r.createdAt, raw: r }); });
+    supportTickets.forEach((t) => { if (['replied', 'closed', 'recharged_by_support', 'update_done'].includes(t.status)) items.push({ id: t.id, type: 'support', isPending: false, createdAt: t.updatedAt ?? t.createdAt, raw: t }); });
+    unrecognizedMessages.forEach((m) => { if (m.status !== 'pending') items.push({ id: m.id, type: 'unrecognized', isPending: false, createdAt: m.resolvedAt ?? m.createdAt, raw: m }); });
+    transferNotifications.forEach((n) => { if (['confirmed', 'rejected', 'expired'].includes(n.status)) items.push({ id: n.id, type: 'transfer', isPending: false, createdAt: n.confirmedAt ?? n.receivedAt, raw: n }); });
+    return items.sort((a, b) => b.createdAt - a.createdAt);
+  }, [pendingOperations, freezeRequests, supportTickets, unrecognizedMessages, transferNotifications]);
+
   const handleConfirmTransfer = (n: TransferNotification) => {
     Alert.alert(
       'تأكيد التحويل',
@@ -845,31 +876,49 @@ export default function PendingOperationsScreen() {
     );
   };
 
+  const renderUnifiedItem = (item: UnifiedItem) => {
+    const indicator = item.isPending ? colors.warning : colors.success;
+    let content: React.ReactNode = null;
+    switch (item.type) {
+      case 'pending_op': content = renderOp(item.raw as PendingOperation); break;
+      case 'freeze': content = renderFreezeRequest(item.raw as FreezeRequest); break;
+      case 'support': content = renderSupportTicket(item.raw as SupportTicket); break;
+      case 'unrecognized': content = renderUnrecognizedMessage(item.raw as UnrecognizedMessage); break;
+      case 'reactivation': content = renderReactivation(item.raw as TelecomSale); break;
+      case 'transfer': content = renderTransferNotification(item.raw as TransferNotification); break;
+    }
+    return (
+      <View key={`u-${item.id}`} style={{ borderRightWidth: 4, borderRightColor: indicator }}>
+        {content}
+      </View>
+    );
+  };
+
   const tabs: { key: TabKey; label: string; count: number; icon: React.ReactNode }[] = [
-    { key: 'pending', label: 'بانتظار', count: pending.length, icon: <Inbox size={16} color={tab === 'pending' ? colors.primary : colors.textMuted} strokeWidth={2} /> },
+    { key: 'pending', label: 'بانتظار', count: allPendingUnified.length, icon: <Inbox size={16} color={tab === 'pending' ? colors.primary : colors.textMuted} strokeWidth={2} /> },
     { key: 'freeze', label: 'تجميد', count: pendingFreeze.length, icon: <Snowflake size={16} color={tab === 'freeze' ? colors.danger : colors.textMuted} strokeWidth={2} /> },
     { key: 'support', label: 'دعم فني', count: pendingSupport.length, icon: <Headphones size={16} color={tab === 'support' ? colors.info : colors.textMuted} strokeWidth={2} /> },
     { key: 'learning', label: 'تعلم', count: pendingUnrecognized.length, icon: <GraduationCap size={16} color={tab === 'learning' ? colors.warning : colors.textMuted} strokeWidth={2} /> },
     { key: 'reactivation', label: 'إعادة تفعيل', count: reactivatedSales.length, icon: <RefreshCw size={16} color={tab === 'reactivation' ? colors.success : colors.textMuted} strokeWidth={2} /> },
     { key: 'transfers', label: 'تحويلات', count: unmatchedNotifications.length, icon: <Banknote size={16} color={tab === 'transfers' ? colors.primary : colors.textMuted} strokeWidth={2} /> },
-    { key: 'executed', label: 'السجل', count: executed.length + executedFreeze.length + resolvedSupport.length, icon: <ArrowRightCircle size={16} color={tab === 'executed' ? colors.primary : colors.textMuted} strokeWidth={2} /> },
+    { key: 'executed', label: 'السجل', count: allExecutedUnified.length, icon: <ArrowRightCircle size={16} color={tab === 'executed' ? colors.primary : colors.textMuted} strokeWidth={2} /> },
   ];
 
-  const isEmpty = (tab === 'pending' && pending.length === 0) ||
+  const isEmpty = (tab === 'pending' && allPendingUnified.length === 0) ||
     (tab === 'freeze' && pendingFreeze.length === 0) ||
     (tab === 'support' && pendingSupport.length === 0) ||
     (tab === 'learning' && pendingUnrecognized.length === 0) ||
     (tab === 'reactivation' && reactivatedSales.length === 0) ||
     (tab === 'transfers' && unmatchedNotifications.length === 0 && matchedNotifications.length === 0) ||
-    (tab === 'executed' && executed.length === 0 && executedFreeze.length === 0 && resolvedSupport.length === 0 && resolvedUnrecognized.length === 0);
+    (tab === 'executed' && allExecutedUnified.length === 0);
 
   const emptyMessages: Record<TabKey, { title: string; sub: string }> = {
-    pending: { title: 'لا توجد عمليات بانتظار التنفيذ', sub: 'سيتم عرض العمليات المستخرجة من الرسائل هنا' },
+    pending: { title: 'لا توجد معاملات بانتظار', sub: 'كل المعاملات قيد الانتظار تظهر هنا' },
     freeze: { title: 'لا توجد طلبات تجميد', sub: 'تظهر هنا بعد 3 تذكيرات بدون رد من الزبون' },
     support: { title: 'لا توجد طلبات دعم فني', sub: 'تظهر هنا عند إبلاغ زبون عن مشكلة في الاتصال' },
     learning: { title: 'لا توجد رسائل بحاجة لتعلم', sub: 'عند وصول رسالة لم يفهمها البرنامج، تظهر هنا لتعليمه الرد المناسب' },
     reactivation: { title: 'لا توجد عمليات لإعادة التفعيل', sub: 'عندما يدفع الزبون أو يحدد موعد، تظهر العملية هنا' },
-    executed: { title: 'لا يوجد سجل بعد', sub: 'العمليات المنفذة أو الملغاة ستظهر هنا' },
+    executed: { title: 'لا يوجد سجل بعد', sub: 'كل المعاملات المنجزة تظهر هنا' },
     transfers: { title: 'لا توجد إشعارات تحويل', sub: 'إشعارات التحويل البنكي الواردة تظهر هنا للمطابقة' },
   };
 
@@ -916,7 +965,7 @@ export default function PendingOperationsScreen() {
           </View>
         ) : (
           <>
-            {tab === 'pending' && pending.map(renderOp)}
+            {tab === 'pending' && allPendingUnified.map(renderUnifiedItem)}
             {tab === 'freeze' && pendingFreeze.map(renderFreezeRequest)}
             {tab === 'support' && pendingSupport.map(renderSupportTicket)}
             {tab === 'learning' && pendingUnrecognized.map(renderUnrecognizedMessage)}
@@ -927,14 +976,7 @@ export default function PendingOperationsScreen() {
                 {matchedNotifications.map(renderTransferNotification)}
               </>
             )}
-            {tab === 'executed' && (
-              <>
-                {resolvedUnrecognized.map(renderUnrecognizedMessage)}
-                {resolvedSupport.map(renderSupportTicket)}
-                {executedFreeze.map(renderFreezeRequest)}
-                {executed.map(renderOp)}
-              </>
-            )}
+            {tab === 'executed' && allExecutedUnified.map(renderUnifiedItem)}
           </>
         )}
       </ScrollView>
