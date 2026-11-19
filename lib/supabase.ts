@@ -36,12 +36,6 @@ class NoopRealtimeTransport {
 const silentFetch: typeof fetch = async (input, init) => {
   try {
     const res = await fetch(input, init);
-    if (res.status >= 500) {
-      return new Response(JSON.stringify({ error: { message: 'Server error' } }), {
-        status: 0,
-        headers: { 'Content-Type': 'application/json' },
-      }) as unknown as Response;
-    }
     return res;
   } catch {
     return new Response(JSON.stringify({ error: { message: 'Network request failed' } }), {

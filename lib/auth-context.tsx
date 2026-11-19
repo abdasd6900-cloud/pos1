@@ -179,11 +179,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (phone: string, password: string): Promise<{ error: string | null }> => {
     const email = phoneToEmail(phone);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      return { error: error.message };
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error) return { error: null };
+
+      const rawMessage = error.message.toLowerCase();
+      if (error.status === 504 || rawMessage.includes('status":504') || rawMessage.includes('gateway timeout')) {
+        return { error: 'تعذر الاتصال بخدمة الدخول حالياً. تحقق من اتصال الإنترنت وحاول مرة أخرى بعد قليل' };
+      }
+      if (error.status === 429 || rawMessage.includes('rate limit')) {
+        return { error: 'تم تجاوز عدد محاولات الدخول. حاول مرة أخرى بعد قليل' };
+      }
+      if (rawMessage.includes('invalid login credentials')) {
+        return { error: 'رقم الجوال أو كلمة المرور غير صحيحة' };
+      }
+      return { error: 'تعذر تسجيل الدخول حالياً. حاول مرة أخرى' };
+    } catch {
+      return { error: 'تعذر الاتصال بخدمة الدخول. تحقق من اتصال الإنترنت وحاول مرة أخرى' };
     }
-    return { error: null };
   }, []);
 
   const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null }> => {
