@@ -106,6 +106,8 @@ export interface AutoReplyTemplates {
   specifyDuration: string;
   imageSimNumberRequest: string;
   voiceMessageReply: string;
+  rechargeActiveReminder: string;
+  rechargeInsistAccepted: string;
 }
 
 export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
@@ -129,6 +131,8 @@ export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
   specifyDuration: 'يرجى تحديد مدة الشحن المطلوبة (شهر، شهرين، إلخ) حتى نتمكن من تنفيذ طلبك.',
   imageSimNumberRequest: 'استلمنا صورتك، لكننا لا نستطيع قراءة الأرقام من الصور تلقائياً. يرجى كتابة رقم الشريحة كنص حتى نتمكن من تنفيذ طلبك.',
   voiceMessageReply: 'أنا مساعدة آلية ولا أستطيع الاستماع للرسائل الصوتية. يرجى كتابة ما تريد نصاً حتى أتمكن من مساعدتك.',
+  rechargeActiveReminder: 'عزيزي {name}، لديك حالياً {days} يوم متبقية في اشتراكك الحالي. إذا كنت ترغب في التجديد رغم ذلك، يرجى إرسال "جدد" أو "ماشي جدد" وسنقوم بتنفيذ طلبك.',
+  rechargeInsistAccepted: 'تم استلام طلبك بالتجديد رغم وجود أيام متبقية. سيتم تنفيذ طلبك في أقرب وقت ممكن.',
 };
 
 export interface TelecomCompany {

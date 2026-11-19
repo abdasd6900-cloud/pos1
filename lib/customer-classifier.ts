@@ -239,7 +239,7 @@ export function normalizePhone(phone: string): string {
   return p;
 }
 
-export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_forward' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'default';
+export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_forward' | 'recharge_active' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'default';
 
 export interface ClassificationResult {
   action: ClassificationAction;
@@ -396,9 +396,60 @@ export function classifyIncomingMessage(
     };
   }
 
+  // Check if there's an active recharge-insist conversation for this phone
+  const activeState = getRechargeActiveState(senderPhone);
+  if (activeState) {
+    if (isRechargeInsist(message)) {
+      clearRechargeActiveState(senderPhone);
+      return {
+        action: 'recharge_request',
+        replyToCustomer: buildRechargeInsistAccepted(templates),
+        supportPhone: null,
+        supportMessage: null,
+        simNumber: activeState.simNumber,
+        daysRemaining: activeState.daysRemaining,
+        customerName: activeState.customerName,
+        saleId: activeState.saleId,
+        chargeDuration: null,
+        companyName: activeState.companyName,
+      };
+    }
+    if (isRechargeRequest(message)) {
+      // Customer re-sent recharge request — remind again
+      clearRechargeActiveState(senderPhone);
+      // Fall through to normal recharge handling below
+    } else {
+      clearRechargeActiveState(senderPhone);
+      // Fall through to normal classification
+    }
+  }
+
   // Priority 2: Recharge request
   if (isRechargeRequest(message)) {
-    // Active subscription → forward directly to company support, no ticket/pending op
+    // Active subscription with >3 days remaining → inform customer and create support ticket
+    if (match.hasActiveCharge && match.daysRemaining > 3) {
+      setRechargeActiveState(senderPhone, {
+        simNumber,
+        customerName: customerName ?? '',
+        daysRemaining: match.daysRemaining,
+        saleId: saleId ?? '',
+        companyName: enriched.company?.name ?? null,
+        startedAt: Date.now(),
+      });
+      return {
+        action: 'recharge_active',
+        replyToCustomer: buildRechargeActiveReminder(customerName ?? 'زبوننا العزيز', match.daysRemaining, templates),
+        supportPhone: null,
+        supportMessage: null,
+        simNumber,
+        daysRemaining: match.daysRemaining,
+        customerName,
+        saleId,
+        chargeDuration: null,
+        companyName: enriched.company?.name ?? null,
+      };
+    }
+    // Active subscription with ≤3 days remaining → forward directly to company support
     if (match.hasActiveCharge && supportPhone) {
       return {
         action: 'recharge_forward',
@@ -461,7 +512,7 @@ export function classifyIncomingMessage(
   }
 
   // Priority 4: Known customer with active charge → welcome
-  if (match.hasActiveCharge && match.daysRemaining >= 5) {
+  if (match.hasActiveCharge && match.daysRemaining >= 3) {
     return {
       action: 'welcome',
       replyToCustomer: buildWelcomeMessage(customerName, match.daysRemaining, templates),
@@ -585,6 +636,63 @@ export function classifyRechargeWithDuration(
     chargeDuration: 'month',
     companyName,
   };
+}
+
+function buildRechargeActiveReminder(customerName: string, daysRemaining: number, templates?: AutoReplyTemplates | null): string {
+  return fillTemplate(getTemplates(templates).rechargeActiveReminder, { name: customerName || 'زبوننا العزيز', days: daysRemaining });
+}
+
+function buildRechargeInsistAccepted(templates?: AutoReplyTemplates | null): string {
+  return getTemplates(templates).rechargeInsistAccepted;
+}
+
+// Customer insists on renewing despite having days remaining
+const RECHARGE_INSIST_KEYWORDS = [
+  'جدد', 'ماشي جدد', 'مش مشكله جدد', 'مش مشكلة جدد', 'ماشي جدد', 'لا مشكله جدد',
+  'لا مشكلة جدد', 'جدد رغم', 'جدد مع ذلك', 'جدد عادي', 'جدد عادى',
+  'اوكي جدد', 'اوكية جدد', 'تمام جدد', 'خلاص جدد', 'حلو جدد',
+  'بدي جدد', 'اريد جدد', 'اشحن رغم', 'شحن رغم', 'جدد لي', 'جدد الان',
+  'جدد الآن', 'جدد من فضلك', 'جدد لو سمحت', 'جدد بسرعة', 'جدد بس',
+  'نعم جدد', 'اي جدد', 'أي جدد', 'جدد فقط', 'جدد مهما كان',
+];
+
+function isRechargeInsist(message: string): boolean {
+  const lower = message.toLowerCase().trim();
+  for (const kw of RECHARGE_INSIST_KEYWORDS) {
+    if (lower.includes(kw.toLowerCase().trim())) return true;
+  }
+  return false;
+}
+
+// ============ Recharge Active Conversation State ============
+export interface RechargeActiveState {
+  simNumber: string;
+  customerName: string;
+  daysRemaining: number;
+  saleId: string;
+  companyName: string | null;
+  startedAt: number;
+}
+
+const rechargeActiveConversations = new Map<string, RechargeActiveState>();
+const RECHARGE_ACTIVE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+export function getRechargeActiveState(phone: string): RechargeActiveState | null {
+  const state = rechargeActiveConversations.get(phone);
+  if (!state) return null;
+  if (Date.now() - state.startedAt > RECHARGE_ACTIVE_TIMEOUT_MS) {
+    rechargeActiveConversations.delete(phone);
+    return null;
+  }
+  return state;
+}
+
+export function setRechargeActiveState(phone: string, state: RechargeActiveState) {
+  rechargeActiveConversations.set(phone, state);
+}
+
+export function clearRechargeActiveState(phone: string) {
+  rechargeActiveConversations.delete(phone);
 }
 
 function extractSimNumbersFromMessage(message: string): { primarySimNumber: string | null } {

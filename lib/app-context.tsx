@@ -792,6 +792,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   setPendingOperations((prev) => { const next = [op, ...prev]; storage.savePendingOperations(next); return next; });
                   void sendLocalNotification('عملية قيد الانتظار', `طلب شحن للرقم ${result.simNumber ?? ''} من ${result.customerName ?? reply.senderPhone}`, { phone: reply.senderPhone ?? '' });
                 }
+                if (result.action === 'recharge_active') {
+                  const ticket: SupportTicket = {
+                    id: storage.generateId(),
+                    saleId: sale?.id ?? result.saleId ?? null,
+                    customerName: result.customerName ?? '',
+                    customerPhone: reply.senderPhone,
+                    simNumber: result.simNumber ?? '',
+                    companyName: sale?.companyName ?? result.companyName ?? '',
+                    companySupportPhone: null,
+                    originalMessage: reply.message,
+                    supportMessage: null,
+                    status: 'pending' as const,
+                    whatsappOpened: false,
+                    customerReplySent: result.replyToCustomer,
+                    autoForwarded: false,
+                    forwardReason: 'manual',
+                    rechargeConfirmedAt: null,
+                    queuedForSubAgentId: null,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  };
+                  setSupportTickets((prev) => { const next = [ticket, ...prev]; storage.saveSupportTickets(next); return next; });
+                  void sendLocalNotification('طلب تجديد - اشتراك فعال', `الرقم ${result.simNumber ?? ''} - ${result.customerName ?? ''} - متبقي ${result.daysRemaining ?? 0} يوم`, { phone: reply.senderPhone ?? '' });
+                }
                 if ((result.action === 'support_forward' || result.action === 'urgency') && result.supportPhone && result.supportMessage && result.simNumber) {
                   if (!agentOpen && agent && result.action !== 'urgency') {
                     if (result.replyToCustomer !== offHoursMsg) {
