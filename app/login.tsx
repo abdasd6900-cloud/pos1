@@ -4,7 +4,7 @@ import { Store, Phone, Lock, User, ShoppingCart, Smartphone, ArrowRight, AlertCi
 import { useAuth, type SignUpData } from '@/lib/auth-context';
 import { palette } from '@/lib/color-system';
 import { AppLogo } from '@/components/AppLogo';
-import { isBiometricAvailable, isBiometricEnabled, saveCredentials, tryBiometricLogin, getBiometricType } from '@/lib/biometric';
+import { isBiometricAvailable, isBiometricEnabled, saveCredentials, getSavedCredentials, getBiometricType } from '@/lib/biometric';
 
 export default function LoginScreen() {
   const { signIn, signUp } = useAuth();
@@ -40,9 +40,9 @@ export default function LoginScreen() {
   const handleBiometricLogin = useCallback(async () => {
     setSubmitting(true);
     setError('');
-    const creds = await tryBiometricLogin();
+    const creds = await getSavedCredentials();
     if (!creds) {
-      setError('تعذر تسجيل الدخول بالبصمة. استخدم رقم الجوال وكلمة المرور');
+      setError('لا توجد بيانات محفوظة. سجل دخولك يدوياً أولاً');
       setSubmitting(false);
       return;
     }
