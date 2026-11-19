@@ -449,21 +449,8 @@ export function classifyIncomingMessage(
         companyName: enriched.company?.name ?? null,
       };
     }
-    // Active subscription with ≤3 days remaining → forward directly to company support
-    if (match.hasActiveCharge && supportPhone) {
-      return {
-        action: 'recharge_forward',
-        replyToCustomer: buildSupportAcknowledgement(templates),
-        supportPhone,
-        supportMessage: buildSupportForwardMessage(simNumber, templates),
-        simNumber,
-        daysRemaining: match.daysRemaining,
-        customerName,
-        saleId,
-        chargeDuration: null,
-        companyName: enriched.company?.name ?? null,
-      };
-    }
+    // Active subscription with ≤3 days remaining → create pending operation (not forward to support)
+    // Fall through to normal recharge_request handling below
     // No active subscription or no support phone → create pending operation for manual handling
     // For companies that require duration, ask for it first
     if (COMPANIES_REQUIRING_DURATION.some((c) => (enriched.company?.name ?? '').includes(c))) {
