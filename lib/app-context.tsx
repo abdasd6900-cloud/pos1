@@ -712,6 +712,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
                 if (result.replyToCustomer) {
                   void logOutboundSmsRef.current(reply.senderPhone, result.replyToCustomer, replyChannel);
+                  // Mark the inbound message as auto-replied so it's visible in the conversation
+                  setSmsMessages((prev) => {
+                    const next = prev.map((m) =>
+                      m.id === smsMsg.id ? { ...m, autoReplied: true, autoReplyText: result.replyToCustomer ?? null } : m
+                    );
+                    storage.saveSmsMessages(next);
+                    return next;
+                  });
                 }
                 const sale = telecomSalesRef.current.find((s) => s.simNumber === result.simNumber);
                 const agent = sale ? subAgentsRef.current.find((a) => a.id === sale.subAgentId) : null;
@@ -937,6 +945,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   if (!result.replyToCustomer) {
                     const fallbackReply = buildWelcomeMessage(result.customerName ?? 'زبوننا العزيز', result.daysRemaining ?? 0, templates);
                     void logOutboundSmsRef.current(reply.senderPhone, fallbackReply, replyChannel);
+                    setSmsMessages((prev) => {
+                      const next = prev.map((m) =>
+                        m.id === smsMsg.id ? { ...m, autoReplied: true, autoReplyText: fallbackReply } : m
+                      );
+                      storage.saveSmsMessages(next);
+                      return next;
+                    });
                   }
                   const existing = unrecognizedMessagesRef.current.find((m) => m.senderPhone === reply.senderPhone && m.originalMessage === reply.message && m.status === 'pending');
                   if (!existing) {
@@ -3954,11 +3969,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logOutboundSms = useCallback(async (phone: string, body: string, channel: MessageChannel = 'sms', subscriptionId?: number) => {
-    let result: { success: boolean; error?: string; eventId?: string };
-    if (channel === 'sms') {
-      result = await sendSmsAuto(phone, body, subscriptionId);
-    } else {
-      result = await sendMessageByChannel(phone, body, channel);
+    let result: { success: boolean; error?: string; eventId?: string } = { success: false, error: 'لم يتم الإرسال' };
+    try {
+      if (channel === 'sms') {
+        result = await sendSmsAuto(phone, body, subscriptionId);
+      } else {
+        result = await sendMessageByChannel(phone, body, channel);
+      }
+    } catch (e) {
+      result = { success: false, error: e instanceof Error ? e.message : String(e) };
     }
     const msg: SmsMessage = {
       id: storage.generateId(),
