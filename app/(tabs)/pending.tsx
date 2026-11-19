@@ -142,6 +142,32 @@ export default function PendingOperationsScreen() {
     setWaLoadingId(null);
   };
 
+  const handleSendToTechSupport = async (ticket: SupportTicket) => {
+    if (!ticket.companySupportPhone || ticket.companySupportPhone.trim().length === 0) {
+      Alert.alert('تنبيه', 'لا يوجد رقم دعم فني مسجل لهذه الشركة. يرجى إضافة رقم الدعم من إعدادات الشركات.');
+      return;
+    }
+    setWaLoadingId(ticket.id);
+    const customerLabel = ticket.customerName || ticket.customerPhone || 'غير معروف';
+    const detailedMessage = [
+      `مرحباً الدعم الفني،`,
+      `الشركة: ${ticket.companyName}`,
+      `رقم الشريحة: ${ticket.simNumber}`,
+      `رقم الزبون: ${ticket.customerPhone || 'غير متوفر'}`,
+      `اسم الزبون: ${customerLabel}`,
+      `المشكلة: ${ticket.originalMessage}`,
+      `يرجى المساعدة في حل المشكلة. شكراً.`,
+    ].join('\n');
+    const url = openWhatsApp(ticket.companySupportPhone, detailedMessage);
+    try {
+      await Linking.openURL(url);
+      updateSupportTicket(ticket.id, { status: 'forwarded', whatsappOpened: true });
+    } catch {
+      Alert.alert('خطأ', 'تعذر فتح واتس أب. تأكد من تثبيت التطبيق.');
+    }
+    setWaLoadingId(null);
+  };
+
   const handleForwardReply = () => {
     if (!replyModal || !replyText.trim()) return;
     forwardSupportReply(replyModal.id, replyText.trim());
@@ -512,6 +538,18 @@ export default function PendingOperationsScreen() {
             <Check size={16} color="#FFFFFF" strokeWidth={2} />
             <Text style={styles.opBtnText}>تم</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleSendToTechSupport(ticket)}
+            disabled={waLoadingId === ticket.id}
+            style={[styles.opBtn, { backgroundColor: colors.success, flex: 1, opacity: waLoadingId === ticket.id ? 0.6 : 1 }]}
+          >
+            {waLoadingId === ticket.id ? (
+              <RefreshCw size={16} color="#FFFFFF" strokeWidth={2} />
+            ) : (
+              <Headphones size={16} color="#FFFFFF" strokeWidth={2} />
+            )}
+            <Text style={styles.opBtnText}>{waLoadingId === ticket.id ? 'جارٍ...' : 'إرسال للدعم'}</Text>
+          </TouchableOpacity>
         </View>
       ) : ticket.status === 'pending' ? (
         <View style={styles.opActions}>
@@ -527,34 +565,58 @@ export default function PendingOperationsScreen() {
             )}
             <Text style={styles.opBtnText}>{waLoadingId === ticket.id ? 'جارٍ...' : 'فتح واتس أب'}</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleSendToTechSupport(ticket)}
+            disabled={waLoadingId === ticket.id}
+            style={[styles.opBtn, { backgroundColor: colors.info, opacity: waLoadingId === ticket.id ? 0.6 : 1 }]}
+          >
+            {waLoadingId === ticket.id ? (
+              <RefreshCw size={16} color="#FFFFFF" strokeWidth={2} />
+            ) : (
+              <Headphones size={16} color="#FFFFFF" strokeWidth={2} />
+            )}
+            <Text style={styles.opBtnText}>{waLoadingId === ticket.id ? 'جارٍ...' : 'إرسال للدعم'}</Text>
+          </TouchableOpacity>
         </View>
       ) : ticket.status === 'forwarded' ? (
         <View style={styles.opActions}>
           <View style={[styles.opStatusBadge, { backgroundColor: colors.info + '15', flex: 1 }]}>
             <Check size={14} color={colors.info} strokeWidth={2} />
-            <Text style={[styles.opStatusText, { color: colors.info }]}>تم الإرسال للدعم</Text>
+            <Text style={[styles.opStatusText, { color: colors.info }]}>تم الإرسال</Text>
           </View>
           <TouchableOpacity
-            onPress={() => { setReplyModal(ticket); setReplyText(''); }}
-            style={[styles.opBtn, { backgroundColor: colors.primary, flex: 1 }]}
-          >
-            <Send size={16} color="#FFFFFF" strokeWidth={2} />
-            <Text style={styles.opBtnText}>إرسال رد للزبون</Text>
-          </TouchableOpacity>
-        </View>
-      ) : ticket.status === 'auto_forwarded' ? (
-        <View style={styles.opActions}>
-          <TouchableOpacity
-            onPress={() => handleOpenWhatsApp(ticket)}
+            onPress={() => handleSendToTechSupport(ticket)}
             disabled={waLoadingId === ticket.id}
             style={[styles.opBtn, { backgroundColor: colors.success, flex: 1, opacity: waLoadingId === ticket.id ? 0.6 : 1 }]}
           >
             {waLoadingId === ticket.id ? (
               <RefreshCw size={16} color="#FFFFFF" strokeWidth={2} />
             ) : (
-              <MessageSquare size={16} color="#FFFFFF" strokeWidth={2} />
+              <Headphones size={16} color="#FFFFFF" strokeWidth={2} />
             )}
-            <Text style={styles.opBtnText}>{waLoadingId === ticket.id ? 'جارٍ...' : 'فتح واتس أب'}</Text>
+            <Text style={styles.opBtnText}>{waLoadingId === ticket.id ? 'جارٍ...' : 'إعادة للدعم'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { setReplyModal(ticket); setReplyText(''); }}
+            style={[styles.opBtn, { backgroundColor: colors.primary, flex: 1 }]}
+          >
+            <Send size={16} color="#FFFFFF" strokeWidth={2} />
+            <Text style={styles.opBtnText}>رد للزبون</Text>
+          </TouchableOpacity>
+        </View>
+      ) : ticket.status === 'auto_forwarded' ? (
+        <View style={styles.opActions}>
+          <TouchableOpacity
+            onPress={() => handleSendToTechSupport(ticket)}
+            disabled={waLoadingId === ticket.id}
+            style={[styles.opBtn, { backgroundColor: colors.success, flex: 1, opacity: waLoadingId === ticket.id ? 0.6 : 1 }]}
+          >
+            {waLoadingId === ticket.id ? (
+              <RefreshCw size={16} color="#FFFFFF" strokeWidth={2} />
+            ) : (
+              <Headphones size={16} color="#FFFFFF" strokeWidth={2} />
+            )}
+            <Text style={styles.opBtnText}>{waLoadingId === ticket.id ? 'جارٍ...' : 'إرسال للدعم'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => handleConfirmRecharge(ticket)}
@@ -567,16 +629,16 @@ export default function PendingOperationsScreen() {
       ) : ticket.status === 'queued_off_hours' ? (
         <View style={styles.opActions}>
           <TouchableOpacity
-            onPress={() => handleOpenWhatsApp(ticket)}
+            onPress={() => handleSendToTechSupport(ticket)}
             disabled={waLoadingId === ticket.id}
             style={[styles.opBtn, { backgroundColor: colors.success, flex: 1, opacity: waLoadingId === ticket.id ? 0.6 : 1 }]}
           >
             {waLoadingId === ticket.id ? (
               <RefreshCw size={16} color="#FFFFFF" strokeWidth={2} />
             ) : (
-              <MessageSquare size={16} color="#FFFFFF" strokeWidth={2} />
+              <Headphones size={16} color="#FFFFFF" strokeWidth={2} />
             )}
-            <Text style={styles.opBtnText}>{waLoadingId === ticket.id ? 'جارٍ...' : 'تحويل يدوي'}</Text>
+            <Text style={styles.opBtnText}>{waLoadingId === ticket.id ? 'جارٍ...' : 'إرسال للدعم'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => handleConfirmRecharge(ticket)}
