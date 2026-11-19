@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Users, Phone, Plus, Search, Trash2, Power, AlertCircle, Check,
   Clock, X, Wallet, Send, Tag, Smartphone, MessageSquare, ChevronLeft,
-  CreditCard, Image as ImageIcon, Download,
+  CreditCard, Image as ImageIcon,
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
@@ -121,7 +121,6 @@ export default function DealersManagementScreen() {
   const [editingPricing, setEditingPricing] = useState<PricingEntry | null>(null);
   const [processingRequest, setProcessingRequest] = useState<RechargeRequest | null>(null);
   const [processingEsim, setProcessingEsim] = useState<EsimRequest | null>(null);
-  const [importing, setImporting] = useState(false);
   const lastPendingIdRef = useRef<string | null>(null);
 
   // Poll for new pending recharge requests and show browser notifications
@@ -181,15 +180,85 @@ export default function DealersManagementScreen() {
     return () => clearInterval(interval);
   }, [session?.user?.id]);
 
+  const autoSyncPricing = useCallback(async (ownerId: string, existingPricing: PricingEntry[]) => {
+    const [bundles, agentBundles] = await Promise.all([
+      storage.getBundles(),
+      storage.getAgentBundles(),
+    ]);
+
+    type InvRow = { company_name: string; bundle_name: string; bundle_type: string; dealer_price: number; cost: number; duration_days: number };
+    const invRows: InvRow[] = [];
+
+    for (const b of bundles as Bundle[]) {
+      if (!b.active) continue;
+      invRows.push({
+        company_name: b.companyName,
+        bundle_name: b.name,
+        bundle_type: 'monthly',
+        dealer_price: b.price,
+        cost: b.cost,
+        duration_days: b.durationDays,
+      });
+    }
+
+    for (const ab of agentBundles as AgentBundle[]) {
+      if (!ab.active) continue;
+      const monthPrice = ab.prices?.['month'] ?? ab.prices?.['1_month'] ?? Object.values(ab.prices)[0] ?? 0;
+      if (monthPrice <= 0) continue;
+      invRows.push({
+        company_name: ab.companyName,
+        bundle_name: ab.bundleName,
+        bundle_type: ab.bundleType || 'offer',
+        dealer_price: monthPrice,
+        cost: ab.cost,
+        duration_days: 30,
+      });
+    }
+
+    const existingMap = new Map(existingPricing.map((p) => [`${p.company_name}|${p.bundle_name}`, p]));
+
+    const toInsert = invRows.filter((r) => !existingMap.has(`${r.company_name}|${r.bundle_name}`));
+    const toDelete = existingPricing.filter((p) => !invRows.some((r) => r.company_name === p.company_name && r.bundle_name === p.bundle_name));
+    const toUpdate = invRows.filter((r) => {
+      const ex = existingMap.get(`${r.company_name}|${r.bundle_name}`);
+      if (!ex) return false;
+      return ex.dealer_price !== r.dealer_price || ex.cost !== r.cost || ex.duration_days !== r.duration_days || ex.bundle_type !== r.bundle_type;
+    });
+
+    const changed = toInsert.length > 0 || toDelete.length > 0 || toUpdate.length > 0;
+    if (changed) {
+      if (toInsert.length > 0) {
+        await supabase.from('dealer_pricing').insert(toInsert.map((r) => ({ owner_user_id: ownerId, ...r, sale_price: 0, active: true })));
+      }
+      for (const p of toDelete) {
+        await supabase.from('dealer_pricing').delete().eq('id', p.id);
+      }
+      for (const r of toUpdate) {
+        const ex = existingMap.get(`${r.company_name}|${r.bundle_name}`)!;
+        await supabase.from('dealer_pricing').update({ dealer_price: r.dealer_price, cost: r.cost, duration_days: r.duration_days, bundle_type: r.bundle_type, updated_at: new Date().toISOString() }).eq('id', ex.id);
+      }
+    }
+    return changed;
+  }, []);
+
   const fetchData = useCallback(async () => {
     if (!session?.user?.id) return;
     setLoading(true);
     setError('');
     try {
-      const [dealersRes, reqRes, pricingRes, simsRes, esimRes, debtsRes] = await Promise.all([
+      let pricingRes = await supabase.from('dealer_pricing').select('*').eq('owner_user_id', session.user.id).order('company_name', { ascending: false });
+      let existingPricing = (pricingRes.data || []) as PricingEntry[];
+
+      const changed = await autoSyncPricing(session.user.id, existingPricing);
+
+      if (changed) {
+        pricingRes = await supabase.from('dealer_pricing').select('*').eq('owner_user_id', session.user.id).order('company_name', { ascending: false });
+        existingPricing = (pricingRes.data || []) as PricingEntry[];
+      }
+
+      const [dealersRes, reqRes, simsRes, esimRes, debtsRes] = await Promise.all([
         supabase.from('dealers').select('*').eq('owner_user_id', session.user.id).order('created_at', { ascending: false }),
         supabase.from('dealer_recharge_requests').select('*, dealer_id').order('created_at', { ascending: false }).limit(100),
-        supabase.from('dealer_pricing').select('*').eq('owner_user_id', session.user.id).order('company_name', { ascending: false }),
         supabase.from('dealer_plastic_sims').select('*').order('created_at', { ascending: false }),
         supabase.from('dealer_esim_requests').select('*').order('created_at', { ascending: false }).limit(100),
         supabase.from('dealer_customer_debts').select('*').order('created_at', { ascending: false }).limit(100),
@@ -197,11 +266,10 @@ export default function DealersManagementScreen() {
 
       if (dealersRes.data) setDealers(dealersRes.data as Dealer[]);
       if (reqRes.data) {
-        // Filter to only this owner's dealers' requests
         const dealerIds = new Set((dealersRes.data || []).map((d) => d.id));
         setRequests((reqRes.data as RechargeRequest[]).filter((r) => dealerIds.has(r.dealer_id)));
       }
-      if (pricingRes.data) setPricing(pricingRes.data as PricingEntry[]);
+      setPricing(existingPricing);
       if (simsRes.data) {
         const dealerIds = new Set((dealersRes.data || []).map((d) => d.id));
         setSims((simsRes.data as PlasticSim[]).filter((s) => dealerIds.has(s.dealer_id)));
@@ -218,7 +286,7 @@ export default function DealersManagementScreen() {
       setError('تعذر تحميل البيانات');
     }
     setLoading(false);
-  }, [session?.user?.id]);
+  }, [session?.user?.id, autoSyncPricing]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
@@ -373,74 +441,6 @@ export default function DealersManagementScreen() {
     setPricing((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const importFromInventory = async () => {
-    if (!session?.user?.id) return;
-    setImporting(true);
-    setError('');
-    try {
-      const [bundles, agentBundles] = await Promise.all([
-        storage.getBundles(),
-        storage.getAgentBundles(),
-      ]);
-
-      type ImportRow = { company_name: string; bundle_name: string; bundle_type: string; dealer_price: number; sale_price: number; cost: number; duration_days: number };
-      const entries: ImportRow[] = [];
-
-      for (const b of bundles as Bundle[]) {
-        if (!b.active) continue;
-        entries.push({
-          company_name: b.companyName,
-          bundle_name: b.name,
-          bundle_type: 'monthly',
-          dealer_price: b.price,
-          sale_price: 0,
-          cost: b.cost,
-          duration_days: b.durationDays,
-        });
-      }
-
-      for (const ab of agentBundles as AgentBundle[]) {
-        if (!ab.active) continue;
-        const monthPrice = ab.prices?.['month'] ?? ab.prices?.['1_month'] ?? Object.values(ab.prices)[0] ?? 0;
-        if (monthPrice <= 0) continue;
-        entries.push({
-          company_name: ab.companyName,
-          bundle_name: ab.bundleName,
-          bundle_type: ab.bundleType || 'offer',
-          dealer_price: monthPrice,
-          sale_price: 0,
-          cost: ab.cost,
-          duration_days: 30,
-        });
-      }
-
-      const existingKeys = new Set(pricing.map((p) => `${p.company_name}|${p.bundle_name}`));
-      const newEntries = entries.filter((e) => !existingKeys.has(`${e.company_name}|${e.bundle_name}`));
-
-      if (newEntries.length === 0) {
-        setError('جميع الحزم مستوردة مسبقاً');
-        setImporting(false);
-        return;
-      }
-
-      const rows = newEntries.map((e) => ({
-        owner_user_id: session.user.id,
-        ...e,
-        active: true,
-      }));
-
-      const { error: insertError } = await supabase.from('dealer_pricing').insert(rows);
-      if (insertError) {
-        setError('تعذر استيراد الحزم');
-      } else {
-        void fetchData();
-      }
-    } catch {
-      setError('تعذر استيراد الحزم');
-    }
-    setImporting(false);
-  };
-
   const deleteSim = async (id: string) => {
     await supabase.from('dealer_plastic_sims').delete().eq('id', id);
     setSims((prev) => prev.filter((s) => s.id !== id));
@@ -573,16 +573,6 @@ export default function DealersManagementScreen() {
         </>
       ) : tab === 'pricing' ? (
         <>
-          <View style={[styles.addActionArea, { flexDirection: 'row', gap: 8 }]}>
-            <TouchableOpacity onPress={() => { setEditingPricing(null); setShowPricingModal(true); }} style={[styles.addBtn, { backgroundColor: colors.primary, flex: 1 }]}>
-              <Plus size={20} color="#FFFFFF" strokeWidth={2} />
-              <Text style={styles.addBtnText}>إضافة تسعير</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={importFromInventory} disabled={importing} style={[styles.addBtn, { backgroundColor: colors.accent, flex: 1, opacity: importing ? 0.6 : 1 }]}>
-              {importing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Download size={20} color="#FFFFFF" strokeWidth={2} />}
-              <Text style={styles.addBtnText}>استيراد من المخزون</Text>
-            </TouchableOpacity>
-          </View>
           <FlatList
             data={pricing}
             keyExtractor={(item) => item.id}
@@ -594,7 +584,7 @@ export default function DealersManagementScreen() {
             scrollEnabled={false}
             ListEmptyComponent={
               <View style={styles.emptyWrap}>
-                <EmptyState icon={<Tag size={32} color={colors.textMuted} strokeWidth={2} />} title="لا يوجد تسعير" subtitle="أضف أسعار الحزم للموزعين" />
+                <EmptyState icon={<Tag size={32} color={colors.textMuted} strokeWidth={2} />} title="لا يوجد تسعير" subtitle="سيتم مزامنة الحزم من المخزون تلقائياً" />
               </View>
             }
           />
@@ -1176,33 +1166,48 @@ function PricingModal({ visible, onClose, onSaved, colors, ownerId, editing }: {
   const [company, setCompany] = useState(editing?.company_name || '');
   const [bundle, setBundle] = useState(editing?.bundle_name || '');
   const [bundleType, setBundleType] = useState(editing?.bundle_type || 'monthly');
-  const [dealerPrice, setDealerPrice] = useState(String(editing?.dealer_price || '0'));
-  const [salePrice, setSalePrice] = useState(String(editing?.sale_price || '0'));
+  const [dealerPrice, setDealerPrice] = useState(String(editing?.dealer_price ?? '0'));
+  const [salePrice, setSalePrice] = useState(String(editing?.sale_price ?? '0'));
   const [duration, setDuration] = useState(String(editing?.duration_days || '30'));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setCompany(editing?.company_name || '');
+      setBundle(editing?.bundle_name || '');
+      setBundleType(editing?.bundle_type || 'monthly');
+      setDealerPrice(String(editing?.dealer_price ?? '0'));
+      setSalePrice(String(editing?.sale_price ?? '0'));
+      setDuration(String(editing?.duration_days || '30'));
+      setError('');
+    }
+  }, [visible, editing]);
 
   const handleSave = async () => {
     if (!company.trim() || !bundle.trim()) { setError('الشركة واسم الحزمة مطلوبة'); return; }
     setSaving(true);
     setError('');
 
-    const body = {
-      owner_user_id: ownerId,
-      company_name: company.trim(),
-      bundle_name: bundle.trim(),
-      bundle_type: bundleType,
-      dealer_price: parseFloat(dealerPrice) || 0,
-      sale_price: parseFloat(salePrice) || 0,
-      cost: 0,
-      duration_days: parseInt(duration) || 30,
-      active: true,
-    };
-
     if (editing) {
-      const { error: updateError } = await supabase.from('dealer_pricing').update({ ...body, updated_at: new Date().toISOString() }).eq('id', editing.id);
+      const { error: updateError } = await supabase.from('dealer_pricing').update({
+        dealer_price: parseFloat(dealerPrice) || 0,
+        sale_price: parseFloat(salePrice) || 0,
+        updated_at: new Date().toISOString(),
+      }).eq('id', editing.id);
       if (updateError) { setError('تعذر التحديث'); setSaving(false); return; }
     } else {
+      const body = {
+        owner_user_id: ownerId,
+        company_name: company.trim(),
+        bundle_name: bundle.trim(),
+        bundle_type: bundleType,
+        dealer_price: parseFloat(dealerPrice) || 0,
+        sale_price: parseFloat(salePrice) || 0,
+        cost: 0,
+        duration_days: parseInt(duration) || 30,
+        active: true,
+      };
       const { error: insertError } = await supabase.from('dealer_pricing').insert(body);
       if (insertError) { setError('تعذر الإضافة'); setSaving(false); return; }
     }
@@ -1211,7 +1216,7 @@ function PricingModal({ visible, onClose, onSaved, colors, ownerId, editing }: {
   };
 
   return (
-    <BaseModal visible={visible} onClose={onClose} title={editing ? 'تعديل التسعير' : 'إضافة تسعير جديد'}
+    <BaseModal visible={visible} onClose={onClose} title={editing ? 'تعديل تسعير الحزمة' : 'إضافة تسعير جديد'}
       footer={
         <TouchableOpacity onPress={handleSave} disabled={saving} style={[styles.submitBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}>
           {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.submitText}>حفظ</Text>}
@@ -1225,21 +1230,35 @@ function PricingModal({ visible, onClose, onSaved, colors, ownerId, editing }: {
         </View>
       ) : null}
       <View style={{ gap: 10 }}>
-        <View>
-          <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>الشركة</Text>
-          <TextInput value={company} onChangeText={setCompany} placeholder="سيلكوم، بيلفون..." style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
-        </View>
-        <View>
-          <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>اسم الحزمة</Text>
-          <TextInput value={bundle} onChangeText={setBundle} placeholder="حزمة 29..." style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
-        </View>
-        <View style={styles.planSelector}>
-          {(['monthly', 'offer'] as const).map((t) => (
-            <TouchableOpacity key={t} onPress={() => setBundleType(t)} style={[styles.planBtn, bundleType === t ? { backgroundColor: colors.primary } : { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-              <Text style={[styles.planText, { color: bundleType === t ? '#FFFFFF' : colors.textSecondary }]}>{t === 'monthly' ? 'شهري' : 'عرض'}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {editing ? (
+          <View style={[styles.reqDetailBox, { backgroundColor: colors.surfaceAlt }]}>
+            <Text style={[styles.reqDetailText, { color: colors.text }]}>الشركة: {editing.company_name}</Text>
+            <Text style={[styles.reqDetailText, { color: colors.textMuted }]}>الحزمة: {editing.bundle_name}</Text>
+            <Text style={[styles.reqDetailText, { color: colors.textMuted }]}>المدة: {editing.duration_days} يوم — {editing.bundle_type === 'offer' ? 'عرض خاص' : 'شهري'}</Text>
+          </View>
+        ) : (
+          <>
+            <View>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>الشركة</Text>
+              <TextInput value={company} onChangeText={setCompany} placeholder="سيلكوم، بيلفون..." style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
+            </View>
+            <View>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>اسم الحزمة</Text>
+              <TextInput value={bundle} onChangeText={setBundle} placeholder="حزمة 29..." style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
+            </View>
+            <View style={styles.planSelector}>
+              {(['monthly', 'offer'] as const).map((t) => (
+                <TouchableOpacity key={t} onPress={() => setBundleType(t)} style={[styles.planBtn, bundleType === t ? { backgroundColor: colors.primary } : { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+                  <Text style={[styles.planText, { color: bundleType === t ? '#FFFFFF' : colors.textSecondary }]}>{t === 'monthly' ? 'شهري' : 'عرض'}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>المدة (أيام)</Text>
+              <TextInput value={duration} onChangeText={setDuration} keyboardType="numeric" style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
+            </View>
+          </>
+        )}
         <View style={styles.priceRowModal}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>سعر الموزع (تكلفته)</Text>
@@ -1248,12 +1267,6 @@ function PricingModal({ visible, onClose, onSaved, colors, ownerId, editing }: {
           <View style={{ flex: 1 }}>
             <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>سعر البيع للموزع</Text>
             <TextInput value={salePrice} onChangeText={setSalePrice} keyboardType="numeric" style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
-          </View>
-        </View>
-        <View style={styles.priceRowModal}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary, marginBottom: 6 }]}>المدة (أيام)</Text>
-            <TextInput value={duration} onChangeText={setDuration} keyboardType="numeric" style={[styles.textInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]} />
           </View>
         </View>
       </View>
