@@ -307,11 +307,13 @@ export function classifyIncomingMessage(
 
   // Check transfer numbers request early (applies to both known and unknown customers)
   if (transferMsg && isTransferNumbersRequest(message)) {
+    clearRechargeConversation(senderPhone);
     return { action: 'transfer_numbers', replyToCustomer: transferMsg, supportPhone: null, supportMessage: null, simNumber: match?.sale.simNumber ?? null, daysRemaining: match?.daysRemaining ?? null, customerName: match?.sale.customerName ?? null, saleId: match?.sale.id ?? null, chargeDuration: null, companyName: null };
   }
 
   // Check eSIM request early — applies to all customers (known and unknown)
   if (isEsimRequest(message)) {
+    clearRechargeConversation(senderPhone);
     return classifyEsimRequest(message, senderPhone, companies, bundles ?? null, templates ?? null, agentBundles ?? null);
   }
   // Check if there's an active eSIM conversation for this phone
@@ -319,6 +321,40 @@ export function classifyIncomingMessage(
   if (esimState) {
     const esimResult = classifyEsimFollowup(message, senderPhone, esimState, companies, bundles ?? null, templates ?? null, agentBundles ?? null);
     if (esimResult) return esimResult;
+  }
+
+  // Check if there's an active recharge duration conversation for this phone
+  const rechargeState = getRechargeConversationState(senderPhone);
+  if (rechargeState) {
+    const duration = detectChargeDuration(message);
+    if (duration) {
+      clearRechargeConversation(senderPhone);
+      const enriched = match ? enrichWithCompany(match, companies) : null;
+      return {
+        action: 'recharge_request',
+        replyToCustomer: buildRechargeAccepted(templates),
+        supportPhone: enriched?.company?.supportPhone ?? null,
+        supportMessage: null,
+        simNumber: rechargeState.simNumber,
+        daysRemaining: match?.daysRemaining ?? null,
+        customerName: match?.sale.customerName ?? null,
+        saleId: match?.sale.id ?? null,
+        chargeDuration: duration,
+        companyName: rechargeState.companyName ?? enriched?.company?.name ?? null,
+      };
+    }
+    // Customer sent something but no duration detected — ask again
+    return {
+      action: 'specify_duration',
+      replyToCustomer: buildSpecifyDuration(templates),
+      supportPhone: null, supportMessage: null,
+      simNumber: rechargeState.simNumber,
+      daysRemaining: match?.daysRemaining ?? null,
+      customerName: match?.sale.customerName ?? null,
+      saleId: match?.sale.id ?? null,
+      chargeDuration: null,
+      companyName: rechargeState.companyName ?? null,
+    };
   }
 
   if (!match) {
@@ -373,6 +409,22 @@ export function classifyIncomingMessage(
       };
     }
     // No active subscription or no support phone → create pending operation for manual handling
+    // For companies that require duration, ask for it first
+    if (COMPANIES_REQUIRING_DURATION.some((c) => (enriched.company?.name ?? '').includes(c))) {
+      setRechargeConversationState(senderPhone, { simNumber, companyName: enriched.company?.name ?? null, startedAt: Date.now() });
+      return {
+        action: 'specify_duration',
+        replyToCustomer: buildSpecifyDuration(templates),
+        supportPhone: null,
+        supportMessage: null,
+        simNumber,
+        daysRemaining: match.daysRemaining,
+        customerName,
+        saleId,
+        chargeDuration: null,
+        companyName: enriched.company?.name ?? null,
+      };
+    }
     return {
       action: 'recharge_request',
       replyToCustomer: buildRechargeReceivedMessage(simNumber, templates),
@@ -485,6 +537,7 @@ export function classifyRechargeWithDuration(
   }
 
   if (!companyName) {
+    setRechargeConversationState(senderPhone, { simNumber: simNumber ?? '', companyName: null, startedAt: Date.now() });
     return {
       action: 'specify_duration',
       replyToCustomer: buildSpecifyDuration(templates),
@@ -500,6 +553,7 @@ export function classifyRechargeWithDuration(
   }
 
   if (COMPANIES_REQUIRING_DURATION.some((c) => companyName.includes(c))) {
+    setRechargeConversationState(senderPhone, { simNumber: simNumber ?? '', companyName, startedAt: Date.now() });
     return {
       action: 'specify_duration',
       replyToCustomer: buildSpecifyDuration(templates),
@@ -545,6 +599,35 @@ function extractSimNumbersFromMessage(message: string): { primarySimNumber: stri
   }
   const unique = [...new Set(numbers)];
   return { primarySimNumber: unique.length > 0 ? unique[unique.length - 1] : null };
+}
+
+// ============ Recharge Duration Conversation State ============
+
+export interface RechargeConversationState {
+  simNumber: string;
+  companyName: string | null;
+  startedAt: number;
+}
+
+const rechargeConversations = new Map<string, RechargeConversationState>();
+const RECHARGE_CONVERSATION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+export function getRechargeConversationState(phone: string): RechargeConversationState | null {
+  const state = rechargeConversations.get(phone);
+  if (!state) return null;
+  if (Date.now() - state.startedAt > RECHARGE_CONVERSATION_TIMEOUT_MS) {
+    rechargeConversations.delete(phone);
+    return null;
+  }
+  return state;
+}
+
+export function setRechargeConversationState(phone: string, state: RechargeConversationState) {
+  rechargeConversations.set(phone, state);
+}
+
+export function clearRechargeConversation(phone: string) {
+  rechargeConversations.delete(phone);
 }
 
 // ============ eSIM Conversation State ============

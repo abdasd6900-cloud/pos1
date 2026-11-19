@@ -728,7 +728,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 // recharge_forward: send to company support directly, no ticket, no pending op
                 if (result.action === 'recharge_forward' && result.supportPhone && result.supportMessage) {
                   if (!agentOpen && agent) {
-                    void logOutboundSmsRef.current(reply.senderPhone, offHoursMsg, replyChannel);
+                    // offHoursMsg replaces the default auto-reply for off-hours
+                    if (result.replyToCustomer !== offHoursMsg) {
+                      void logOutboundSmsRef.current(reply.senderPhone, offHoursMsg, replyChannel);
+                    }
                     const ticket: SupportTicket = {
                       id: storage.generateId(),
                       saleId: sale?.id ?? null,
@@ -757,7 +760,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 }
                 if ((result.action === 'support_forward' || result.action === 'urgency') && result.supportPhone && result.supportMessage && result.simNumber) {
                   if (!agentOpen && agent && result.action !== 'urgency') {
-                    void logOutboundSmsRef.current(reply.senderPhone, offHoursMsg, replyChannel);
+                    if (result.replyToCustomer !== offHoursMsg) {
+                      void logOutboundSmsRef.current(reply.senderPhone, offHoursMsg, replyChannel);
+                    }
                     const ticket: SupportTicket = {
                       id: storage.generateId(),
                       saleId: sale?.id ?? null,
@@ -805,13 +810,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     void sendLocalNotification('طلب دعم فني', `الرقم ${result.simNumber} - ${result.customerName ?? ''} - ${result.action === 'urgency' ? 'عاجل' : 'مشكلة إنترنت'}`);
                   }
                 }
-                if (result.action === 'specify_duration' && result.replyToCustomer) {
-                  void logOutboundSmsRef.current(reply.senderPhone, result.replyToCustomer, replyChannel);
+                if (result.action === 'specify_duration') {
                   void sendLocalNotification('طلب تحديد المدة', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`);
                 }
-                // eSIM flow actions — send reply and notify
-                if (result.action.startsWith('esim_') && result.replyToCustomer) {
-                  void logOutboundSmsRef.current(reply.senderPhone, result.replyToCustomer, replyChannel);
+                // eSIM flow actions — notify (reply already sent above)
+                if (result.action.startsWith('esim_')) {
                   const esimNotifTitle: Record<string, string> = {
                     esim_ask_phone_model: 'طلب eSIM - سؤال نوع الجوال',
                     esim_not_supported: 'eSIM - جوال غير مدعوم',
