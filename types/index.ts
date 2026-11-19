@@ -62,7 +62,7 @@ export interface FreezeRequest {
   createdAt: number;
 }
 
-export type SupportTicketStatus = 'pending' | 'forwarded' | 'replied' | 'closed' | 'auto_forwarded' | 'recharged_by_support' | 'queued_off_hours';
+export type SupportTicketStatus = 'pending' | 'forwarded' | 'replied' | 'closed' | 'auto_forwarded' | 'recharged_by_support' | 'queued_off_hours' | 'update_done';
 
 export interface SupportTicket {
   id: string;
@@ -78,7 +78,7 @@ export interface SupportTicket {
   whatsappOpened: boolean;
   customerReplySent: string | null;
   autoForwarded: boolean;
-  forwardReason: 'timeout' | 'urgency' | 'manual' | 'internet_problem' | 'off_hours' | 'off_hours_shop_closed';
+  forwardReason: 'timeout' | 'urgency' | 'manual' | 'internet_problem' | 'off_hours' | 'off_hours_shop_closed' | 'update_request' | 'update_not_working';
   rechargeConfirmedAt: number | null;
   queuedForSubAgentId: string | null;
   createdAt: number;
@@ -108,6 +108,10 @@ export interface AutoReplyTemplates {
   voiceMessageReply: string;
   rechargeActiveReminder: string;
   rechargeInsistAccepted: string;
+  updateRequestAskNumber: string;
+  updateRequestDone: string;
+  updateNotWorkingForwarded: string;
+  updateConfirmDone: string;
 }
 
 export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
@@ -133,6 +137,10 @@ export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
   voiceMessageReply: 'أنا مساعدة آلية ولا أستطيع الاستماع للرسائل الصوتية. يرجى كتابة ما تريد نصاً حتى أتمكن من مساعدتك.',
   rechargeActiveReminder: 'عزيزي {name}، لديك حالياً {days} يوم متبقية في اشتراكك الحالي. إذا كنت ترغب في التجديد رغم ذلك، يرجى إرسال "جدد" أو "ماشي جدد" وسنقوم بتنفيذ طلبك.',
   rechargeInsistAccepted: 'تم استلام طلبك بالتجديد رغم وجود أيام متبقية. سيتم تنفيذ طلبك في أقرب وقت ممكن.',
+  updateRequestAskNumber: 'يرجى إرسال رقم الشريحة المراد تحديثها.',
+  updateRequestDone: 'تم تحديث الرقم، يرجى إعادة تشغيل الجهاز بعد ربع ساعة.',
+  updateNotWorkingForwarded: 'تم إرسال طلبك للدعم الفني وسيتم الرد عليك حين تلقي الرد.',
+  updateConfirmDone: 'تم التحديث، يرجى إعادة التشغيل بعد 10 دقائق.',
 };
 
 export interface TelecomCompany {

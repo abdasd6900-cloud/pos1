@@ -244,7 +244,7 @@ export function normalizePhone(phone: string): string {
   return p;
 }
 
-export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_forward' | 'recharge_active' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'default';
+export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_forward' | 'recharge_active' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'update_request' | 'update_ask_number' | 'update_not_working' | 'default';
 
 export interface ClassificationResult {
   action: ClassificationAction;
@@ -319,6 +319,91 @@ export function classifyIncomingMessage(
   if (transferMsg && isTransferNumbersRequest(message)) {
     clearRechargeConversation(senderPhone);
     return { action: 'transfer_numbers', replyToCustomer: transferMsg, supportPhone: null, supportMessage: null, simNumber: match?.sale.simNumber ?? null, daysRemaining: match?.daysRemaining ?? null, customerName: match?.sale.customerName ?? null, saleId: match?.sale.id ?? null, chargeDuration: null, companyName: null };
+  }
+
+  // Check update request early — applies to all customers (known and unknown)
+  if (isUpdateRequest(message)) {
+    clearRechargeConversation(senderPhone);
+    const { primarySimNumber: updateSim } = extractSimNumbersFromMessage(message);
+    if (updateSim) {
+      setUpdateConversationState(senderPhone, {
+        simNumber: updateSim,
+        customerName: match?.sale.customerName ?? '',
+        saleId: match?.sale.id ?? '',
+        companyName: match ? (enrichWithCompany(match, companies)?.company?.name ?? null) : null,
+        startedAt: Date.now(),
+        updateDoneAt: null,
+      });
+      return {
+        action: 'update_request',
+        replyToCustomer: buildUpdateDone(templates),
+        supportPhone: '0599991274',
+        supportMessage: updateSim,
+        simNumber: updateSim,
+        daysRemaining: match?.daysRemaining ?? null,
+        customerName: match?.sale.customerName ?? null,
+        saleId: match?.sale.id ?? null,
+        chargeDuration: null,
+        companyName: match ? (enrichWithCompany(match, companies)?.company?.name ?? null) : null,
+      };
+    }
+    // No sim number in message — ask for it
+    return {
+      action: 'update_ask_number',
+      replyToCustomer: buildUpdateAskNumber(templates),
+      supportPhone: null,
+      supportMessage: null,
+      simNumber: null,
+      daysRemaining: match?.daysRemaining ?? null,
+      customerName: match?.sale.customerName ?? null,
+      saleId: match?.sale.id ?? null,
+      chargeDuration: null,
+      companyName: null,
+    };
+  }
+
+  // Check if there's an active update conversation for this phone
+  const updateState = getUpdateConversationState(senderPhone);
+  if (updateState) {
+    // Customer reports number not working after update (within 2 hours)
+    if (isUpdateNotWorking(message)) {
+      clearUpdateConversationState(senderPhone);
+      return {
+        action: 'update_not_working',
+        replyToCustomer: buildUpdateNotWorkingForwarded(templates),
+        supportPhone: null,
+        supportMessage: null,
+        simNumber: updateState.simNumber,
+        daysRemaining: match?.daysRemaining ?? null,
+        customerName: (updateState.customerName || match?.sale.customerName) ?? null,
+        saleId: (updateState.saleId || match?.sale.id) ?? null,
+        chargeDuration: null,
+        companyName: updateState.companyName,
+      };
+    }
+    // Customer sends a sim number in response to update_ask_number
+    const { primarySimNumber: updateSim } = extractSimNumbersFromMessage(message);
+    if (updateSim && !isRechargeRequest(message) && !isUrgencyMessage(message)) {
+      setUpdateConversationState(senderPhone, {
+        ...updateState,
+        simNumber: updateSim,
+        startedAt: Date.now(),
+      });
+      return {
+        action: 'update_request',
+        replyToCustomer: buildUpdateDone(templates),
+        supportPhone: '0599991274',
+        supportMessage: updateSim,
+        simNumber: updateSim,
+        daysRemaining: match?.daysRemaining ?? null,
+        customerName: (updateState.customerName || match?.sale.customerName) ?? null,
+        saleId: (updateState.saleId || match?.sale.id) ?? null,
+        chargeDuration: null,
+        companyName: updateState.companyName,
+      };
+    }
+    clearUpdateConversationState(senderPhone);
+    // Fall through to normal classification
   }
 
   // Check eSIM request early — applies to all customers (known and unknown)
@@ -685,6 +770,93 @@ export function setRechargeActiveState(phone: string, state: RechargeActiveState
 
 export function clearRechargeActiveState(phone: string) {
   rechargeActiveConversations.delete(phone);
+}
+
+// ============ Update / Refresh Number Keywords ============
+const UPDATE_NUMBER_KEYWORDS = [
+  'تحديث', 'حدّث', 'حدث', 'حدّث الرقم', 'تحديث الرقم', 'حدث الشريحة', 'حدّث الشريحة',
+  'تحديث الشريحة', 'بدي تحديث', 'بدي حدّث', 'بدي حدث', 'اريد تحديث', 'اريد حدّث',
+  'ابغى تحديث', 'ابغى حدّث', 'مطلوب تحديث', 'تحديث من فضلك', 'حدّث من فضلك',
+  'refresh', 'update number', 'update sim',
+];
+
+// Customer reporting number still not working after update (Palestinian dialects)
+const UPDATE_NOT_WORKING_KEYWORDS = [
+  'ما اشتغل', 'ما اشتغلت', 'ما اشتغلش', 'ما اشتغلتش', 'ما اشتغلش', 'ما زبط', 'ما زبطت',
+  'ما زبطش', 'ما زبطتش', 'لسه ما اشتغل', 'لسه ما اشتغلت', 'لسه ما زبط', 'لسه ما زبطت',
+  'النت ما رجع', 'النت ما رجعت', 'النت ما رجعش', 'النت ما رجعتش', 'لسه النت',
+  'ما في نت', 'ما فيش نت', 'لسه ما في نت', 'لسه ما فيش نت',
+  'ما عاد', 'ما عادش', 'ما عادت', 'ما عادتش', 'لسه ما عاد', 'لسه ما عادت',
+  'ما اشتغل الرقم', 'ما اشتغلت الشريحة', 'ما زبط الرقم', 'ما زبطت الشريحة',
+  'لسه ما اشتغل الرقم', 'لسه ما اشتغلت الشريحة',
+  'ما رجع النت', 'ما رجعت النت', 'ما رجعش النت', 'ما رجعتش النت',
+  'لسه ما رجع النت', 'لسه ما رجعت النت',
+  'لا زبط', 'لا زبطت', 'لا اشتغل', 'لا اشتغلت',
+  'ما اشتغل لسه', 'ما زبط لسه', 'ما رجع لسه',
+  'شلت وما اشتغل', 'شلت وما زبط', 'شلت وما رجع',
+  'عملت ريستارت وما اشتغل', 'عملت ريستارت وما زبط',
+  'عملت اعادة تشغيل وما اشتغل', 'عملت اعادة تشغيل وما زبط',
+  'ما اشتغل بعد التحديث', 'ما زبط بعد التحديث', 'ما رجع بعد التحديث',
+  'not working', 'still not working', 'no internet', 'still no internet',
+];
+
+export function isUpdateRequest(message: string): boolean {
+  const lower = message.toLowerCase().trim();
+  for (const kw of UPDATE_NUMBER_KEYWORDS) {
+    if (lower.includes(kw.toLowerCase().trim())) return true;
+  }
+  return false;
+}
+
+export function isUpdateNotWorking(message: string): boolean {
+  const lower = message.toLowerCase().trim();
+  for (const kw of UPDATE_NOT_WORKING_KEYWORDS) {
+    if (lower.includes(kw.toLowerCase().trim())) return true;
+  }
+  return false;
+}
+
+// ============ Update Conversation State ============
+export interface UpdateConversationState {
+  simNumber: string;
+  customerName: string;
+  saleId: string;
+  companyName: string | null;
+  startedAt: number;
+  updateDoneAt: number | null;
+}
+
+const updateConversations = new Map<string, UpdateConversationState>();
+const UPDATE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+export function getUpdateConversationState(phone: string): UpdateConversationState | null {
+  const state = updateConversations.get(phone);
+  if (!state) return null;
+  if (Date.now() - state.startedAt > UPDATE_TIMEOUT_MS) {
+    updateConversations.delete(phone);
+    return null;
+  }
+  return state;
+}
+
+export function setUpdateConversationState(phone: string, state: UpdateConversationState) {
+  updateConversations.set(phone, state);
+}
+
+export function clearUpdateConversationState(phone: string) {
+  updateConversations.delete(phone);
+}
+
+function buildUpdateAskNumber(templates?: AutoReplyTemplates | null): string {
+  return getTemplates(templates).updateRequestAskNumber;
+}
+
+function buildUpdateDone(templates?: AutoReplyTemplates | null): string {
+  return getTemplates(templates).updateRequestDone;
+}
+
+function buildUpdateNotWorkingForwarded(templates?: AutoReplyTemplates | null): string {
+  return getTemplates(templates).updateNotWorkingForwarded;
 }
 
 function extractSimNumbersFromMessage(message: string): { primarySimNumber: string | null } {

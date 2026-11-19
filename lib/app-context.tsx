@@ -116,6 +116,7 @@ interface AppData {
   deleteSupportTicket: (id: string) => void;
   forwardSupportReply: (ticketId: string, replyText: string) => void;
   confirmRechargeBySupport: (ticketId: string, replyText: string) => void;
+  confirmUpdateDone: (ticketId: string) => void;
 
   learnFromMessage: (id: string, reply: string, keywords: string[]) => void;
   ignoreUnrecognizedMessage: (id: string) => void;
@@ -815,6 +816,60 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   };
                   setSupportTickets((prev) => { const next = [ticket, ...prev]; storage.saveSupportTickets(next); return next; });
                   void sendLocalNotification('طلب تجديد - اشتراك فعال', `الرقم ${result.simNumber ?? ''} - ${result.customerName ?? ''} - متبقي ${result.daysRemaining ?? 0} يوم`, { phone: reply.senderPhone ?? '' });
+                }
+                // Update request: send sim number to 0599991274 via SMS, set update conversation state
+                if (result.action === 'update_request' && result.supportPhone && result.supportMessage && result.simNumber) {
+                  void logOutboundSmsRef.current('0599991274', result.simNumber, 'sms');
+                  const updateTicket: SupportTicket = {
+                    id: storage.generateId(),
+                    saleId: sale?.id ?? result.saleId ?? null,
+                    customerName: result.customerName ?? '',
+                    customerPhone: reply.senderPhone,
+                    simNumber: result.simNumber,
+                    companyName: sale?.companyName ?? result.companyName ?? '',
+                    companySupportPhone: '0599991274',
+                    originalMessage: reply.message,
+                    supportMessage: result.simNumber,
+                    status: 'pending' as const,
+                    whatsappOpened: false,
+                    customerReplySent: result.replyToCustomer,
+                    autoForwarded: false,
+                    forwardReason: 'update_request' as const,
+                    rechargeConfirmedAt: null,
+                    queuedForSubAgentId: null,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  };
+                  setSupportTickets((prev) => { const next = [updateTicket, ...prev]; storage.saveSupportTickets(next); return next; });
+                  void sendLocalNotification('طلب تحديث رقم', `الرقم ${result.simNumber} - ${result.customerName ?? ''}`, { phone: reply.senderPhone ?? '' });
+                }
+                // Update not working: add to support tickets for manual handling
+                if (result.action === 'update_not_working') {
+                  const updateTicket: SupportTicket = {
+                    id: storage.generateId(),
+                    saleId: sale?.id ?? result.saleId ?? null,
+                    customerName: result.customerName ?? '',
+                    customerPhone: reply.senderPhone,
+                    simNumber: result.simNumber ?? '',
+                    companyName: sale?.companyName ?? result.companyName ?? '',
+                    companySupportPhone: '',
+                    originalMessage: reply.message,
+                    supportMessage: null,
+                    status: 'pending' as const,
+                    whatsappOpened: false,
+                    customerReplySent: result.replyToCustomer,
+                    autoForwarded: false,
+                    forwardReason: 'update_not_working' as const,
+                    rechargeConfirmedAt: null,
+                    queuedForSubAgentId: null,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  };
+                  setSupportTickets((prev) => { const next = [updateTicket, ...prev]; storage.saveSupportTickets(next); return next; });
+                  void sendLocalNotification('تحديث لم ينجح', `الرقم ${result.simNumber ?? ''} - ${result.customerName ?? ''} - الزبون يبلغ أن الرقم لم يشتغل`, { phone: reply.senderPhone ?? '' });
+                }
+                if (result.action === 'update_ask_number') {
+                  void sendLocalNotification('طلب تحديث - رقم مفقود', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
                 }
                 if ((result.action === 'support_forward' || result.action === 'urgency') && result.supportPhone && result.supportMessage && result.simNumber) {
                   if (!agentOpen && agent && result.action !== 'urgency') {
@@ -3359,6 +3414,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [addAuditEntry, settings, supportTickets]);
 
+  const confirmUpdateDone: (ticketId: string) => void = useCallback((ticketId) => {
+    const templates = settings?.autoReplyTemplates ?? null;
+    const updateDoneMsg = (templates?.updateConfirmDone ?? 'تم التحديث، يرجى إعادة التشغيل بعد 10 دقائق.');
+    setSupportTickets((prev) => {
+      const ticket = prev.find((t) => t.id === ticketId);
+      if (ticket) {
+        void logOutboundSmsRef.current(ticket.customerPhone, updateDoneMsg, 'sms');
+      }
+      const next = prev.map((t) => t.id === ticketId ? { ...t, status: 'update_done' as const, customerReplySent: updateDoneMsg, rechargeConfirmedAt: Date.now(), updatedAt: Date.now() } : t);
+      storage.saveSupportTickets(next);
+      return next;
+    });
+    addAuditEntry('update', 'support_ticket', ticketId, 'تأكيد تحديث الرقم');
+  }, [addAuditEntry, settings, supportTickets]);
+
   // ============ Unrecognized Messages (self-learning) ============
   const learnFromMessage: AppData['learnFromMessage'] = useCallback((id, reply, keywords) => {
     const trimmedReply = reply.trim();
@@ -4528,6 +4598,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         deleteSupportTicket,
         forwardSupportReply,
         confirmRechargeBySupport,
+        confirmUpdateDone,
         learnFromMessage,
         ignoreUnrecognizedMessage,
         deleteUnrecognizedMessage,

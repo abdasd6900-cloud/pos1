@@ -19,7 +19,7 @@ export default function PendingOperationsScreen() {
     pendingOperations, executePendingOperation, deletePendingOperation,
     freezeRequests, executeFreezeRequest, cancelFreezeRequest,
     telecomSales, reactivateSale, customers, telecomCompanies,
-    supportTickets, updateSupportTicket, deleteSupportTicket, forwardSupportReply, confirmRechargeBySupport,
+    supportTickets, updateSupportTicket, deleteSupportTicket, forwardSupportReply, confirmRechargeBySupport, confirmUpdateDone,
     unrecognizedMessages, learnFromMessage, ignoreUnrecognizedMessage, deleteUnrecognizedMessage,
     transferNotifications, transferReports, confirmTransferNotification, rejectTransferNotification,
     deleteTransferNotification, linkTransferNotification, pendingOperations: pendingOpsAll,
@@ -40,7 +40,7 @@ export default function PendingOperationsScreen() {
   const executedFreeze = useMemo(() => freezeRequests.filter((r) => r.status !== 'pending'), [freezeRequests]);
   const reactivatedSales = useMemo(() => telecomSales.filter((s) => s.escalationState?.phase === 'reactivated'), [telecomSales]);
   const pendingSupport = useMemo(() => supportTickets.filter((t) => t.status === 'pending' || t.status === 'forwarded' || t.status === 'auto_forwarded' || t.status === 'queued_off_hours'), [supportTickets]);
-  const resolvedSupport = useMemo(() => supportTickets.filter((t) => t.status === 'replied' || t.status === 'closed' || t.status === 'recharged_by_support'), [supportTickets]);
+  const resolvedSupport = useMemo(() => supportTickets.filter((t) => t.status === 'replied' || t.status === 'closed' || t.status === 'recharged_by_support' || t.status === 'update_done'), [supportTickets]);
   const pendingUnrecognized = useMemo(() => unrecognizedMessages.filter((m) => m.status === 'pending'), [unrecognizedMessages]);
   const resolvedUnrecognized = useMemo(() => unrecognizedMessages.filter((m) => m.status !== 'pending'), [unrecognizedMessages]);
   const unmatchedNotifications = useMemo(() => transferNotifications.filter((n) => n.status === 'unmatched'), [transferNotifications]);
@@ -503,7 +503,17 @@ export default function PendingOperationsScreen() {
         </View>
       ) : null}
 
-      {ticket.status === 'pending' ? (
+      {ticket.status === 'pending' && (ticket.forwardReason === 'update_request' || ticket.forwardReason === 'update_not_working') ? (
+        <View style={styles.opActions}>
+          <TouchableOpacity
+            onPress={() => confirmUpdateDone(ticket.id)}
+            style={[styles.opBtn, { backgroundColor: colors.primary, flex: 1 }]}
+          >
+            <Check size={16} color="#FFFFFF" strokeWidth={2} />
+            <Text style={styles.opBtnText}>تم</Text>
+          </TouchableOpacity>
+        </View>
+      ) : ticket.status === 'pending' ? (
         <View style={styles.opActions}>
           <TouchableOpacity
             onPress={() => handleOpenWhatsApp(ticket)}
@@ -581,6 +591,13 @@ export default function PendingOperationsScreen() {
           <Check size={14} color={colors.success} strokeWidth={2} />
           <Text style={[styles.opStatusText, { color: colors.success }]}>
             تم الشحن من الدعم الفني{ticket.rechargeConfirmedAt ? ` - ${formatDateTime(ticket.rechargeConfirmedAt)}` : ''}
+          </Text>
+        </View>
+      ) : ticket.status === 'update_done' ? (
+        <View style={[styles.opStatusBadge, { backgroundColor: colors.success + '15' }]}>
+          <Check size={14} color={colors.success} strokeWidth={2} />
+          <Text style={[styles.opStatusText, { color: colors.success }]}>
+            تم التحديث{ticket.rechargeConfirmedAt ? ` - ${formatDateTime(ticket.rechargeConfirmedAt)}` : ''}
           </Text>
         </View>
       ) : (
