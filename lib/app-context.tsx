@@ -2666,8 +2666,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (sale.operationType === 'activation' && sale.simNumber && sale.customerPhone) {
       let welcomeMsg = `أهلا وسهلا بكم في العبادله تيلكوم\nتم تفعيل الشريحه الخاصه بكم على الرقم : "${sale.simNumber}"`;
+      welcomeMsg += `\nالمبلغ المدفوع : ${sale.paid} شيكل`;
       if (sale.remaining > 0) {
-        welcomeMsg += `\nالمبلغ المدفوع : ${sale.paid} شيكل`;
         welcomeMsg += `\nالمتبقي : ${sale.remaining} شيكل`;
         const customer = sale.customerId
           ? customers.find((c) => c.id === sale.customerId)
