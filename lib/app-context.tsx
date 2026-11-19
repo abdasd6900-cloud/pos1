@@ -34,7 +34,7 @@ import { classifySmsMessage } from './sms-classifier';
 import { fetchOutboxStatuses } from './sms-gateway';
 import { normalizeName, extractNameTokens, matchNameAgainstCustomers } from './name-matcher';
 import { isAgentOpen, isStoreOpen, createDefaultSchedule, isSupplierWorkHours } from './business-hours';
-import { isToday, calculateProfit, predictStockOut, normalizePhoneNumber } from './format';
+import { isToday, calculateProfit, predictStockOut, normalizePhoneNumber, formatDate } from './format';
 import { getOrCreateLicense, evaluateLicense, validateActivationKey, applyActivation, isReadOnly } from './license-engine';
 import { buildTransactionMessage, publishSyncEvent } from './sync';
 import {
@@ -2661,7 +2661,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     if (sale.operationType === 'activation' && sale.simNumber && sale.customerPhone) {
-      const welcomeMsg = `أهلا وسهلا بكم في العبادله تيلكوم\nتم تفعيل الشريحه الخاصه بكم على الرقم : "${sale.simNumber}"\nفي حال تعرض للحظر  يرجى ارسال رقمك الى الرقم 0599991274 باللغه الانجليزيه دون أي اضافات.\nشكرا لثقتكم بنا`;
+      let welcomeMsg = `أهلا وسهلا بكم في العبادله تيلكوم\nتم تفعيل الشريحه الخاصه بكم على الرقم : "${sale.simNumber}"\nفي حال تعرض للحظر  يرجى ارسال رقمك الى الرقم 0599991274 باللغه الانجليزيه دون أي اضافات.\nشكرا لثقتكم بنا`;
+      if (sale.paymentDate && sale.remaining > 0) {
+        welcomeMsg += `\nموعد الدفع : ${formatDate(sale.paymentDate)}`;
+      }
       setTimeout(() => { void logOutboundSmsRef.current(sale.customerPhone, welcomeMsg, 'sms'); }, 2000);
     }
     return sale;
