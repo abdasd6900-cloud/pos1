@@ -1177,6 +1177,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!loaded || !session) return;
     const pollSmsEvents = async () => {
       try {
+        // Don't claim rows until the remote change handler is ready, otherwise
+        // messages would be marked processed but never reach smsMessages state.
+        if (!remoteChangeHandlerRef.current) return;
+
         // Atomically claim unprocessed rows to prevent race conditions across devices/tabs.
         // The RPC marks rows as processed in a single operation with FOR UPDATE SKIP LOCKED.
         const { data: claimedRows, error: claimError } = await supabase
@@ -1200,7 +1204,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             sendWebNotification(title, body, isBusiness);
           }
 
-          if (row.event_type === 'customerReply') {
+          if (row.event_type === 'customerReply' || row.event_type === 'transaction' || row.event_type === 'esim' || row.event_type === 'bank_notification' || row.source === 'bank_notification') {
             const replyData = {
               senderPhone: row.sender_phone,
               senderName: row.sender_name ?? '',
