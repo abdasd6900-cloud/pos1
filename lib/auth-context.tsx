@@ -134,7 +134,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // the session if we didn't have one before, or the event is a real
       // sign-out (TOKEN_REFRESH_FAILED / SIGNED_OUT).
       if (!sess && hadSessionRef.current && _event !== 'SIGNED_OUT') {
-        // Re-verify: try to recover the session before clearing
+        // Re-verify: try to recover the session before clearing.
+        // This covers TOKEN_REFRESH_FAILED (504/network blips) and
+        // transient session-null events when returning from background.
         void supabase.auth.getSession().then(({ data: { session: recovered } }) => {
           if (recovered) {
             hadSessionRef.current = true;

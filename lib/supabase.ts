@@ -33,13 +33,23 @@ class NoopRealtimeTransport {
   CLOSED = 3;
 }
 
-const silentFetch: typeof fetch = (input, init) =>
-  fetch(input, init).catch((err) => {
+const silentFetch: typeof fetch = async (input, init) => {
+  try {
+    const res = await fetch(input, init);
+    if (res.status >= 500) {
+      return new Response(JSON.stringify({ error: { message: 'Server error' } }), {
+        status: 0,
+        headers: { 'Content-Type': 'application/json' },
+      }) as unknown as Response;
+    }
+    return res;
+  } catch {
     return new Response(JSON.stringify({ error: { message: 'Network request failed' } }), {
       status: 0,
       headers: { 'Content-Type': 'application/json' },
     }) as unknown as Response;
-  });
+  }
+};
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: { persistSession: !isServer, autoRefreshToken: !isServer, detectSessionInUrl: false },
