@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { sendWebNotification } from '@/lib/notifications';
 
 export interface IncomingSms {
   id: string;
@@ -39,26 +38,29 @@ export function useIncomingSms(session: { user: { id: string } } | null) {
 
   const pollForNewEvents = useCallback(async () => {
     if (!session) return;
+    // On web, app-context.tsx handles claiming events and sending web notifications.
+    // This hook's separate SELECT+UPDATE would compete with app-context's claim RPC.
+    if (Platform.OS === 'web') return;
+    // On native, app-context claims events via the claim RPC. We read recently-processed
+    // events that we haven't shown in the banner yet — without claiming or marking anything.
     try {
       const { data, error } = await supabase
         .from('sms_inbox_events')
         .select('id, event_type, sender_phone, sender_name, message, sim_number, source, channel, created_at')
-        .eq('processed', false)
-        .order('created_at', { ascending: true })
+        .eq('processed', true)
+        .order('created_at', { ascending: false })
         .limit(BATCH_LIMIT);
 
       if (error || !data || data.length === 0) return;
 
       const rows = data as SmsEventRow[];
       const newEvents: IncomingSms[] = [];
-      const newIds: number[] = [];
 
       for (const row of rows) {
         if (processedIdsRef.has(row.id)) continue;
         processedIdsRef.add(row.id);
-        newIds.push(row.id);
 
-        newEvents.push({
+        newEvents.unshift({
           id: `evt_${row.id}`,
           rowId: row.id,
           eventType: row.event_type,
@@ -72,13 +74,7 @@ export function useIncomingSms(session: { user: { id: string } } | null) {
         });
       }
 
-      if (newIds.length === 0) return;
-
-      // Mark events as processed
-      await supabase
-        .from('sms_inbox_events')
-        .update({ processed: true, processed_at: new Date().toISOString() })
-        .in('id', newIds);
+      if (newEvents.length === 0) return;
 
       // Trim processedIdsRef to prevent unbounded growth
       if (processedIdsRef.size > MAX_PROCESSED_IDS) {
@@ -88,18 +84,6 @@ export function useIncomingSms(session: { user: { id: string } } | null) {
           if (removed >= toRemove) break;
           processedIdsRef.delete(id);
           removed++;
-        }
-      }
-
-      // Show web notification for ALL incoming messages (not just customer replies)
-      if (Platform.OS === 'web') {
-        for (const evt of newEvents) {
-          const title = evt.senderName
-            ? `رسالة من ${evt.senderName}`
-            : `رسالة من ${evt.senderPhone}`;
-          const isBusiness = evt.eventType === 'customerReply' || evt.eventType === 'transaction' || evt.eventType === 'esim' || evt.source === 'bank_notification';
-          const body = isBusiness ? `[عمل] ${evt.message}` : evt.message;
-          sendWebNotification(title, body, isBusiness);
         }
       }
 

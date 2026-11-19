@@ -20,6 +20,7 @@ import {
 } from '@expo-google-fonts/cairo';
 import { supabase } from '@/lib/supabase';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
+import type { Palette } from '@/lib/color-system';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,6 +28,31 @@ if (Platform.OS !== 'web') {
   I18nManager.allowRTL(true);
   I18nManager.forceRTL(true);
 }
+
+const FALLBACK_PALETTE: Palette = {
+  bg: '#F0F4F8',
+  surface: '#FFFFFF',
+  surfaceAlt: '#E8EDF3',
+  primary: '#2563EB',
+  primaryLight: '#3B82F6',
+  primaryDark: '#1D4ED8',
+  accent: '#7C3AED',
+  accentLight: '#A78BFA',
+  danger: '#DC2626',
+  dangerLight: '#FCA5A5',
+  success: '#16A34A',
+  successLight: '#86EFAC',
+  warning: '#F59E0B',
+  warningLight: '#FCD34D',
+  info: '#0EA5E9',
+  text: '#0F172A',
+  textSecondary: '#475569',
+  textMuted: '#94A3B8',
+  border: '#CBD5E1',
+  shadow: 'rgba(15, 30, 60, 0.08)',
+  tabActive: '#2563EB',
+  tabInactive: '#94A3B8',
+} as Palette;
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -45,10 +71,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [session, loading, segments, router]);
 
-  // When the app returns from background, Supabase may fire onAuthStateChange
-  // with a refreshed token or null briefly during reconnection. Prevent
-  // flicker/redirect by suppressing navigation for a short window after
-  // returning to foreground.
   useEffect(() => {
     if (Platform.OS === 'web') return;
     const sub = AppState.addEventListener('change', (state) => {
@@ -59,20 +81,16 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, []);
 
-  // Handle deep links from screenshot detection: sahabpos://screenshot/sim?phone=XXX&sim=YYY
-  // or sahabpos://screenshot/transfer?amount=XXX&sender=YYY&recipient=ZZZ
   useEffect(() => {
     if (!session) return;
 
     const handleDeepLink = (url: string) => {
       try {
         const parsed = new URL(url);
-        // Only accept our custom scheme
         if (parsed.protocol !== 'sahabpos:') return;
 
         const pathParts = parsed.pathname.split('/').filter(Boolean);
 
-        // Shortcut: sahabpos://messages — open the messages tab directly
         if (pathParts[0] === 'messages') {
           router.replace('/messages-app');
           return;
@@ -86,7 +104,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         if (subType === 'sim') {
           const phone = (params.get('phone') ?? '').slice(0, 20);
           const sim = (params.get('sim') ?? '').slice(0, 20);
-          // Sanitize: only allow digits, +, spaces, hyphens
           const sanitizePhone = (s: string) => s.replace(/[^0-9+\-\s]/g, '');
           const query = new URLSearchParams();
           if (phone) query.set('phone', sanitizePhone(phone));
@@ -129,7 +146,6 @@ function AppShell() {
   const { session } = useAuth();
   const router = useRouter();
   const [locked, setLocked] = useState(false);
-  const { update, applyUpdate, dismissUpdate } = useUpdateNotification();
   const { currentMessage, dismiss: dismissIncomingMessage } = useIncomingSms(session);
   const bgTimestampRef = useRef<number | null>(null);
 
@@ -187,7 +203,6 @@ function AppShell() {
       </SafeAreaView>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <LockScreen visible={locked} onUnlock={() => setLocked(false)} />
-      <UpdateModal update={update} onApply={applyUpdate} onDismiss={dismissUpdate} colors={colors} />
       <IncomingSmsBanner
         message={currentMessage}
         onDismiss={dismissIncomingMessage}
@@ -212,6 +227,7 @@ export default function RootLayout() {
     'Cairo-SemiBold': Cairo_600SemiBold,
     'Cairo-Bold': Cairo_700Bold,
   });
+  const { update, applyUpdate, dismissUpdate } = useUpdateNotification();
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
@@ -226,9 +242,6 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Start screenshot detection service on Android — delayed and wrapped in try/catch
-  // to prevent crash on startup if native module or permissions aren't ready.
-  // Credentials are passed from app-context after auth loads (session.access_token).
   useEffect(() => {
     const timer = setTimeout(() => {
       try { startScreenshotDetection(); } catch { /* native not available */ }
@@ -250,6 +263,7 @@ export default function RootLayout() {
             </ThemeProvider>
           </AppProvider>
         </AuthGate>
+        <UpdateModal update={update} onApply={applyUpdate} onDismiss={dismissUpdate} colors={FALLBACK_PALETTE} />
       </AuthProvider>
     </SafeAreaProvider>
   );

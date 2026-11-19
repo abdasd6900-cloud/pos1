@@ -27,7 +27,7 @@ import { DEFAULT_BUSINESS_HOURS } from './storage';
 import { createEscalationState, processReminderTick, processCustomerReply, executeFreeze, reactivateFromPaymentOrPromise, createFreezeRequestFromState, findEscalationByPhone } from './debt-escalation';
 import { buildReminderMessage, buildAskForDateMessage, buildFreezeWarningMessage, buildReactivationMessage } from './reply-parser';
 import { sendMessageByChannel, isSupplierOrAgentPhone, type MessageChannel, importDeviceSms, type ImportedSms, sendSmsAuto } from './sms-gateway';
-import { sendLocalNotification, ensureNotificationPermissions } from './notifications';
+import { sendLocalNotification, sendWebNotification, ensureNotificationPermissions } from './notifications';
 import { classifyIncomingMessage, classifyRechargeWithDuration, openWhatsApp, buildRechargeConfirmedMessage, buildSupportForwardMessage, buildWelcomeMessage } from './customer-classifier';
 import { parseTransferSms, isTransferReport, parseTransferReport, matchPhoneToCustomer } from './transfer-parser';
 import { classifySmsMessage } from './sms-classifier';
@@ -1021,6 +1021,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (smsEventSeenIdsRef.current.has(row.id)) continue;
           smsEventSeenIdsRef.current.add(row.id);
           newIds.push(row.id);
+
+          // Send web notification for ALL incoming SMS events
+          if (Platform.OS === 'web') {
+            const senderLabel = row.sender_name || row.sender_phone || 'غير معروف';
+            const isBusiness = row.event_type === 'customerReply' || row.event_type === 'transaction' || row.event_type === 'esim' || row.source === 'bank_notification';
+            const title = `رسالة من ${senderLabel}`;
+            const body = isBusiness ? `[عمل] ${(row.message ?? '').slice(0, 80)}` : (row.message ?? '').slice(0, 80);
+            sendWebNotification(title, body, isBusiness);
+          }
 
           if (row.event_type === 'customerReply') {
             const replyData = {
