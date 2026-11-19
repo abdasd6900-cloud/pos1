@@ -941,6 +941,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 // Greeting for first-time / unknown customers — auto-reply sent above via result.replyToCustomer
                 if (result.action === 'greeting') {
                   void sendLocalNotification('زبون جديد', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
+                  // Also add to unrecognized messages so the user can teach a reply
+                  const existingGreeting = unrecognizedMessagesRef.current.find((m) => m.senderPhone === reply.senderPhone && m.originalMessage === reply.message && m.status === 'pending');
+                  if (!existingGreeting) {
+                    const greetingMsg: UnrecognizedMessage = {
+                      id: storage.generateId(),
+                      senderPhone: reply.senderPhone ?? '',
+                      senderName: result.customerName ?? '',
+                      originalMessage: reply.message,
+                      status: 'pending' as const,
+                      learnedReply: null,
+                      learnedKeywords: [],
+                      createdAt: Date.now(),
+                      resolvedAt: null,
+                    };
+                    setUnrecognizedMessages((prev) => { const next = [greetingMsg, ...prev]; storage.saveUnrecognizedMessages(next); return next; });
+                  }
                 }
                 // Unrecognized message — queue for user to teach a reply, but still send a reply
                 if (result.action === 'default') {
