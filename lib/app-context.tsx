@@ -2665,14 +2665,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     if (sale.operationType === 'activation' && sale.simNumber && sale.customerPhone) {
-      let welcomeMsg = `أهلا وسهلا بكم في العبادله تيلكوم\nتم تفعيل الشريحه الخاصه بكم على الرقم : "${sale.simNumber}"\nفي حال تعرض للحظر  يرجى ارسال رقمك الى الرقم 0599991274 باللغه الانجليزيه دون أي اضافات.\nشكرا لثقتكم بنا`;
-      if (sale.paymentDate && sale.remaining > 0) {
-        welcomeMsg += `\nموعد الدفع : ${formatDate(sale.paymentDate)}`;
+      let welcomeMsg = `أهلا وسهلا بكم في العبادله تيلكوم\nتم تفعيل الشريحه الخاصه بكم على الرقم : "${sale.simNumber}"`;
+      if (sale.remaining > 0) {
+        welcomeMsg += `\nالمبلغ المدفوع : ${sale.paid} شيكل`;
+        welcomeMsg += `\nالمتبقي : ${sale.remaining} شيكل`;
+        const customer = sale.customerId
+          ? customers.find((c) => c.id === sale.customerId)
+          : customers.find((c) => c.phone === sale.customerPhone || c.name === sale.customerName);
+        const totalDebt = customer?.debt ?? sale.remaining;
+        if (totalDebt > sale.remaining) {
+          welcomeMsg += `\nاجمالي المطلوب : ${totalDebt} شيكل`;
+        }
+        if (sale.paymentDate) {
+          welcomeMsg += `\nموعد الدفع : ${formatDate(sale.paymentDate)}`;
+        }
       }
+      welcomeMsg += `\nفي حال تعرض للحظر  يرجى ارسال رقمك الى الرقم 0599991274 باللغه الانجليزيه دون أي اضافات.\nشكرا لثقتكم بنا`;
       setTimeout(() => { void logOutboundSmsRef.current(sale.customerPhone, welcomeMsg, 'sms'); }, 2000);
     }
     return sale;
-  }, [addAuditEntry, settings]);
+  }, [addAuditEntry, settings, customers]);
 
   const updateTelecomSale: AppData['updateTelecomSale'] = useCallback((id, updates) => {
     const oldSale = telecomSales.find((s) => s.id === id);
