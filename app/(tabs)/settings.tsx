@@ -30,7 +30,7 @@ import { DEFAULT_SMS_TEMPLATE, DEFAULT_AUTO_REPLY_TEMPLATES } from '@/types';
 type Colors = ReturnType<typeof useTheme>['colors'];
 
 export default function SettingsScreen() {
-  const { settings, updateSettings, resetAllData, seedDemoData, createBackup, restoreBackup, hasBackup, exportBackupFile, importBackupFile, auditLog, clearAuditLog, telecomCompanies, addTelecomCompany, updateTelecomCompany, deleteTelecomCompany } = useApp();
+  const { settings, updateSettings, resetAllData, seedDemoData, createBackup, restoreBackup, hasBackup, exportBackupFile, auditLog, clearAuditLog, telecomCompanies, addTelecomCompany, updateTelecomCompany, deleteTelecomCompany } = useApp();
   const { colors, isDark, toggleTheme } = useTheme();
   const { profile, signOut } = useAuth();
   const [showBusinessMode, setShowBusinessMode] = useState(false);
@@ -349,19 +349,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleImportFile = async () => {
-    if (backupBusy) return;
-    setBackupBusy(true);
-    setBackupMsg('جاري استيراد النسخة...');
-    try {
-      const ok = await importBackupFile();
-      showToast(ok ? 'تم استيراد البيانات بنجاح' : 'تعذر قراءة الملف');
-    } catch {
-      showToast('تعذر استيراد النسخة');
-    } finally {
-      setBackupBusy(false);
-    }
-  };
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.bg }]} contentContainerStyle={{ paddingBottom: 24 }}>
@@ -957,8 +944,6 @@ export default function SettingsScreen() {
           <ToggleRow icon={<Clock size={20} color={colors.primary} strokeWidth={2} />} label="النسخ الاحتياطي التلقائي" hint="إنشاء نسخة محلية كل ساعة تلقائياً" value={settings.enableAutoBackup} onValueChange={(v) => updateSettings({ enableAutoBackup: v })} colors={colors} />
           <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
           <ActionRow icon={<Download size={20} color={colors.primary} strokeWidth={2} />} label="تصدير نسخة كملف" hint="حفظ نسخة كملف ومشاركتها عبر Gmail أو واتساب" onPress={handleExportFile} colors={colors} />
-          <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
-          <ActionRow icon={<CloudDownload size={20} color={colors.accent} strokeWidth={2} />} label="استيراد نسخة من ملف" hint="استعادة البيانات من ملف نسخة احتياطية" onPress={handleImportFile} colors={colors} />
           <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
           <ActionRow icon={<CloudDownload size={20} color={colors.success} strokeWidth={2} />} label="استعادة النسخة المحلية" hint={backupExists ? 'نسخة محلية متوفرة' : 'لا توجد نسخة محلية'} onPress={handleRestore} colors={colors} />
           <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />

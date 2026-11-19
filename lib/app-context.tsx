@@ -1216,6 +1216,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
               timestamp: new Date(row.created_at).getTime(),
             };
             remoteChangeHandlerRef.current?.('customerReplies', replyData);
+          } else if (row.event_type === 'manual_reply') {
+            // Outbound reply from another device (web or native) — add to conversations
+            const phone = row.sender_phone ?? (row.payload as any)?.phone ?? '';
+            const message = row.message ?? (row.payload as any)?.message ?? '';
+            if (phone && message) {
+              const existing = smsMessagesRef.current.some(
+                (m) => m.direction === 'outbound' && m.senderPhone === phone && m.body === message && Math.abs(m.timestamp - new Date(row.created_at).getTime()) < 5000,
+              );
+              if (!existing) {
+                const msg: SmsMessage = {
+                  id: storage.generateId(),
+                  direction: 'outbound',
+                  senderPhone: phone,
+                  senderName: '',
+                  body: message,
+                  category: 'general',
+                  status: 'read',
+                  processAction: 'none',
+                  linkedPendingOpId: null,
+                  linkedTransferNotificationId: null,
+                  linkedSupportTicketId: null,
+                  linkedUnrecognizedMsgId: null,
+                  autoReplied: false,
+                  autoReplyText: null,
+                  timestamp: new Date(row.created_at).getTime(),
+                  readAt: new Date(row.created_at).getTime(),
+                  sendStatus: 'sent',
+                  outboxEventId: null,
+                };
+                setSmsMessages((prev) => { const next = [msg, ...prev]; storage.saveSmsMessages(next); return next; });
+              }
+            }
           } else if (row.event_type === 'pendingOperation') {
             const op: PendingOperation = {
               id: storage.generateId(),
@@ -1282,13 +1314,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void startSmsObservation().then((ok) => {
       if (!ok) return;
       unsubscribe = subscribeToNativeSmsEvents((event: NativeSmsEvent) => {
-        if (event.direction !== 'inbound') return;
         // Dedup by native SMS id to avoid double-processing
         if (dedupRef.has(event.id)) return;
         dedupRef.add(event.id);
         if (dedupRef.size > 200) {
           const first = dedupRef.values().next().value;
           if (first) dedupRef.delete(first);
+        }
+
+        if (event.direction === 'outbound') {
+          // Capture outbound SMS sent natively (auto-replies, notification replies,
+          // offline replies from SmsGatewayService) so they appear in conversations
+          const existing = smsMessagesRef.current.some(
+            (m) => m.direction === 'outbound' && m.senderPhone === event.address && m.body === event.body && Math.abs(m.timestamp - event.date) < 5000,
+          );
+          if (existing) return;
+          const msg: SmsMessage = {
+            id: storage.generateId(),
+            direction: 'outbound',
+            senderPhone: event.address,
+            senderName: '',
+            body: event.body,
+            category: 'general',
+            status: 'read',
+            processAction: 'none',
+            linkedPendingOpId: null,
+            linkedTransferNotificationId: null,
+            linkedSupportTicketId: null,
+            linkedUnrecognizedMsgId: null,
+            autoReplied: false,
+            autoReplyText: null,
+            timestamp: event.date,
+            readAt: event.date,
+            sendStatus: 'sent',
+            outboxEventId: null,
+          };
+          setSmsMessages((prev) => { const next = [msg, ...prev]; storage.saveSmsMessages(next); return next; });
+          return;
         }
 
         const replyData = {

@@ -82,8 +82,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!session) return;
-
     const handleDeepLink = (url: string) => {
       try {
         const parsed = new URL(url);
@@ -134,7 +132,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     });
 
     return () => sub.remove();
-  }, [session, router]);
+  }, [router]);
 
   return <>{children}</>;
 }
