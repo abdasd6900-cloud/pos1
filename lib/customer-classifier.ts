@@ -398,21 +398,6 @@ export function classifyIncomingMessage(
 
   // Priority 2: Recharge request
   if (isRechargeRequest(message)) {
-    // Active subscription with >5 days remaining → tell customer their subscription is still active
-    if (match.hasActiveCharge && match.daysRemaining >= 5) {
-      return {
-        action: 'welcome',
-        replyToCustomer: buildWelcomeMessage(customerName, match.daysRemaining, templates),
-        supportPhone: null,
-        supportMessage: null,
-        simNumber,
-        daysRemaining: match.daysRemaining,
-        customerName,
-        saleId,
-        chargeDuration: null,
-        companyName: enriched.company?.name ?? null,
-      };
-    }
     // Active subscription → forward directly to company support, no ticket/pending op
     if (match.hasActiveCharge && supportPhone) {
       return {

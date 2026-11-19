@@ -734,7 +734,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 const agent = sale ? subAgentsRef.current.find((a) => a.id === sale.subAgentId) : null;
                 const agentOpen = agent ? isAgentOpen(agent) : true;
                 const offHoursMsg = templates?.offHoursMessage ?? 'عذراً، الشركة مغلقة حالياً ولا يمكن تنفيذ طلبك. سيتم تنفيذه مع بدء دوام الغد إن شاء الله.';
-                // recharge_forward: send to company support directly, no ticket, no pending op
+                // recharge_forward: send to company support directly AND create pending op for tracking
                 if (result.action === 'recharge_forward' && result.supportPhone && result.supportMessage) {
                   if (!agentOpen && agent) {
                     // offHoursMsg replaces the default auto-reply for off-hours
@@ -766,6 +766,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   } else {
                     void logOutboundSmsRef.current(result.supportPhone, result.supportMessage, 'whatsapp');
                   }
+                  // Always create a pending operation so the recharge request appears in the pending tab
+                  const op: PendingOperation = {
+                    id: storage.generateId(),
+                    source: 'sms' as const,
+                    senderPhone: reply.senderPhone,
+                    senderName: result.customerName ?? '',
+                    simNumber: result.simNumber ?? '',
+                    originalMessage: reply.message,
+                    status: 'pending' as const,
+                    customerMatched: !!sale?.customerId,
+                    customerId: sale?.customerId ?? null,
+                    customerName: result.customerName ?? '',
+                    customerPhone: reply.senderPhone,
+                    companyGuess: sale?.companyId ?? '',
+                    bundleGuess: sale?.bundleName ?? '',
+                    createdAt: Date.now(),
+                    executedAt: null,
+                    transferReportId: null,
+                    transferNotificationId: null,
+                    transferStatus: 'none' as const,
+                    chargeDuration: result.chargeDuration ?? null,
+                    companyName: result.companyName ?? sale?.companyName ?? null,
+                  };
+                  setPendingOperations((prev) => { const next = [op, ...prev]; storage.savePendingOperations(next); return next; });
+                  void sendLocalNotification('عملية قيد الانتظار', `طلب شحن للرقم ${result.simNumber ?? ''} من ${result.customerName ?? reply.senderPhone}`, { phone: reply.senderPhone ?? '' });
                 }
                 if ((result.action === 'support_forward' || result.action === 'urgency') && result.supportPhone && result.supportMessage && result.simNumber) {
                   if (!agentOpen && agent && result.action !== 'urgency') {
