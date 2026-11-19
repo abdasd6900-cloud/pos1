@@ -40,7 +40,7 @@ export interface SignUpData {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-const AUTH_REQUEST_TIMEOUT_MS = 15000;
+const AUTH_REQUEST_TIMEOUT_MS = 30000;
 
 function phoneToEmail(phone: string): string {
   const cleaned = phone.replace(/\D/g, '');
@@ -127,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Safety timeout: if getSession hangs (slow network, preview sandbox),
     // stop waiting so the UI can render the login screen.
-    const timeout = setTimeout(finishLoading, 5000);
+    const timeout = setTimeout(finishLoading, 3000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
       // Suppress transient session-null events that fire when the app

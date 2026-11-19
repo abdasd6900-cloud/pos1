@@ -33,21 +33,14 @@ class NoopRealtimeTransport {
   CLOSED = 3;
 }
 
-const REQUEST_TIMEOUT_MS = 15000;
-
 const silentFetch: typeof fetch = async (input, init) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    return await fetch(input, init);
   } catch {
     return new Response(JSON.stringify({ error: { message: 'Network request failed' } }), {
       status: 0,
       headers: { 'Content-Type': 'application/json' },
     }) as unknown as Response;
-  } finally {
-    clearTimeout(timeout);
   }
 };
 
