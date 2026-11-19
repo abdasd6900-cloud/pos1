@@ -412,6 +412,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const remoteChangeHandlerRef = useRef<((collection: SyncCollectionName, data: Record<string, unknown> | unknown[]) => void) | null>(null);
   const smsEventPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const smsEventSeenIdsRef = useRef<Set<number>>(new Set());
+  const processedRepliesRef = useRef<Set<string>>(new Set());
   const smsMessagesRef = useRef<SmsMessage[]>([]);
   const customerFilesBuildingRef = useRef(false);
   const deletedCustomerIdsRef = useRef<Set<string>>(new Set());
@@ -645,6 +646,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             case 'customerReplies': {
               const reply = data as { senderPhone?: string; senderName?: string; message?: string; timestamp?: number; channel?: string };
               if (reply && reply.message && (reply.senderPhone || reply.channel === 'bank_notification' || reply.senderName)) {
+                // Deduplicate: same message from same phone within 60s is a duplicate delivery
+                const dedupKey = `${reply.senderPhone ?? ''}|${reply.message}|${Math.floor((reply.timestamp ?? Date.now()) / 60000)}`;
+                if (processedRepliesRef.current.has(dedupKey)) break;
+                processedRepliesRef.current.add(dedupKey);
+                if (processedRepliesRef.current.size > 200) {
+                  const first = processedRepliesRef.current.values().next().value;
+                  if (first) processedRepliesRef.current.delete(first);
+                }
                 const smsClassResult = classifySmsMessage(reply.message, reply.senderPhone);
                 const smsMsg: SmsMessage = {
                   id: storage.generateId(),
