@@ -119,14 +119,23 @@ Deno.serve(async (req: Request) => {
       if (!phone || !password) return json({ error: "رقم الهاتف وكلمة المرور مطلوبة" }, 400);
 
       const cleanPhone = phone.replace(/\D/g, "");
-      const resp = await fetch(`${supabaseUrl}/rest/v1/dealers?phone=eq.${cleanPhone}&active=eq.true&select=*`, {
-        headers,
-      });
-      if (!resp.ok) return json({ error: "تعذر الاتصال بالخادم" }, 502);
-      const dealers = await resp.json() as DealerRow[];
-      if (dealers.length === 0) return json({ error: "رقم الهاتف غير مسجل أو غير مفعل" }, 404);
+      // Try multiple phone formats: as-is, with 970 prefix, without 970 prefix, with 0 prefix
+      const phoneVariants = new Set<string>([cleanPhone]);
+      if (cleanPhone.startsWith("0")) phoneVariants.add("970" + cleanPhone.slice(1));
+      if (cleanPhone.startsWith("970")) phoneVariants.add("0" + cleanPhone.slice(3));
+      if (cleanPhone.startsWith("9700")) phoneVariants.add("0" + cleanPhone.slice(4));
 
-      const dealer = dealers[0];
+      let dealer: DealerRow | null = null;
+      for (const variant of phoneVariants) {
+        const resp = await fetch(`${supabaseUrl}/rest/v1/dealers?phone=eq.${variant}&active=eq.true&select=*`, {
+          headers,
+        });
+        if (!resp.ok) continue;
+        const dealers = await resp.json() as DealerRow[];
+        if (dealers.length > 0) { dealer = dealers[0]; break; }
+      }
+      if (!dealer) return json({ error: "رقم الهاتف غير مسجل أو غير مفعل" }, 404);
+
       const valid = await verifyPassword(password, dealer.password_hash);
       if (!valid) return json({ error: "كلمة المرور غير صحيحة" }, 401);
 
