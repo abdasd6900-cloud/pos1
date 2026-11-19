@@ -791,6 +791,18 @@ function RequestRow({ req, dealerName, colors, onProcess }: { req: RechargeReque
 function DealerRow({ dealer, colors, onToggle, onDelete, onTopUp }: { dealer: Dealer; colors: any; onToggle: () => void; onDelete: () => void; onTopUp: (amount: number) => void }) {
   const [showTopUp, setShowTopUp] = useState(false);
   const [amount, setAmount] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const copyLoginLink = () => {
+    const origin = (typeof window !== 'undefined' && window.location?.origin) || '';
+    const link = `${origin}/dealer`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(link).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  };
 
   return (
     <View style={[styles.card, { backgroundColor: colors.surface }]}>
@@ -836,6 +848,10 @@ function DealerRow({ dealer, colors, onToggle, onDelete, onTopUp }: { dealer: De
         <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.success + '15' }]} onPress={() => setShowTopUp(!showTopUp)}>
           <Wallet size={15} color={colors.success} strokeWidth={2} />
           <Text style={[styles.actionText, { color: colors.success }]}>شحن رصيد</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary + '15' }]} onPress={copyLoginLink}>
+          {copied ? <Check size={15} color={colors.primary} strokeWidth={2} /> : <Send size={15} color={colors.primary} strokeWidth={2} />}
+          <Text style={[styles.actionText, { color: colors.primary }]}>{copied ? 'تم النسخ' : 'رابط الدخول'}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.actionBtn, { backgroundColor: dealer.active ? colors.danger + '15' : colors.success + '15' }]} onPress={onToggle}>
           <Power size={15} color={dealer.active ? colors.danger : colors.success} strokeWidth={2} />
