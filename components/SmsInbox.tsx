@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ArrowRight, MessageSquare, Smartphone, Hash, Inbox, Search,
+  ArrowRight, Smartphone, Hash, Inbox, Search,
   Trash2, Check, Clock, Banknote, CreditCard, AlertCircle, Send,
   ExternalLink, Link2, PenSquare, X, User, Pin, PinOff, Ban, Archive,
   ArchiveRestore, MapPin, ChevronDown, Zap, Calendar, Share as ShareIcon,
@@ -19,8 +19,6 @@ import { hasReadSmsPermission } from '@/lib/sms-gateway';
 import type { SmsMessage, SmsMessageCategory } from '@/types';
 import { SmsConversation } from './SmsConversation';
 import { PhoneNumberText } from './PhoneNumberText';
-
-type SmartTab = 'transaction' | 'esim' | 'general';
 
 interface ConversationSummary {
   phone: string;
@@ -43,7 +41,6 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
     archivedConversations, toggleArchiveConversation,
   } = useApp();
   const bgColor = ('background' in colors ? (colors as Record<string, string>).background : colors.bg) as string;
-  const [activeTab, setActiveTab] = useState<SmartTab>('transaction');
   const [search, setSearch] = useState('');
   const [selectedPhone, setSelectedPhone] = useState<string | null>(initialPhone ?? null);
   const [refreshing, setRefreshing] = useState(false);
@@ -88,7 +85,7 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
   }, [smsMessages]);
 
   const filteredConversations = useMemo(() => {
-    let list = conversations.filter((c) => c.category === activeTab);
+    let list = [...conversations];
     // Filter out archived unless showArchived is on
     if (!showArchived) {
       list = list.filter((c) => !archivedConversations.includes(c.phone));
@@ -113,37 +110,7 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
       return b.lastMessage.timestamp - a.lastMessage.timestamp;
     });
     return list;
-  }, [conversations, activeTab, search, showArchived, archivedConversations, isNumberBlocked, pinnedConversations]);
-
-  const tabCounts = useMemo(() => {
-    const counts = { transaction: 0, esim: 0, general: 0 };
-    const seen = new Set<string>();
-    for (const c of conversations) {
-      if (archivedConversations.includes(c.phone)) continue;
-      if (isNumberBlocked(c.phone)) continue;
-      const key = `${c.category}-${c.phone}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        counts[c.category] += 1;
-      }
-    }
-    return counts;
-  }, [conversations, archivedConversations, isNumberBlocked]);
-
-  const unreadByCategory = useMemo(() => {
-    const counts = { transaction: 0, esim: 0, general: 0 };
-    const seen = new Set<string>();
-    for (const msg of smsMessages) {
-      if (msg.status === 'new') {
-        const key = `${msg.category}-${msg.senderPhone}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          counts[msg.category] += 1;
-        }
-      }
-    }
-    return counts;
-  }, [smsMessages]);
+  }, [conversations, search, showArchived, archivedConversations, isNumberBlocked, pinnedConversations]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -297,12 +264,6 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
     return <SmsConversation phone={selectedPhone} onBack={() => setSelectedPhone(null)} />;
   }
 
-  const tabs: { key: SmartTab; label: string; icon: typeof Banknote; color: string }[] = [
-    { key: 'transaction', label: 'العمليات', icon: Banknote, color: categoryColor('transaction') },
-    { key: 'esim', label: 'الشرائح', icon: CreditCard, color: categoryColor('esim') },
-    { key: 'general', label: 'عامة', icon: MessageSquare, color: categoryColor('general') },
-  ];
-
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border, paddingTop: insets.top + 12 }]}>
@@ -346,33 +307,6 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
           />
         </View>
 
-        <View style={[styles.tabsRow, { backgroundColor: colors.surfaceAlt }]}>
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.key;
-            const count = tabCounts[tab.key];
-            const unread = unreadByCategory[tab.key];
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                onPress={() => setActiveTab(tab.key)}
-                style={[styles.tab, isActive && { backgroundColor: colors.surface }]}
-                activeOpacity={0.7}
-              >
-                <tab.icon size={16} color={isActive ? tab.color : colors.textSecondary} strokeWidth={2} />
-                <Text style={[styles.tabLabel, { color: isActive ? tab.color : colors.textSecondary }]}>
-                  {tab.label}
-                </Text>
-                {count > 0 && (
-                  <View style={[styles.tabCount, { backgroundColor: isActive ? tab.color + '20' : colors.border }]}>
-                    <Text style={[styles.tabCountText, { color: isActive ? tab.color : colors.textMuted }]}>{count}</Text>
-                  </View>
-                )}
-                {unread > 0 && <View style={[styles.tabDot, { backgroundColor: tab.color }]} />}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
         <View style={styles.subBar}>
           <TouchableOpacity
             onPress={() => setShowArchived(!showArchived)}
@@ -402,9 +336,7 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
               {showArchived ? 'لا توجد محادثات مؤرشفة' : search.trim() ? 'لا توجد نتائج مطابقة' : 'لا توجد رسائل في هذا القسم'}
             </Text>
             <Text style={[styles.emptyHint, { color: colors.textMuted }]}>
-              {activeTab === 'transaction' && 'إشعارات التحويلات والعمليات البنكية تظهر هنا'}
-              {activeTab === 'esim' && 'رسائل طلبات الشرائح الإلكترونية والأرقام التسلسلية تظهر هنا'}
-              {activeTab === 'general' && 'الرسائل العامة غير المتعلقة بالعمل تظهر هنا'}
+              {showArchived ? 'لا توجد محادثات مؤرشفة' : 'لا توجد رسائل بعد'}
             </Text>
           </View>
         ) : (
@@ -650,12 +582,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   searchInput: { flex: 1, paddingVertical: 10, fontSize: 14, fontFamily: 'Cairo-Regular' },
-  tabsRow: { flexDirection: 'row', borderRadius: 12, padding: 4, gap: 4 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 9 },
-  tabLabel: { fontSize: 13, fontFamily: 'Cairo-SemiBold' },
-  tabCount: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
-  tabCountText: { fontSize: 10, fontFamily: 'Cairo-Bold' },
-  tabDot: { width: 6, height: 6, borderRadius: 3, position: 'absolute', top: 8, right: 8 },
   subBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 10 },
   archiveToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
   archiveToggleText: { fontSize: 11, fontFamily: 'Cairo-SemiBold' },

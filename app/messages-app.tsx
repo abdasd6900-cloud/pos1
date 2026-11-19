@@ -91,7 +91,7 @@ function MessagesAppInner() {
   return (
     <View style={styles.container}>
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => router.replace('/(tabs)/index')} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity onPress={() => { if (router.canGoBack()) { router.back(); } else { router.replace('/(tabs)/index'); } }} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <ArrowRight size={22} color="#FFFFFF" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>الرسائل</Text>
