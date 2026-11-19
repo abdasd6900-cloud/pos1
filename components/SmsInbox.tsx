@@ -15,7 +15,6 @@ import { useTheme } from '@/lib/theme-context';
 import { timeAgo, formatDateTime } from '@/lib/format';
 import { classifySmsMessage, categoryLabel, categoryColor } from '@/lib/sms-classifier';
 import { getDeviceContacts, isContactsSupported, getSimInfo, type DeviceContact, type SimInfo } from '@/lib/native-bridge';
-import { hasReadSmsPermission } from '@/lib/sms-gateway';
 import type { SmsMessage, SmsMessageCategory } from '@/types';
 import { SmsConversation } from './SmsConversation';
 import { PhoneNumberText } from './PhoneNumberText';
@@ -34,7 +33,7 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
   const insets = useSafeAreaInsets();
   const {
     smsMessages, markSmsRead, deleteSmsMessage, updateSmsMessage, sendSmsReply,
-    importDeviceSmsMessages, pendingOperations, transferNotifications, supportTickets,
+    pendingOperations, transferNotifications, supportTickets,
     unrecognizedMessages, settings,
     pinnedConversations, togglePinConversation,
     blockedNumbers, toggleBlockNumber, isNumberBlocked,
@@ -53,8 +52,7 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
   const [contacts, setContacts] = useState<DeviceContact[]>([]);
   const [showContacts, setShowContacts] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<string | null>(null);
+
   const [showArchived, setShowArchived] = useState(false);
   const [simCards, setSimCards] = useState<SimInfo[]>([]);
   const [selectedSimId, setSelectedSimId] = useState<number>(-1);
@@ -190,27 +188,6 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
     );
   }, [contacts, contactSearch]);
 
-  const handleImportSms = async () => {
-    setImporting(true);
-    setImportResult(null);
-    const hasPerm = await hasReadSmsPermission();
-    if (!hasPerm) {
-      setImporting(false);
-      setImportResult('لم يتم منح إذن قراءة الرسائل — يرجى السماح بالوصول من الإعدادات');
-      return;
-    }
-    const result = await importDeviceSmsMessages();
-    setImporting(false);
-    if (result.success) {
-      setImportResult(result.imported > 0
-        ? `تم استيراد ${result.imported} رسالة بنجاح`
-        : 'لا توجد رسائل جديدة للاستيراد');
-    } else {
-      setImportResult(result.error ?? 'فشل الاستيراد');
-    }
-    setTimeout(() => setImportResult(null), 5000);
-  };
-
   const handleInsertLocation = () => {
     // Insert a location placeholder — on Android this would use Geocoder
     // For now insert a maps link placeholder the user can edit
@@ -278,23 +255,11 @@ export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
               <Text style={[styles.markAllText, { color: colors.primary }]}>قراءة الكل</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPress={handleImportSms} disabled={importing} style={[styles.importBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} activeOpacity={0.7}>
-            <Smartphone size={16} color={importing ? colors.textMuted : colors.primary} strokeWidth={2} />
-            <Text style={[styles.importBtnText, { color: importing ? colors.textMuted : colors.primary }]}>
-              {importing ? 'جاري...' : 'استيراد'}
-            </Text>
-          </TouchableOpacity>
           <TouchableOpacity onPress={handleOpenCompose} style={[styles.composeBtn, { backgroundColor: colors.primary }]}>
             <PenSquare size={16} color="#FFFFFF" strokeWidth={2} />
             <Text style={styles.composeBtnText}>رسالة جديدة</Text>
           </TouchableOpacity>
         </View>
-        {importResult && (
-          <View style={[styles.importBanner, { backgroundColor: importResult.includes('بنجاح') ? colors.success + '15' : colors.danger + '15', borderColor: importResult.includes('بنجاح') ? colors.success + '40' : colors.danger + '40' }]}>
-            <Text style={[styles.importBannerText, { color: importResult.includes('بنجاح') ? colors.success : colors.danger }]}>{importResult}</Text>
-          </View>
-        )}
-
         <View style={[styles.searchBox, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
           <Search size={16} color={colors.textMuted} strokeWidth={2} />
           <TextInput
@@ -611,10 +576,6 @@ const styles = StyleSheet.create({
   convUnreadText: { color: '#FFFFFF', fontSize: 10, fontFamily: 'Cairo-Bold' },
   convCount: { fontSize: 10, fontFamily: 'Cairo-Regular', flex: 1, textAlign: 'left' },
   composeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  importBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
-  importBtnText: { fontSize: 11, fontFamily: 'Cairo-SemiBold' },
-  importBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, marginBottom: 10 },
-  importBannerText: { fontSize: 13, fontFamily: 'Cairo-SemiBold', flex: 1, textAlign: 'center' },
   composeBtnText: { color: '#FFFFFF', fontSize: 11, fontFamily: 'Cairo-SemiBold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   composeModal: { width: '100%', maxWidth: 440, maxHeight: '90%', borderRadius: 16, overflow: 'hidden' },

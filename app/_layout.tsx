@@ -91,7 +91,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
         const pathParts = parsed.pathname.split('/').filter(Boolean);
 
-        if (pathParts[0] === 'messages') {
+        if (parsed.hostname === 'messages' || pathParts[0] === 'messages') {
           router.replace('/messages-app');
           return;
         }
