@@ -40,7 +40,7 @@ export interface SignUpData {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-const AUTH_REQUEST_TIMEOUT_MS = 30000;
+const AUTH_REQUEST_TIMEOUT_MS = 10000;
 
 function phoneToEmail(phone: string): string {
   const cleaned = phone.replace(/\D/g, '');

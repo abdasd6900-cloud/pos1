@@ -535,7 +535,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         try {
           remote = await Promise.race([
             pullAllCollections() as Promise<RemoteData>,
-            new Promise<RemoteData>(resolve => setTimeout(() => resolve({}), 15000)),
+            new Promise<RemoteData>(resolve => setTimeout(() => resolve({}), 5000)),
           ]);
         } catch {
           remote = {};
