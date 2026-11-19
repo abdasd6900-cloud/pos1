@@ -1,12 +1,14 @@
-import { useMemo, useState, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, Platform, AppState } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowRight } from 'lucide-react-native';
 import { SmsInbox } from '@/components/SmsInbox';
+import { LockScreen } from '@/components/LockScreen';
 import { ThemeContext } from '@/lib/theme-context';
 import type { Palette } from '@/lib/color-system';
 import { useApp } from '@/lib/app-context';
+import { authenticateWithBiometric } from '@/lib/biometric';
 
 const msgPalette: { light: Palette; dark: Palette } = {
   light: {
@@ -85,6 +87,44 @@ function MsgThemeProvider({ children }: { children: React.ReactNode }) {
 function MessagesAppInner() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { settings } = useApp();
+  const hasPin = settings?.ownerPin && settings.ownerPin.length > 0;
+  const [locked, setLocked] = useState(true);
+  const bgTimestampRef = useRef<number | null>(null);
+
+  // If no PIN is set, try biometric on mount; if biometric succeeds, unlock.
+  // If neither PIN nor biometric is available, keep locked with a default 4-digit gate.
+  useEffect(() => {
+    if (!locked) return;
+    if (hasPin) return; // PIN is set — show the LockScreen keypad
+    void (async () => {
+      const success = await authenticateWithBiometric();
+      if (success) setLocked(false);
+    })();
+  }, [locked, hasPin]);
+
+  // Re-lock when app goes to background for more than 10 seconds
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        bgTimestampRef.current = Date.now();
+      } else if (state === 'active' && bgTimestampRef.current !== null) {
+        const elapsed = (Date.now() - bgTimestampRef.current) / 1000;
+        bgTimestampRef.current = null;
+        if (elapsed >= 10) {
+          setLocked(true);
+        }
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  const handleUnlock = useCallback(() => setLocked(false), []);
+
+  if (locked) {
+    return <LockScreen visible={true} onUnlock={handleUnlock} />;
+  }
 
   return (
     <View style={styles.container}>
