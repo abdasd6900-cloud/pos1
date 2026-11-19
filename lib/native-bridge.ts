@@ -1,4 +1,4 @@
-import { Platform, NativeModules } from 'react-native';
+import { Platform, NativeModules, DeviceEventEmitter } from 'react-native';
 
 export interface NativeBusinessHoursConfig {
   autoMode: boolean;
@@ -96,6 +96,74 @@ export async function setDoNotDisturb(enabled: boolean): Promise<{ success: bool
     const msg = e instanceof Error ? e.message : String(e);
     return { success: false, error: msg };
   }
+}
+
+// ---- SMS ContentObserver (Android native) ----
+
+export interface NativeSmsEvent {
+  id: string;
+  address: string;
+  body: string;
+  date: number;
+  direction: 'inbound' | 'outbound';
+}
+
+export function startSmsObservation(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (Platform.OS !== 'android') {
+      resolve(false);
+      return;
+    }
+    try {
+      const module = NativeModules.SmsReader;
+      if (!module?.startObserving) {
+        resolve(false);
+        return;
+      }
+      module.startObserving()
+        .then((result: boolean) => resolve(result))
+        .catch(() => resolve(false));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+export function stopSmsObservation(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (Platform.OS !== 'android') {
+      resolve(false);
+      return;
+    }
+    try {
+      const module = NativeModules.SmsReader;
+      if (!module?.stopObserving) {
+        resolve(false);
+        return;
+      }
+      module.stopObserving()
+        .then((result: boolean) => resolve(result))
+        .catch(() => resolve(false));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+export function subscribeToNativeSmsEvents(
+  callback: (event: NativeSmsEvent) => void
+): () => void {
+  if (Platform.OS !== 'android') {
+    return () => {};
+  }
+  const subscription = DeviceEventEmitter.addListener('SmsReader_newSms', (event: NativeSmsEvent) => {
+    if (event && event.address && event.body) {
+      callback(event);
+    }
+  });
+  return () => {
+    subscription.remove();
+  };
 }
 
 // ---- Screenshot Detection (Android native) ----

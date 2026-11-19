@@ -43,7 +43,7 @@ import {
   startRealtimeSync,
   type SyncCollectionName,
 } from './data-sync';
-import { syncBusinessHoursToNative, startScreenshotDetection, stopScreenshotDetection, setNativeSupabaseCredentials, setNativeSupabaseCredentialsV2, setSmsGatewayEnabled } from './native-bridge';
+import { syncBusinessHoursToNative, startScreenshotDetection, stopScreenshotDetection, setNativeSupabaseCredentials, setNativeSupabaseCredentialsV2, setSmsGatewayEnabled, startSmsObservation, stopSmsObservation, subscribeToNativeSmsEvents, type NativeSmsEvent } from './native-bridge';
 import { buildCustomerFiles, type CustomerFile } from './customer-files';
 import { shareBackupFile, pickBackupFile } from './backup-export';
 import { uploadCloudSnapshot, listCloudSnapshots, downloadCloudSnapshot, deleteCloudSnapshot, type CloudSnapshot, type FullBackupData } from './cloud-backup';
@@ -1263,6 +1263,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return () => {
       if (smsEventPollRef.current) clearInterval(smsEventPollRef.current);
+    };
+  }, [loaded, session]);
+
+  // Native SMS ContentObserver: listen for incoming SMS directly from the Android
+  // SMS content provider so messages appear instantly when this app is the default
+  // SMS handler, without waiting for the 15s Supabase poll cycle.
+  useEffect(() => {
+    if (!loaded || !session) return;
+    if (Platform.OS !== 'android') return;
+
+    let unsubscribe: (() => void) | null = null;
+    let dedupRef = new Set<string>();
+
+    void startSmsObservation().then((ok) => {
+      if (!ok) return;
+      unsubscribe = subscribeToNativeSmsEvents((event: NativeSmsEvent) => {
+        if (event.direction !== 'inbound') return;
+        // Dedup by native SMS id to avoid double-processing
+        if (dedupRef.has(event.id)) return;
+        dedupRef.add(event.id);
+        if (dedupRef.size > 200) {
+          const first = dedupRef.values().next().value;
+          if (first) dedupRef.delete(first);
+        }
+
+        const replyData = {
+          senderPhone: event.address,
+          senderName: '',
+          message: event.body,
+          channel: 'sms' as const,
+          timestamp: event.date,
+        };
+        // Route through the same handler that processes Supabase-polled events
+        remoteChangeHandlerRef.current?.('customerReplies', replyData);
+      });
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+      void stopSmsObservation();
     };
   }, [loaded, session]);
 
