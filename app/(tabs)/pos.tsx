@@ -1,13 +1,22 @@
+import { lazy, Suspense } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { useApp } from '@/lib/app-context';
-import TelecomPOSScreen from './pos-telecom';
-import RetailPOSScreen from './pos-retail';
+
+const TelecomPOSScreen = lazy(() => import('./pos-telecom'));
+const RetailPOSScreen = lazy(() => import('./pos-retail'));
 
 export default function POSScreen() {
   const { settings } = useApp();
 
-  if (settings.businessMode === 'telecom') {
-    return <TelecomPOSScreen />;
-  }
-
-  return <RetailPOSScreen />;
+  return (
+    <Suspense
+      fallback={
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator />
+        </View>
+      }
+    >
+      {settings.businessMode === 'telecom' ? <TelecomPOSScreen /> : <RetailPOSScreen />}
+    </Suspense>
+  );
 }

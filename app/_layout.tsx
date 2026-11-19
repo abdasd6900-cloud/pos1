@@ -145,6 +145,7 @@ function AppShell() {
   const { isDark, colors } = useTheme();
   const { session } = useAuth();
   const router = useRouter();
+  const segments = useSegments();
   const [locked, setLocked] = useState(false);
   const { currentMessage, dismiss: dismissIncomingMessage } = useIncomingSms(session);
   const bgTimestampRef = useRef<number | null>(null);
@@ -179,7 +180,6 @@ function AppShell() {
         const elapsed = (Date.now() - bgTimestampRef.current) / 1000;
         bgTimestampRef.current = null;
         if (elapsed >= AUTO_LOCK_SECONDS && session) {
-          const segments = router.segments;
           if (segments[0] !== 'messages-app') {
             setLocked(true);
           }

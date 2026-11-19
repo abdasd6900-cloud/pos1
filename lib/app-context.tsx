@@ -417,6 +417,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const smsMessagesRef = useRef<SmsMessage[]>([]);
   const customerFilesBuildingRef = useRef(false);
   const deletedCustomerIdsRef = useRef<Set<string>>(new Set());
+  const remoteHydratingRef = useRef(false);
 
   useEffect(() => {
     void storage.getCustomerFiles().then(setCustomerFiles);
@@ -524,6 +525,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPhoneNumbers(phoneNums);
       setWalletTxns(wtxns);
       setCompanyBalanceTxns(cbtxns);
+      remoteHydratingRef.current = true;
+      setLoaded(true);
+      void ensureNotificationPermissions();
 
       (async () => {
         type RemoteData = Partial<Record<SyncCollectionName, Record<string, unknown> | unknown[]>>;
@@ -595,8 +599,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         // Allow all merged collections to push back to cloud
         syncSkipPushRef.current.clear();
-        setLoaded(true);
-        void ensureNotificationPermissions();
+        remoteHydratingRef.current = false;
 
         const remoteHandler = (collection: SyncCollectionName, data: Record<string, unknown> | unknown[]) => {
           syncSkipPushRef.current.add(collection);
@@ -655,11 +658,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   const first = processedRepliesRef.current.values().next().value;
                   if (first) processedRepliesRef.current.delete(first);
                 }
-                const smsClassResult = classifySmsMessage(reply.message, reply.senderPhone);
+                const smsClassResult = classifySmsMessage(reply.message, reply.senderPhone ?? '');
                 const smsMsg: SmsMessage = {
                   id: storage.generateId(),
                   direction: 'inbound',
-                  senderPhone: reply.senderPhone,
+                  senderPhone: reply.senderPhone ?? '',
                   senderName: reply.senderName || (smsClassResult.isTransfer ? (parseTransferSms(reply.message).senderName ?? '') : ''),
                   body: reply.message,
                   category: smsClassResult.category,
@@ -678,15 +681,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 };
                 setSmsMessages((prev) => { const next = [smsMsg, ...prev]; storage.saveSmsMessages(next); return next; });
                 const incomingChannel: MessageChannel = reply.channel === 'whatsapp' ? 'whatsapp' : 'sms';
-                const isSupplierOrAgent = isSupplierOrAgentPhone(reply.senderPhone, suppliersRef.current, subAgentsRef.current);
+                const isSupplierOrAgent = isSupplierOrAgentPhone(reply.senderPhone ?? '', suppliersRef.current, subAgentsRef.current);
                 // If sender is a supplier/agent, always reply via WhatsApp regardless of incoming channel
                 const replyChannel: MessageChannel = isSupplierOrAgent ? 'whatsapp' : incomingChannel;
-                const match = findEscalationByPhone(telecomSalesRef.current, reply.senderPhone);
+                const match = findEscalationByPhone(telecomSalesRef.current, reply.senderPhone ?? '');
                 if (match) {
                   processEscalationReplyRef.current(match.sale.id, reply.message);
                 }
                 const templates = settingsRef.current?.autoReplyTemplates ?? null;
-                const result = classifyIncomingMessage(reply.message, reply.senderPhone, telecomSalesRef.current, telecomCompaniesRef.current, templates, keywordRepliesRef.current, bundlesRef.current, settingsRef.current?.storeName, agentBundlesRef.current, reply.senderName);
+                const result = classifyIncomingMessage(reply.message, reply.senderPhone ?? '', telecomSalesRef.current, telecomCompaniesRef.current, templates, keywordRepliesRef.current, bundlesRef.current, settingsRef.current?.storeName, agentBundlesRef.current, reply.senderName);
 
                 // Check if this is a bank/wallet transfer notification (not a customer message)
                 const parsedTransfer = parseTransferSms(reply.message);
@@ -721,7 +724,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 }
 
                 if (result.replyToCustomer) {
-                  void logOutboundSmsRef.current(reply.senderPhone, result.replyToCustomer, replyChannel);
+                  void logOutboundSmsRef.current(reply.senderPhone ?? '', result.replyToCustomer, replyChannel);
                   // Mark the inbound message as auto-replied so it's visible in the conversation
                   setSmsMessages((prev) => {
                     const next = prev.map((m) =>
@@ -740,13 +743,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   if (!agentOpen && agent) {
                     // offHoursMsg replaces the default auto-reply for off-hours
                     if (result.replyToCustomer !== offHoursMsg) {
-                      void logOutboundSmsRef.current(reply.senderPhone, offHoursMsg, replyChannel);
+                      void logOutboundSmsRef.current(reply.senderPhone ?? '', offHoursMsg, replyChannel);
                     }
                     const ticket: SupportTicket = {
                       id: storage.generateId(),
                       saleId: sale?.id ?? null,
                       customerName: result.customerName ?? '',
-                      customerPhone: reply.senderPhone,
+                      customerPhone: reply.senderPhone ?? '',
                       simNumber: result.simNumber ?? '',
                       companyName: sale?.companyName ?? '',
                       companySupportPhone: result.supportPhone,
@@ -771,7 +774,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   const op: PendingOperation = {
                     id: storage.generateId(),
                     source: 'sms' as const,
-                    senderPhone: reply.senderPhone,
+                    senderPhone: reply.senderPhone ?? '',
                     senderName: result.customerName ?? '',
                     simNumber: result.simNumber ?? '',
                     originalMessage: reply.message,
@@ -779,7 +782,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     customerMatched: !!sale?.customerId,
                     customerId: sale?.customerId ?? null,
                     customerName: result.customerName ?? '',
-                    customerPhone: reply.senderPhone,
+                    customerPhone: reply.senderPhone ?? '',
                     companyGuess: sale?.companyId ?? '',
                     bundleGuess: sale?.bundleName ?? '',
                     createdAt: Date.now(),
@@ -798,12 +801,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     id: storage.generateId(),
                     saleId: sale?.id ?? result.saleId ?? null,
                     customerName: result.customerName ?? '',
-                    customerPhone: reply.senderPhone,
+                    customerPhone: reply.senderPhone ?? '',
                     simNumber: result.simNumber ?? '',
                     companyName: sale?.companyName ?? result.companyName ?? '',
-                    companySupportPhone: null,
+                    companySupportPhone: '',
                     originalMessage: reply.message,
-                    supportMessage: null,
+                    supportMessage: '',
                     status: 'pending' as const,
                     whatsappOpened: false,
                     customerReplySent: result.replyToCustomer,
@@ -824,8 +827,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     id: storage.generateId(),
                     saleId: sale?.id ?? result.saleId ?? null,
                     customerName: result.customerName ?? '',
-                    customerPhone: reply.senderPhone,
-                    simNumber: result.simNumber,
+                    customerPhone: reply.senderPhone ?? '',
+                    simNumber: result.simNumber ?? '',
                     companyName: sale?.companyName ?? result.companyName ?? '',
                     companySupportPhone: '0599991274',
                     originalMessage: reply.message,
@@ -849,12 +852,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     id: storage.generateId(),
                     saleId: sale?.id ?? result.saleId ?? null,
                     customerName: result.customerName ?? '',
-                    customerPhone: reply.senderPhone,
+                    customerPhone: reply.senderPhone ?? '',
                     simNumber: result.simNumber ?? '',
                     companyName: sale?.companyName ?? result.companyName ?? '',
                     companySupportPhone: '',
                     originalMessage: reply.message,
-                    supportMessage: null,
+                    supportMessage: '',
                     status: 'pending' as const,
                     whatsappOpened: false,
                     customerReplySent: result.replyToCustomer,
@@ -882,8 +885,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     id: storage.generateId(),
                     saleId: sale?.id ?? result.saleId ?? null,
                     customerName: result.customerName ?? '',
-                    customerPhone: reply.senderPhone,
-                    simNumber: result.simNumber,
+                    customerPhone: reply.senderPhone ?? '',
+                    simNumber: result.simNumber ?? '',
                     companyName: sale?.companyName ?? result.companyName ?? '',
                     companySupportPhone: '0599991274',
                     originalMessage: reply.message,
@@ -908,8 +911,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     id: storage.generateId(),
                     saleId: sale?.id ?? result.saleId ?? null,
                     customerName: result.customerName ?? '',
-                    customerPhone: reply.senderPhone,
-                    simNumber: result.simNumber,
+                    customerPhone: reply.senderPhone ?? '',
+                    simNumber: result.simNumber ?? '',
                     companyName: sale?.companyName ?? result.companyName ?? '',
                     companySupportPhone: '0599991274',
                     originalMessage: reply.message,
@@ -930,14 +933,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 if ((result.action === 'support_forward' || result.action === 'urgency') && result.supportPhone && result.supportMessage && result.simNumber) {
                   if (!agentOpen && agent && result.action !== 'urgency') {
                     if (result.replyToCustomer !== offHoursMsg) {
-                      void logOutboundSmsRef.current(reply.senderPhone, offHoursMsg, replyChannel);
+                      void logOutboundSmsRef.current(reply.senderPhone ?? '', offHoursMsg, replyChannel);
                     }
                     const ticket: SupportTicket = {
                       id: storage.generateId(),
                       saleId: sale?.id ?? null,
                       customerName: result.customerName ?? '',
-                      customerPhone: reply.senderPhone,
-                      simNumber: result.simNumber,
+                      customerPhone: reply.senderPhone ?? '',
+                      simNumber: result.simNumber ?? '',
                       companyName: sale?.companyName ?? '',
                       companySupportPhone: result.supportPhone,
                       originalMessage: reply.message,
@@ -959,8 +962,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       id: storage.generateId(),
                       saleId: sale?.id ?? null,
                       customerName: result.customerName ?? '',
-                      customerPhone: reply.senderPhone,
-                      simNumber: result.simNumber,
+                      customerPhone: reply.senderPhone ?? '',
+                      simNumber: result.simNumber ?? '',
                       companyName: sale?.companyName ?? '',
                       companySupportPhone: result.supportPhone,
                       originalMessage: reply.message,
@@ -1000,7 +1003,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   const op: PendingOperation = {
                     id: storage.generateId(),
                     source: 'sms' as const,
-                    senderPhone: reply.senderPhone,
+                    senderPhone: reply.senderPhone ?? '',
                     senderName: result.customerName ?? '',
                     simNumber: '',
                     originalMessage: reply.message,
@@ -1008,7 +1011,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     customerMatched: false,
                     customerId: null,
                     customerName: result.customerName ?? '',
-                    customerPhone: reply.senderPhone,
+                    customerPhone: reply.senderPhone ?? '',
                     companyGuess: '',
                     bundleGuess: '',
                     createdAt: Date.now(),
@@ -1036,8 +1039,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       id: storage.generateId(),
                       saleId: sale.id,
                       customerName: result.customerName ?? '',
-                      customerPhone: reply.senderPhone,
-                      simNumber: result.simNumber,
+                      customerPhone: reply.senderPhone ?? '',
+                      simNumber: result.simNumber ?? '',
                       companyName: sale.companyName,
                       companySupportPhone: reqSupportPhone,
                       originalMessage: reply.message,
@@ -1058,15 +1061,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   const op: PendingOperation = {
                     id: storage.generateId(),
                     source: 'sms' as const,
-                    senderPhone: reply.senderPhone,
+                    senderPhone: reply.senderPhone ?? '',
                     senderName: result.customerName ?? '',
-                    simNumber: result.simNumber,
+                    simNumber: result.simNumber ?? '',
                     originalMessage: reply.message,
                     status: 'pending' as const,
                     customerMatched: !!sale?.customerId,
                     customerId: sale?.customerId ?? null,
                     customerName: result.customerName ?? '',
-                    customerPhone: reply.senderPhone,
+                    customerPhone: reply.senderPhone ?? '',
                     companyGuess: sale?.companyId ?? '',
                     bundleGuess: sale?.bundleName ?? '',
                     createdAt: Date.now(),
@@ -1084,7 +1087,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     const op: PendingOperation = {
                       id: storage.generateId(),
                       source: 'sms' as const,
-                      senderPhone: reply.senderPhone,
+                      senderPhone: reply.senderPhone ?? '',
                       senderName: result.customerName ?? '',
                       simNumber: '',
                       originalMessage: reply.message,
@@ -1092,7 +1095,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       customerMatched: false,
                       customerId: null,
                       customerName: result.customerName ?? '',
-                      customerPhone: reply.senderPhone,
+                      customerPhone: reply.senderPhone ?? '',
                       companyGuess: '',
                       bundleGuess: '',
                       createdAt: Date.now(),
@@ -1132,7 +1135,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   // Known customer with no specific match — send welcome as fallback reply
                   if (!result.replyToCustomer) {
                     const fallbackReply = buildWelcomeMessage(result.customerName ?? 'زبوننا العزيز', result.daysRemaining ?? 0, templates);
-                    void logOutboundSmsRef.current(reply.senderPhone, fallbackReply, replyChannel);
+                    void logOutboundSmsRef.current(reply.senderPhone ?? '', fallbackReply, replyChannel);
                     setSmsMessages((prev) => {
                       const next = prev.map((m) =>
                         m.id === smsMsg.id ? { ...m, autoReplied: true, autoReplyText: fallbackReply } : m
@@ -1145,7 +1148,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   if (!existing) {
                     const msg: UnrecognizedMessage = {
                       id: storage.generateId(),
-                      senderPhone: reply.senderPhone,
+                      senderPhone: reply.senderPhone ?? '',
                       senderName: result.customerName ?? '',
                       originalMessage: reply.message,
                       status: 'pending' as const,
@@ -1307,6 +1310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [loaded, session]);
 
   const syncPush = useCallback(<T,>(collection: SyncCollectionName, data: T) => {
+    if (remoteHydratingRef.current) return;
     if (syncSkipPushRef.current.has(collection)) {
       syncSkipPushRef.current.delete(collection);
       return;

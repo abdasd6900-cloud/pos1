@@ -53,7 +53,7 @@ const silentFetch: typeof fetch = async (input, init) => {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: { persistSession: !isServer, autoRefreshToken: !isServer, detectSessionInUrl: false },
-  fetch: silentFetch,
+  global: { fetch: silentFetch },
   realtime: (isServer || isWeb)
     ? { transport: NoopRealtimeTransport as unknown as import('@supabase/supabase-js').WebSocketLikeConstructor }
     : undefined,
