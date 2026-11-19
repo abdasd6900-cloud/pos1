@@ -74,7 +74,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
         // Shortcut: sahabpos://messages — open the messages tab directly
         if (pathParts[0] === 'messages') {
-          router.replace('/(tabs)/messages');
+          router.replace('/messages-app');
           return;
         }
 
@@ -156,6 +156,7 @@ function AppShell() {
           <Stack.Screen name="login" />
           <Stack.Screen name="customer-view" />
           <Stack.Screen name="dealer" />
+          <Stack.Screen name="messages-app" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="+not-found" />
         </Stack>
@@ -166,7 +167,7 @@ function AppShell() {
       <IncomingSmsBanner
         message={currentMessage}
         onDismiss={dismissIncomingMessage}
-        onViewMessage={() => router.replace('/(tabs)/messages')}
+        onViewMessage={() => router.replace('/messages-app')}
       />
     </>
   );

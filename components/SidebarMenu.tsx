@@ -82,7 +82,11 @@ export function SidebarMenu({ visible, onClose, businessMode, isAdmin, storeName
 
   const openRoute = (route: string) => {
     onClose();
-    router.push(`/(tabs)/${route}` as never);
+    if (route === 'messages') {
+      router.push('/messages-app' as never);
+    } else {
+      router.push(`/(tabs)/${route}` as never);
+    }
   };
 
   if (!visible) return null;

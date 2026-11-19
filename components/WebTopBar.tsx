@@ -112,6 +112,10 @@ function WebTopBarInner() {
   }, [settings.businessMode, profile?.role]);
 
   const navigateTo = (route: string) => {
+    if (route === 'messages') {
+      router.push('/messages-app' as never);
+      return;
+    }
     const tabPath = route === 'index' ? '/(tabs)' : `/(tabs)/${route}`;
     router.push(tabPath as never);
   };

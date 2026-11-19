@@ -201,7 +201,6 @@ export default function TabLayout() {
         <Tabs.Screen name="reports" options={hiddenScreen} />
         <Tabs.Screen name="settings" options={hiddenScreen} />
         <Tabs.Screen name="recharge" options={hiddenScreen} />
-        <Tabs.Screen name="messages" options={hiddenScreen} />
         <Tabs.Screen name="business-hours" options={hiddenScreen} />
         <Tabs.Screen name="pos-retail" options={hiddenScreen} />
         <Tabs.Screen name="pos-telecom" options={hiddenScreen} />

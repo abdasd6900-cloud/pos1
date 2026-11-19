@@ -123,6 +123,10 @@ function WebSidebarInner({ onWidthChange }: WebSidebarProps) {
   }, [settings.businessMode, profile?.role]);
 
   const navigateTo = (route: string) => {
+    if (route === 'messages') {
+      router.navigate('/messages-app' as never);
+      return;
+    }
     router.navigate(route === 'index' ? '/' : (`/${route}` as never));
   };
 

@@ -9,7 +9,7 @@ interface ThemeValue {
   toggleTheme: () => void;
 }
 
-const ThemeContext = createContext<ThemeValue | null>(null);
+export const ThemeContext = createContext<ThemeValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { settings, updateSettings } = useApp();
