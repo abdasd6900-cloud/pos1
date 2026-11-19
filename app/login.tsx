@@ -66,14 +66,19 @@ export default function LoginScreen() {
     }
     setSubmitting(true);
     setError('');
-    const { error } = await signIn(phone.trim(), password.trim());
-    if (error) {
-      setError(error);
-      setSubmitting(false);
-    } else {
+    try {
+      const { error } = await signIn(phone.trim(), password.trim());
+      if (error) {
+        setError(error);
+        return;
+      }
       if (biometricAvailable) {
         await saveCredentials(phone.trim(), password.trim());
       }
+    } catch {
+      setError('تعذر تسجيل الدخول حالياً. حاول مرة أخرى');
+    } finally {
+      setSubmitting(false);
     }
   }, [phone, password, signIn]);
 

@@ -40,6 +40,7 @@ export interface SignUpData {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
+const AUTH_REQUEST_TIMEOUT_MS = 15000;
 
 function phoneToEmail(phone: string): string {
   const cleaned = phone.replace(/\D/g, '');
@@ -180,7 +181,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (phone: string, password: string): Promise<{ error: string | null }> => {
     const email = phoneToEmail(phone);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await Promise.race([
+        supabase.auth.signInWithPassword({ email, password }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('AUTH_REQUEST_TIMEOUT')), AUTH_REQUEST_TIMEOUT_MS);
+        }),
+      ]);
       if (!error) return { error: null };
 
       const rawMessage = error.message.toLowerCase();
@@ -194,7 +200,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: 'رقم الجوال أو كلمة المرور غير صحيحة' };
       }
       return { error: 'تعذر تسجيل الدخول حالياً. حاول مرة أخرى' };
-    } catch {
+    } catch (requestError) {
+      if (requestError instanceof Error && requestError.message === 'AUTH_REQUEST_TIMEOUT') {
+        return { error: 'استغرقت خدمة الدخول وقتاً طويلاً. تحقق من اتصال الإنترنت وحاول مرة أخرى' };
+      }
       return { error: 'تعذر الاتصال بخدمة الدخول. تحقق من اتصال الإنترنت وحاول مرة أخرى' };
     }
   }, []);
