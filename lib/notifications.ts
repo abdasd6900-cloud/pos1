@@ -67,7 +67,7 @@ export function getWebNotificationPermission(): 'granted' | 'denied' | 'default'
   return Notification.permission;
 }
 
-export async function sendLocalNotification(title: string, body: string): Promise<void> {
+export async function sendLocalNotification(title: string, body: string, data?: Record<string, string>): Promise<void> {
   if (Platform.OS === 'web') {
     sendWebNotification(title, body);
     return;
@@ -83,6 +83,7 @@ export async function sendLocalNotification(title: string, body: string): Promis
       content: {
         title,
         body,
+        data: data ?? {},
         sound: true,
         priority: native.notifications.AndroidNotificationPriority.HIGH,
       },

@@ -31,7 +31,7 @@ interface ConversationSummary {
   category: SmsMessageCategory;
 }
 
-export function SmsInbox() {
+export function SmsInbox({ initialPhone }: { initialPhone?: string | null }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const {
@@ -45,7 +45,7 @@ export function SmsInbox() {
   const bgColor = ('background' in colors ? (colors as Record<string, string>).background : colors.bg) as string;
   const [activeTab, setActiveTab] = useState<SmartTab>('transaction');
   const [search, setSearch] = useState('');
-  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(initialPhone ?? null);
   const [refreshing, setRefreshing] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
   const [composePhone, setComposePhone] = useState('');

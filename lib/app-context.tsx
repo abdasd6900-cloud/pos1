@@ -753,7 +753,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       updatedAt: Date.now(),
                     };
                     setSupportTickets((prev) => { const next = [ticket, ...prev]; storage.saveSupportTickets(next); return next; });
-                    void sendLocalNotification('طلب دعم فني - خارج الدوام', `الرقم ${result.simNumber ?? ''} - ${result.customerName ?? ''} - تم إرجاء الطلب لفتح الوكالة`);
+                    void sendLocalNotification('طلب دعم فني - خارج الدوام', `الرقم ${result.simNumber ?? ''} - ${result.customerName ?? ''} - تم إرجاء الطلب لفتح الوكالة`, { phone: reply.senderPhone ?? '' });
                   } else {
                     void logOutboundSmsRef.current(result.supportPhone, result.supportMessage, 'whatsapp');
                   }
@@ -784,7 +784,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       updatedAt: Date.now(),
                     };
                     setSupportTickets((prev) => { const next = [ticket, ...prev]; storage.saveSupportTickets(next); return next; });
-                    void sendLocalNotification('طلب دعم فني - خارج الدوام', `الرقم ${result.simNumber} - ${result.customerName ?? ''} - تم إرجاء الطلب لفتح الوكالة`);
+                    void sendLocalNotification('طلب دعم فني - خارج الدوام', `الرقم ${result.simNumber} - ${result.customerName ?? ''} - تم إرجاء الطلب لفتح الوكالة`, { phone: reply.senderPhone ?? '' });
                   } else {
                     const ticket: SupportTicket = {
                       id: storage.generateId(),
@@ -807,11 +807,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       updatedAt: Date.now(),
                     };
                     setSupportTickets((prev) => { const next = [ticket, ...prev]; storage.saveSupportTickets(next); return next; });
-                    void sendLocalNotification('طلب دعم فني', `الرقم ${result.simNumber} - ${result.customerName ?? ''} - ${result.action === 'urgency' ? 'عاجل' : 'مشكلة إنترنت'}`);
+                    void sendLocalNotification('طلب دعم فني', `الرقم ${result.simNumber} - ${result.customerName ?? ''} - ${result.action === 'urgency' ? 'عاجل' : 'مشكلة إنترنت'}`, { phone: reply.senderPhone ?? '' });
                   }
                 }
                 if (result.action === 'specify_duration') {
-                  void sendLocalNotification('طلب تحديد المدة', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`);
+                  void sendLocalNotification('طلب تحديد المدة', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
                 }
                 // eSIM flow actions — notify (reply already sent above)
                 if (result.action.startsWith('esim_')) {
@@ -824,7 +824,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     esim_transfer_to_staff: 'eSIM - تحويل للموظف',
                     esim_company_list: 'eSIM - قائمة الشركات',
                   };
-                  void sendLocalNotification(esimNotifTitle[result.action] ?? 'طلب eSIM', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`);
+                  void sendLocalNotification(esimNotifTitle[result.action] ?? 'طلب eSIM', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
                 }
                 // eSIM transfer to staff — create a pending operation for manual handling
                 if (result.action === 'esim_transfer_to_staff') {
@@ -884,7 +884,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       updatedAt: Date.now(),
                     };
                     setSupportTickets((prev) => { const next = [ticket, ...prev]; storage.saveSupportTickets(next); return next; });
-                    void sendLocalNotification('طلب شحن محوّل للدعم', `الرقم ${result.simNumber} - ${result.customerName ?? ''} - تم التحويل للدعم الفني`);
+                    void sendLocalNotification('طلب شحن محوّل للدعم', `الرقم ${result.simNumber} - ${result.customerName ?? ''} - تم التحويل للدعم الفني`, { phone: reply.senderPhone ?? '' });
                   }
                   const op: PendingOperation = {
                     id: storage.generateId(),
@@ -909,7 +909,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     companyName: result.companyName ?? sale?.companyName ?? null,
                   };
                   setPendingOperations((prev) => { const next = [op, ...prev]; storage.savePendingOperations(next); return next; });
-                  void sendLocalNotification('عملية قيد الانتظار', `طلب شحن للرقم ${result.simNumber} من ${result.customerName ?? reply.senderPhone}`);
+                  void sendLocalNotification('عملية قيد الانتظار', `طلب شحن للرقم ${result.simNumber} من ${result.customerName ?? reply.senderPhone}`, { phone: reply.senderPhone ?? '' });
                   } else {
                     // eSIM recharge request without a sim number
                     const op: PendingOperation = {
@@ -935,12 +935,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       companyName: result.companyName ?? null,
                     };
                     setPendingOperations((prev) => { const next = [op, ...prev]; storage.savePendingOperations(next); return next; });
-                    void sendLocalNotification('طلب eSIM قيد الانتظار', `من ${reply.senderPhone} - شركة ${result.companyName ?? 'غير محدد'} - مدة ${result.chargeDuration ?? 'غير محدد'}`);
+                    void sendLocalNotification('طلب eSIM قيد الانتظار', `من ${reply.senderPhone} - شركة ${result.companyName ?? 'غير محدد'} - مدة ${result.chargeDuration ?? 'غير محدد'}`, { phone: reply.senderPhone ?? '' });
                   }
                 }
                 // Greeting for first-time / unknown customers — auto-reply sent above via result.replyToCustomer
                 if (result.action === 'greeting') {
-                  void sendLocalNotification('زبون جديد', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`);
+                  void sendLocalNotification('زبون جديد', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
                 }
                 // Unrecognized message — queue for user to teach a reply, but still send a reply
                 if (result.action === 'default') {
@@ -970,7 +970,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       resolvedAt: null,
                     };
                     setUnrecognizedMessages((prev) => { const next = [msg, ...prev]; storage.saveUnrecognizedMessages(next); return next; });
-                    void sendLocalNotification('رسالة غير معروفة', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`);
+                    void sendLocalNotification('رسالة غير معروفة', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
                   }
                 }
               }
@@ -1039,7 +1039,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               companyName: null,
             };
             setPendingOperations((prev) => { const next = [op, ...prev]; storage.savePendingOperations(next); return next; });
-            void sendLocalNotification('عملية قيد الانتظار', `من ${row.sender_phone}: ${row.message.slice(0, 50)}`);
+            void sendLocalNotification('عملية قيد الانتظار', `من ${row.sender_phone}: ${row.message.slice(0, 50)}`, { phone: row.sender_phone ?? '' });
           }
         }
 

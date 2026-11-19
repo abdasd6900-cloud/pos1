@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowRight } from 'lucide-react-native';
 import { SmsInbox } from '@/components/SmsInbox';
@@ -85,6 +85,8 @@ function MsgThemeProvider({ children }: { children: React.ReactNode }) {
 function MessagesAppInner() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ phone?: string }>();
+  const initialPhone = typeof params.phone === 'string' && params.phone.length > 0 ? params.phone : null;
 
   return (
     <View style={styles.container}>
@@ -95,7 +97,7 @@ function MessagesAppInner() {
         <Text style={styles.topBarTitle}>الرسائل</Text>
       </View>
       <View style={styles.inboxWrap}>
-        <SmsInbox />
+        <SmsInbox initialPhone={initialPhone} />
       </View>
     </View>
   );

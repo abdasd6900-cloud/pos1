@@ -133,6 +133,27 @@ function AppShell() {
   const { currentMessage, dismiss: dismissIncomingMessage } = useIncomingSms(session);
   const bgTimestampRef = useRef<number | null>(null);
 
+  // Listen for notification taps (native only) — opens the relevant conversation
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    let responseSub: { remove: () => void } | null = null;
+    (async () => {
+      try {
+        const { default: Notifications } = await import('expo-notifications');
+        responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+          const data = response.notification.request.content.data as Record<string, string> | undefined;
+          const phone = data?.phone;
+          if (phone) {
+            router.replace(`/messages-app?phone=${encodeURIComponent(phone)}`);
+          } else {
+            router.replace('/messages-app');
+          }
+        });
+      } catch { /* native notifications not available */ }
+    })();
+    return () => { responseSub?.remove(); };
+  }, [router]);
+
   useEffect(() => {
     if (Platform.OS === 'web') return;
     const sub = AppState.addEventListener('change', (state) => {
