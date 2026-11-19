@@ -45,8 +45,18 @@
       "orientation": "portrait",
       "barStyle": "default"
     },
+    "updates": {
+      "url": "https://u.expo.dev/pkpgxtvdxkqfadpqvvoz",
+      "enabled": true,
+      "fallbackToCacheTimeout": 0,
+      "checkAutomaticallyOnLaunch": "ON_LOAD"
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
     "plugins": [
       "expo-router",
+      "expo-updates",
       "expo-font",
       "expo-web-browser",
       "expo-splash-screen",
