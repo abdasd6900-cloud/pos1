@@ -100,7 +100,7 @@ interface CustomerDebt {
   updated_at: string;
 }
 
-type Tab = 'dealers' | 'requests' | 'pricing' | 'sims' | 'esim' | 'debts';
+type Tab = 'dealers' | 'requests' | 'pricing' | 'sims' | 'debts';
 
 export default function DealersManagementScreen() {
   const { session } = useAuth();
@@ -228,8 +228,7 @@ export default function DealersManagementScreen() {
     setRefreshing(false);
   }, [fetchData]);
 
-  const pendingCount = requests.filter((r) => r.status === 'pending').length;
-  const pendingEsimCount = esimRequests.filter((e) => e.status === 'pending').length;
+  const pendingCount = requests.filter((r) => r.status === 'pending').length + esimRequests.filter((e) => e.status === 'pending').length;
   const totalDebtRemaining = debts.reduce((sum, d) => sum + (Number(d.amount) - Number(d.paid_amount)), 0);
   const filteredDealers = dealers.filter((d) => {
     if (!search.trim()) return true;
@@ -457,7 +456,6 @@ export default function DealersManagementScreen() {
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: 'requests', label: 'الطلبات', icon: <Send size={18} color={tab === 'requests' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} />, badge: pendingCount },
-    { key: 'esim', label: 'eSIM', icon: <CreditCard size={18} color={tab === 'esim' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} />, badge: pendingEsimCount },
     { key: 'dealers', label: 'الموزعون', icon: <Users size={18} color={tab === 'dealers' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
     { key: 'pricing', label: 'التسعير', icon: <Tag size={18} color={tab === 'pricing' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
     { key: 'sims', label: 'الشرائح', icon: <Smartphone size={18} color={tab === 'sims' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
@@ -530,18 +528,22 @@ export default function DealersManagementScreen() {
         </View>
       ) : tab === 'requests' ? (
         <FlatList
-          data={requests}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <RequestRow req={item} dealerName={dealerName(item.dealer_id)} colors={colors} onProcess={() => setProcessingRequest(item)} />
-          )}
+          data={[
+            ...esimRequests.map((e) => ({ type: 'esim' as const, item: e, sortDate: e.created_at })),
+            ...requests.map((r) => ({ type: 'recharge' as const, item: r, sortDate: r.created_at })),
+          ].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())}
+          keyExtractor={(entry) => entry.item.id}
+          renderItem={({ item: entry }) => entry.type === 'esim'
+            ? <EsimRequestRow req={entry.item as EsimRequest} dealerName={dealerName((entry.item as EsimRequest).dealer_id)} colors={colors} onProcess={() => setProcessingEsim(entry.item as EsimRequest)} />
+            : <RequestRow req={entry.item as RechargeRequest} dealerName={dealerName((entry.item as RechargeRequest).dealer_id)} colors={colors} onProcess={() => setProcessingRequest(entry.item as RechargeRequest)} />
+          }
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, gap: 10 }}
           showsVerticalScrollIndicator={false}
           scrollEnabled={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <EmptyState icon={<Send size={32} color={colors.textMuted} strokeWidth={2} />} title="لا توجد طلبات" subtitle="ستظهر طلبات الشحن من الموزعين هنا" />
+              <EmptyState icon={<Send size={32} color={colors.textMuted} strokeWidth={2} />} title="لا توجد طلبات" subtitle="ستظهر طلبات الشحن و eSIM من الموزعين هنا" />
             </View>
           }
         />
@@ -569,23 +571,6 @@ export default function DealersManagementScreen() {
             }
           />
         </>
-      ) : tab === 'esim' ? (
-        <FlatList
-          data={esimRequests}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <EsimRequestRow req={item} dealerName={dealerName(item.dealer_id)} colors={colors} onProcess={() => setProcessingEsim(item)} />
-          )}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, gap: 10 }}
-          showsVerticalScrollIndicator={false}
-          scrollEnabled={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <EmptyState icon={<CreditCard size={32} color={colors.textMuted} strokeWidth={2} />} title="لا توجد طلبات eSIM" subtitle="ستظهر طلبات الشرائح الإلكترونية من الموزعين هنا" />
-            </View>
-          }
-        />
       ) : tab === 'pricing' ? (
         <>
           <View style={[styles.addActionArea, { flexDirection: 'row', gap: 8 }]}>
@@ -679,7 +664,12 @@ function EsimRequestRow({ req, dealerName, colors, onProcess }: { req: EsimReque
         </View>
         <View style={{ flex: 1 }}>
           <View style={styles.reqTopRow}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>{req.customer_name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>{req.customer_name}</Text>
+              <View style={[styles.typeBadge, { backgroundColor: colors.info + '20' }]}>
+                <Text style={[styles.typeBadgeText, { color: colors.info }]}>eSIM</Text>
+              </View>
+            </View>
             <View style={[styles.statusPill, { backgroundColor: color + '20' }]}>
               <Text style={[styles.statusText, { color }]}>{statusLabels[req.status] || req.status}</Text>
             </View>
@@ -1431,6 +1421,8 @@ const styles = StyleSheet.create({
   balanceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   balanceText: { fontSize: 12, fontWeight: '600', fontFamily: 'Cairo-SemiBold' },
   statusPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  typeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  typeBadgeText: { fontSize: 9, fontWeight: '700', fontFamily: 'Cairo-Bold' },
   statusText: { fontSize: 10, fontWeight: '700', fontFamily: 'Cairo-SemiBold' },
   timeText: { fontSize: 11, marginTop: 4, fontFamily: 'Cairo-Regular' },
   reqTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
