@@ -1517,14 +1517,15 @@ export default function TelecomPOSScreen() {
     if (settings.enableSms && customerId && customerPhone.trim()) {
       const smsName = customerName.trim();
       const smsPhone = customerPhone.trim();
+      const chargedPhone = simNumber.trim();
       const smsCur = settings.currency;
       let smsBody: string;
       if (effectiveRemaining <= 0) {
-        smsBody = `عزيزي ${smsName}، رقمك: ${smsPhone}\nالمبلغ: ${formatCurrency(total, smsCur)}\nالمدفوع: ${formatCurrency(effectivePaid, smsCur)}\nالمتبقي: 0`;
+        smsBody = `عزيزي ${smsName}، رقمك: ${chargedPhone}\nالمبلغ: ${formatCurrency(total, smsCur)}\nالمدفوع: ${formatCurrency(effectivePaid, smsCur)}\nالمتبقي: 0`;
       } else if (effectivePaid > 0) {
-        smsBody = `عزيزي ${smsName}، رقمك: ${smsPhone}\nالمبلغ: ${formatCurrency(total, smsCur)}\nالمدفوع: ${formatCurrency(effectivePaid, smsCur)}\nالمتبقي: ${formatCurrency(effectiveRemaining, smsCur)}`;
+        smsBody = `عزيزي ${smsName}، رقمك: ${chargedPhone}\nالمبلغ: ${formatCurrency(total, smsCur)}\nالمدفوع: ${formatCurrency(effectivePaid, smsCur)}\nالمتبقي: ${formatCurrency(effectiveRemaining, smsCur)}`;
       } else {
-        smsBody = `عزيزي ${smsName}، رقمك: ${smsPhone}\nتكلفة المعاملة: ${formatCurrency(total, smsCur)}\nإجمالي الدين: ${formatCurrency(customerBalanceBefore + debtChange, smsCur)}`;
+        smsBody = `عزيزي ${smsName}، رقمك: ${chargedPhone}\nتكلفة المعاملة: ${formatCurrency(total, smsCur)}\nإجمالي الدين: ${formatCurrency(customerBalanceBefore + debtChange, smsCur)}`;
       }
       void logOutboundSms(smsPhone, smsBody, 'sms');
       updateTelecomSale(sale.id, { smsSent: true });
