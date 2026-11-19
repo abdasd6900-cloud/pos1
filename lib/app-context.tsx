@@ -1130,6 +1130,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     setUnrecognizedMessages((prev) => { const next = [greetingMsg, ...prev]; storage.saveUnrecognizedMessages(next); return next; });
                   }
                 }
+                // SIM lookup — customer sent a bare number, reply with subscription status
+                if (result.action === 'sim_lookup') {
+                  const status = result.daysRemaining && result.daysRemaining > 0
+                    ? `متبقي ${result.daysRemaining} يوم`
+                    : 'اشتراك منتهي';
+                  void sendLocalNotification('فحص رقم', `من ${reply.senderPhone}: ${result.simNumber ?? ''} - ${result.customerName ?? ''} - ${status}`, { phone: reply.senderPhone ?? '' });
+                }
                 // Unrecognized message — queue for user to teach a reply, but still send a reply
                 if (result.action === 'default') {
                   // Known customer with no specific match — send welcome as fallback reply

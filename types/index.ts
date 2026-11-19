@@ -115,6 +115,9 @@ export interface AutoReplyTemplates {
   problemAskDetails: string;
   problemNoSignalUpdate: string;
   problemWeakInternet: string;
+  simLookupActive: string;
+  simLookupExpired: string;
+  simLookupNotFound: string;
 }
 
 export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
@@ -147,6 +150,9 @@ export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
   problemAskDetails: 'نأسف لما تواجهه. يرجى تحديد المشكلة:\n1. اختفاء اشارة النت\n2. اختفاء الارسال نهائياً\n3. ضعف في الانترنت',
   problemNoSignalUpdate: 'تم تحديث الرقم من طرفنا، يرجى إعادة تشغيل الجهاز بعد ربع ساعة.',
   problemWeakInternet: 'نأسف لمعاناتكم ونود اعلامكم ان الضعف ناتج عن تشويش على ابراج الارسال ولا يمكن التحكم في السرعه من طرفنا.\nملاحظه/ قد يكون هناك انواع اخرى من الشرائح تعمل في اماكنكم بشكل افضل بامكانك الاستفسار من جيرانك واصدقاءك عن انواع الشرائح المستخدمه في منطقتكم.\nتم تحديث الرقم من طرفنا قم باعادة التشغيل بعد ربع ساعه.\nشكرا لتفهمكم ونقدر صبركم',
+  simLookupActive: 'عزيزي {name}، رقمك {sim} مسجل لدينا. متبقي في اشتراكك {days} يوم. اذا كنت ترغب بالتجديد ارسل "شحن" او "تجديد".',
+  simLookupExpired: 'عزيزي {name}، رقمك {sim} مسجل لدينا لكن اشتراكك منتهي. لتجديد الاشتراك ارسل "شحن" او "تجديد".',
+  simLookupNotFound: 'الرقم {sim} غير مسجل لدينا. اذا كنت ترغب بالشحن او التجديد، يرجى ارسال "شحن" متبوعاً بالرقم، او تواصل معنا لمساعدتك.',
 };
 
 export interface TelecomCompany {

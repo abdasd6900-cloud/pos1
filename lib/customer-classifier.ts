@@ -57,6 +57,24 @@ export function findCustomerByPhone(sales: TelecomSale[], phone: string, senderN
   };
 }
 
+export function findCustomerBySimNumber(sales: TelecomSale[], simNumber: string): CustomerMatch | null {
+  const normalized = normalizePhone(simNumber);
+  const matching = sales
+    .filter((s) => normalizePhone(s.simNumber) === normalized)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  if (matching.length === 0) return null;
+  const sale = matching[0];
+  const durationDays = CHARGE_DURATION_DAYS[sale.chargeDuration] ?? 30;
+  const elapsed = Math.floor((Date.now() - sale.createdAt) / DAY_MS);
+  const daysRemaining = durationDays - elapsed;
+  return {
+    sale,
+    company: null,
+    daysRemaining,
+    hasActiveCharge: daysRemaining > 0,
+  };
+}
+
 export function findCustomerBySerial(sales: TelecomSale[], text: string): CustomerMatch | null {
   const needle = text.replace(/[^0-9A-Za-z]/g, '').toLowerCase().trim();
   if (needle.length < 4) return null;
@@ -244,7 +262,7 @@ export function normalizePhone(phone: string): string {
   return p;
 }
 
-export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_forward' | 'recharge_active' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'update_request' | 'update_ask_number' | 'update_not_working' | 'problem_ask_details' | 'problem_no_signal' | 'problem_weak_internet' | 'default';
+export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_forward' | 'recharge_active' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'update_request' | 'update_ask_number' | 'update_not_working' | 'problem_ask_details' | 'problem_no_signal' | 'problem_weak_internet' | 'sim_lookup' | 'default';
 
 export interface ClassificationResult {
   action: ClassificationAction;
@@ -503,6 +521,55 @@ export function classifyIncomingMessage(
       if (kr) {
         return { action: 'keyword_reply', replyToCustomer: kr.reply, supportPhone: null, supportMessage: null, simNumber: null, daysRemaining: null, customerName: null, saleId: null, chargeDuration: null, companyName: null };
       }
+    }
+    // Check if the message contains a SIM number — look it up in sales
+    const { primarySimNumber: bodySim } = extractSimNumbersFromMessage(message);
+    if (bodySim) {
+      const simMatch = findCustomerBySimNumber(sales, bodySim);
+      if (simMatch) {
+        const enrichedSim = enrichWithCompany(simMatch, companies);
+        const tpl = getTemplates(templates);
+        if (simMatch.hasActiveCharge) {
+          return {
+            action: 'sim_lookup',
+            replyToCustomer: fillTemplate(tpl.simLookupActive, { name: simMatch.sale.customerName || 'زبوننا العزيز', sim: bodySim, days: simMatch.daysRemaining }),
+            supportPhone: null,
+            supportMessage: null,
+            simNumber: bodySim,
+            daysRemaining: simMatch.daysRemaining,
+            customerName: simMatch.sale.customerName ?? null,
+            saleId: simMatch.sale.id,
+            chargeDuration: null,
+            companyName: enrichedSim.company?.name ?? null,
+          };
+        }
+        return {
+          action: 'sim_lookup',
+          replyToCustomer: fillTemplate(tpl.simLookupExpired, { name: simMatch.sale.customerName || 'زبوننا العزيز', sim: bodySim }),
+          supportPhone: null,
+          supportMessage: null,
+          simNumber: bodySim,
+          daysRemaining: 0,
+          customerName: simMatch.sale.customerName ?? null,
+          saleId: simMatch.sale.id,
+          chargeDuration: null,
+          companyName: enrichedSim.company?.name ?? null,
+        };
+      }
+      // SIM number not found in sales — inform customer
+      const tpl = getTemplates(templates);
+      return {
+        action: 'sim_lookup',
+        replyToCustomer: fillTemplate(tpl.simLookupNotFound, { sim: bodySim }),
+        supportPhone: null,
+        supportMessage: null,
+        simNumber: bodySim,
+        daysRemaining: null,
+        customerName: null,
+        saleId: null,
+        chargeDuration: null,
+        companyName: null,
+      };
     }
     // Greeting for first-time / unknown customers — always auto-reply
     return { action: 'greeting', replyToCustomer: fillTemplate(getTemplates(templates).greeting, { storeName: storeName || 'متجرنا' }), supportPhone: null, supportMessage: null, simNumber: null, daysRemaining: null, customerName: null, saleId: null, chargeDuration: null, companyName: null };
