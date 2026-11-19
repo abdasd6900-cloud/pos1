@@ -651,7 +651,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               const reply = data as { senderPhone?: string; senderName?: string; message?: string; timestamp?: number; channel?: string };
               if (reply && reply.message && (reply.senderPhone || reply.channel === 'bank_notification' || reply.senderName)) {
                 // Deduplicate: same message from same phone within 60s is a duplicate delivery
-                const dedupKey = `${reply.senderPhone ?? ''}|${reply.message}|${Math.floor((reply.timestamp ?? Date.now()) / 60000)}`;
+                const dedupKey = `${reply.senderPhone ?? ''}|${reply.message}|${Math.floor((reply.timestamp ?? Date.now()) / 300000)}`;
                 if (processedRepliesRef.current.has(dedupKey)) break;
                 processedRepliesRef.current.add(dedupKey);
                 if (processedRepliesRef.current.size > 200) {

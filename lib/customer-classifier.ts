@@ -514,6 +514,47 @@ export function classifyIncomingMessage(
     };
   }
 
+  // Fallback: customer sent a duration keyword (like "شهر") but conversation state was lost.
+  // Try to match by sender phone or SIM number in the message, then create a recharge request.
+  const fallbackDuration = detectChargeDuration(message);
+  if (fallbackDuration) {
+    const enrichedMatch = match ? enrichWithCompany(match, companies) : null;
+    const fallbackSim = match?.sale.simNumber ?? null;
+    const { primarySimNumber: bodySim } = extractSimNumbersFromMessage(message);
+    const simLookup = bodySim ? findCustomerBySimNumber(sales, bodySim) : null;
+    const resolvedMatch = enrichedMatch ?? (simLookup ? enrichWithCompany(simLookup, companies) : null);
+    if (resolvedMatch) {
+      clearRechargeConversation(senderPhone);
+      return {
+        action: 'recharge_request',
+        replyToCustomer: buildRechargeAccepted(templates),
+        supportPhone: resolvedMatch.company?.supportPhone ?? null,
+        supportMessage: null,
+        simNumber: resolvedMatch.sale.simNumber,
+        daysRemaining: resolvedMatch.daysRemaining,
+        customerName: resolvedMatch.sale.customerName ?? null,
+        saleId: resolvedMatch.sale.id,
+        chargeDuration: fallbackDuration,
+        companyName: resolvedMatch.company?.name ?? null,
+      };
+    }
+    if (fallbackSim) {
+      clearRechargeConversation(senderPhone);
+      return {
+        action: 'recharge_request',
+        replyToCustomer: buildRechargeAccepted(templates),
+        supportPhone: null,
+        supportMessage: null,
+        simNumber: fallbackSim,
+        daysRemaining: match?.daysRemaining ?? null,
+        customerName: match?.sale.customerName ?? null,
+        saleId: match?.sale.id ?? null,
+        chargeDuration: fallbackDuration,
+        companyName: enrichedMatch?.company?.name ?? null,
+      };
+    }
+  }
+
   if (!match) {
     // Check keyword replies even for unknown customers
     if (keywordReplies && keywordReplies.length > 0) {
@@ -529,6 +570,59 @@ export function classifyIncomingMessage(
       if (simMatch) {
         const enrichedSim = enrichWithCompany(simMatch, companies);
         const tpl = getTemplates(templates);
+        // If the message also contains a recharge request keyword, treat as recharge request
+        if (isRechargeRequest(message)) {
+          if (simMatch.hasActiveCharge && simMatch.daysRemaining > 3) {
+            setRechargeActiveState(senderPhone, {
+              simNumber: bodySim,
+              customerName: simMatch.sale.customerName ?? '',
+              daysRemaining: simMatch.daysRemaining,
+              saleId: simMatch.sale.id,
+              companyName: enrichedSim.company?.name ?? null,
+              startedAt: Date.now(),
+            });
+            return {
+              action: 'recharge_active',
+              replyToCustomer: buildRechargeActiveReminder(simMatch.sale.customerName ?? 'زبوننا العزيز', simMatch.daysRemaining, templates),
+              supportPhone: null,
+              supportMessage: null,
+              simNumber: bodySim,
+              daysRemaining: simMatch.daysRemaining,
+              customerName: simMatch.sale.customerName ?? null,
+              saleId: simMatch.sale.id,
+              chargeDuration: null,
+              companyName: enrichedSim.company?.name ?? null,
+            };
+          }
+          if (COMPANIES_REQUIRING_DURATION.some((c) => (enrichedSim.company?.name ?? '').includes(c))) {
+            setRechargeConversationState(senderPhone, { simNumber: bodySim, companyName: enrichedSim.company?.name ?? null, startedAt: Date.now() });
+            return {
+              action: 'specify_duration',
+              replyToCustomer: buildSpecifyDuration(templates),
+              supportPhone: null,
+              supportMessage: null,
+              simNumber: bodySim,
+              daysRemaining: simMatch.daysRemaining,
+              customerName: simMatch.sale.customerName ?? null,
+              saleId: simMatch.sale.id,
+              chargeDuration: null,
+              companyName: enrichedSim.company?.name ?? null,
+            };
+          }
+          return {
+            action: 'recharge_request',
+            replyToCustomer: buildRechargeReceivedMessage(bodySim, templates),
+            supportPhone: null,
+            supportMessage: null,
+            simNumber: bodySim,
+            daysRemaining: simMatch.daysRemaining,
+            customerName: simMatch.sale.customerName ?? null,
+            saleId: simMatch.sale.id,
+            chargeDuration: null,
+            companyName: enrichedSim.company?.name ?? null,
+          };
+        }
+        // No recharge request — just report subscription status
         if (simMatch.hasActiveCharge) {
           return {
             action: 'sim_lookup',
