@@ -179,8 +179,7 @@ async function pollForChanges(handler: RemoteChangeHandler): Promise<void> {
     await getDeviceId();
     const { data, error } = await supabase
       .from('data_sync')
-      .select('collection, data, updated_at, updated_by')
-      .order('updated_at', { ascending: false });
+      .select('collection, data, updated_at, updated_by');
 
     if (error || !data) return;
 
