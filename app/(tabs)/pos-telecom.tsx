@@ -1515,7 +1515,18 @@ export default function TelecomPOSScreen() {
     });
 
     if (settings.enableSms && customerId && customerPhone.trim()) {
-      void logOutboundSms(customerPhone.trim(), `عزيزي ${customerName.trim()}، تمت معاملتك بنجاح. المبلغ: ${formatCurrency(total, settings.currency)}${debtChange > 0 ? `\nالمتبقي: ${formatCurrency(debtChange, settings.currency)}` : ''}`, 'sms');
+      const smsName = customerName.trim();
+      const smsSim = simNumber.trim();
+      const smsCur = settings.currency;
+      let smsBody: string;
+      if (effectiveRemaining <= 0) {
+        smsBody = `عزيزي ${smsName}، رقمك: ${smsSim}\nالمبلغ: ${formatCurrency(total, smsCur)}\nالمدفوع: ${formatCurrency(effectivePaid, smsCur)}\nالمتبقي: 0`;
+      } else if (effectivePaid > 0) {
+        smsBody = `عزيزي ${smsName}، رقمك: ${smsSim}\nالمبلغ: ${formatCurrency(total, smsCur)}\nالمدفوع: ${formatCurrency(effectivePaid, smsCur)}\nالمتبقي: ${formatCurrency(effectiveRemaining, smsCur)}`;
+      } else {
+        smsBody = `عزيزي ${smsName}، رقمك: ${smsSim}\nتكلفة المعاملة: ${formatCurrency(total, smsCur)}\nإجمالي الدين: ${formatCurrency(customerBalanceBefore + debtChange, smsCur)}`;
+      }
+      void logOutboundSms(customerPhone.trim(), smsBody, 'sms');
       updateTelecomSale(sale.id, { smsSent: true });
     }
 
