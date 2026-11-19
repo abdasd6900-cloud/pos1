@@ -572,6 +572,22 @@ export function classifyIncomingMessage(
         const tpl = getTemplates(templates);
         // If the message also contains a recharge request keyword, treat as recharge request
         if (isRechargeRequest(message)) {
+          // If the customer already specified a duration, create the request directly
+          const msgDuration = detectChargeDuration(message);
+          if (msgDuration) {
+            return {
+              action: 'recharge_request',
+              replyToCustomer: buildRechargeAccepted(templates),
+              supportPhone: null,
+              supportMessage: null,
+              simNumber: bodySim,
+              daysRemaining: simMatch.daysRemaining,
+              customerName: simMatch.sale.customerName ?? null,
+              saleId: simMatch.sale.id,
+              chargeDuration: msgDuration,
+              companyName: enrichedSim.company?.name ?? null,
+            };
+          }
           if (simMatch.hasActiveCharge && simMatch.daysRemaining > 3) {
             setRechargeActiveState(senderPhone, {
               simNumber: bodySim,
@@ -594,6 +610,7 @@ export function classifyIncomingMessage(
               companyName: enrichedSim.company?.name ?? null,
             };
           }
+          // Check if duration is already specified in the message
           if (COMPANIES_REQUIRING_DURATION.some((c) => (enrichedSim.company?.name ?? '').includes(c))) {
             setRechargeConversationState(senderPhone, { simNumber: bodySim, companyName: enrichedSim.company?.name ?? null, startedAt: Date.now() });
             return {
@@ -721,6 +738,23 @@ export function classifyIncomingMessage(
 
   // Priority 2: Recharge request
   if (isRechargeRequest(message)) {
+    // If the customer already specified a duration, create the request directly
+    // — skip the "active subscription" reminder since they explicitly asked to renew with a duration
+    const msgDuration = detectChargeDuration(message);
+    if (msgDuration) {
+      return {
+        action: 'recharge_request',
+        replyToCustomer: buildRechargeAccepted(templates),
+        supportPhone: null,
+        supportMessage: null,
+        simNumber,
+        daysRemaining: match.daysRemaining,
+        customerName,
+        saleId,
+        chargeDuration: msgDuration,
+        companyName: enriched.company?.name ?? null,
+      };
+    }
     // Active subscription with >3 days remaining → inform customer and create support ticket
     if (match.hasActiveCharge && match.daysRemaining > 3) {
       setRechargeActiveState(senderPhone, {
