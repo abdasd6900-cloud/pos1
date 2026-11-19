@@ -40,11 +40,17 @@ export interface SignUpData {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-const AUTH_REQUEST_TIMEOUT_MS = 10000;
+const AUTH_REQUEST_TIMEOUT_MS = 8000;
+const AUTH_MAX_RETRIES = 3;
+const AUTH_RETRY_DELAY_MS = 2000;
 
 function phoneToEmail(phone: string): string {
   const cleaned = phone.replace(/\D/g, '');
   return `${cleaned}@sahab-pos.app`;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -180,40 +186,79 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (phone: string, password: string): Promise<{ error: string | null }> => {
     const email = phoneToEmail(phone);
-    try {
-      const { error } = await Promise.race([
-        supabase.auth.signInWithPassword({ email, password }),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('AUTH_REQUEST_TIMEOUT')), AUTH_REQUEST_TIMEOUT_MS);
-        }),
-      ]);
-      if (!error) return { error: null };
 
-      const rawMessage = error.message.toLowerCase();
-      if (error.status === 504 || rawMessage.includes('status":504') || rawMessage.includes('gateway timeout')) {
-        return { error: 'تعذر الاتصال بخدمة الدخول حالياً. تحقق من اتصال الإنترنت وحاول مرة أخرى بعد قليل' };
+    let lastErrorKind: 'timeout' | 'network' | 'auth' | 'unknown' = 'unknown';
+    let lastAuthError: string = '';
+
+    for (let attempt = 1; attempt <= AUTH_MAX_RETRIES; attempt++) {
+      try {
+        const result = await Promise.race([
+          supabase.auth.signInWithPassword({ email, password }),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('AUTH_REQUEST_TIMEOUT')), AUTH_REQUEST_TIMEOUT_MS);
+          }),
+        ]);
+
+        if (!result.error) return { error: null };
+
+        lastAuthError = result.error.message.toLowerCase();
+        lastErrorKind = 'auth';
+
+        if (result.error.status === 429 || lastAuthError.includes('rate limit')) {
+          return { error: 'تم تجاوز عدد محاولات الدخول. حاول مرة أخرى بعد قليل' };
+        }
+        if (lastAuthError.includes('invalid login credentials')) {
+          return { error: 'رقم الجوال أو كلمة المرور غير صحيحة' };
+        }
+
+        // 504 / gateway timeout / network errors — retry
+        if (attempt < AUTH_MAX_RETRIES) {
+          await sleep(AUTH_RETRY_DELAY_MS);
+          continue;
+        }
+
+        if (result.error.status === 504 || lastAuthError.includes('status":504') || lastAuthError.includes('gateway timeout')) {
+          return { error: 'تعذر الاتصال بخدمة الدخول حالياً. تحقق من اتصال الإنترنت وحاول مرة أخرى بعد قليل' };
+        }
+        return { error: 'تعذر تسجيل الدخول حالياً. حاول مرة أخرى' };
+      } catch (requestError) {
+        if (requestError instanceof Error && requestError.message === 'AUTH_REQUEST_TIMEOUT') {
+          lastErrorKind = 'timeout';
+        } else {
+          lastErrorKind = 'network';
+        }
+
+        if (attempt < AUTH_MAX_RETRIES) {
+          await sleep(AUTH_RETRY_DELAY_MS);
+          continue;
+        }
+
+        if (lastErrorKind === 'timeout') {
+          return { error: 'الخادم لا يستجيب. قد يكون قيد الاستيقاظ من السكون — حاول مرة أخرى بعد قليل' };
+        }
+        return { error: 'تعذر الاتصال بخدمة الدخول. تحقق من اتصال الإنترنت وحاول مرة أخرى' };
       }
-      if (error.status === 429 || rawMessage.includes('rate limit')) {
-        return { error: 'تم تجاوز عدد محاولات الدخول. حاول مرة أخرى بعد قليل' };
-      }
-      if (rawMessage.includes('invalid login credentials')) {
-        return { error: 'رقم الجوال أو كلمة المرور غير صحيحة' };
-      }
-      return { error: 'تعذر تسجيل الدخول حالياً. حاول مرة أخرى' };
-    } catch (requestError) {
-      if (requestError instanceof Error && requestError.message === 'AUTH_REQUEST_TIMEOUT') {
-        return { error: 'استغرقت خدمة الدخول وقتاً طويلاً. تحقق من اتصال الإنترنت وحاول مرة أخرى' };
-      }
-      return { error: 'تعذر الاتصال بخدمة الدخول. تحقق من اتصال الإنترنت وحاول مرة أخرى' };
     }
+
+    return { error: 'تعذر تسجيل الدخول بعد عدة محاولات. حاول مرة أخرى لاحقاً' };
   }, []);
 
   const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null }> => {
     const email = phoneToEmail(data.phone);
-    const { data: authData, error } = await supabase.auth.signUp({
-      email,
-      password: data.password,
-    });
+
+    let signUpResult;
+    try {
+      signUpResult = await Promise.race([
+        supabase.auth.signUp({ email, password: data.password }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('AUTH_REQUEST_TIMEOUT')), AUTH_REQUEST_TIMEOUT_MS);
+        }),
+      ]);
+    } catch {
+      return { error: 'تعذر الاتصال بخدمة التسجيل. تحقق من اتصال الإنترنت وحاول مرة أخرى' };
+    }
+
+    const { data: authData, error } = signUpResult;
 
     if (error) {
       if (error.message.includes('already registered') || error.message.includes('already been registered')) {
