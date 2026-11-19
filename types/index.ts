@@ -112,6 +112,9 @@ export interface AutoReplyTemplates {
   updateRequestDone: string;
   updateNotWorkingForwarded: string;
   updateConfirmDone: string;
+  problemAskDetails: string;
+  problemNoSignalUpdate: string;
+  problemWeakInternet: string;
 }
 
 export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
@@ -141,6 +144,9 @@ export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
   updateRequestDone: 'تم تحديث الرقم، يرجى إعادة تشغيل الجهاز بعد ربع ساعة.',
   updateNotWorkingForwarded: 'تم إرسال طلبك للدعم الفني وسيتم الرد عليك حين تلقي الرد.',
   updateConfirmDone: 'تم التحديث، يرجى إعادة التشغيل بعد 10 دقائق.',
+  problemAskDetails: 'نأسف لما تواجهه. يرجى تحديد المشكلة:\n1. اختفاء اشارة النت\n2. اختفاء الارسال نهائياً\n3. ضعف في الانترنت',
+  problemNoSignalUpdate: 'تم تحديث الرقم من طرفنا، يرجى إعادة تشغيل الجهاز بعد ربع ساعة.',
+  problemWeakInternet: 'نأسف لمعاناتكم ونود اعلامكم ان الضعف ناتج عن تشويش على ابراج الارسال ولا يمكن التحكم في السرعه من طرفنا.\nملاحظه/ قد يكون هناك انواع اخرى من الشرائح تعمل في اماكنكم بشكل افضل بامكانك الاستفسار من جيرانك واصدقاءك عن انواع الشرائح المستخدمه في منطقتكم.\nتم تحديث الرقم من طرفنا قم باعادة التشغيل بعد ربع ساعه.\nشكرا لتفهمكم ونقدر صبركم',
 };
 
 export interface TelecomCompany {

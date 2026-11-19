@@ -244,7 +244,7 @@ export function normalizePhone(phone: string): string {
   return p;
 }
 
-export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_forward' | 'recharge_active' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'update_request' | 'update_ask_number' | 'update_not_working' | 'default';
+export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_forward' | 'recharge_active' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'update_request' | 'update_ask_number' | 'update_not_working' | 'problem_ask_details' | 'problem_no_signal' | 'problem_weak_internet' | 'default';
 
 export interface ClassificationResult {
   action: ClassificationAction;
@@ -333,6 +333,7 @@ export function classifyIncomingMessage(
         companyName: match ? (enrichWithCompany(match, companies)?.company?.name ?? null) : null,
         startedAt: Date.now(),
         updateDoneAt: null,
+        problemAskedAt: null,
       });
       return {
         action: 'update_request',
@@ -367,10 +368,14 @@ export function classifyIncomingMessage(
   if (updateState) {
     // Customer reports number not working after update (within 2 hours)
     if (isUpdateNotWorking(message)) {
-      clearUpdateConversationState(senderPhone);
+      // Ask customer to specify the problem type before taking action
+      setUpdateConversationState(senderPhone, {
+        ...updateState,
+        problemAskedAt: Date.now(),
+      });
       return {
-        action: 'update_not_working',
-        replyToCustomer: buildUpdateNotWorkingForwarded(templates),
+        action: 'problem_ask_details',
+        replyToCustomer: buildProblemAskDetails(templates),
         supportPhone: null,
         supportMessage: null,
         simNumber: updateState.simNumber,
@@ -381,6 +386,44 @@ export function classifyIncomingMessage(
         companyName: updateState.companyName,
       };
     }
+    // Customer is answering the problem-type question
+    if (updateState.problemAskedAt) {
+      if (isProblemNoSignal(message)) {
+        // No signal / no sending → execute update procedure
+        clearUpdateConversationState(senderPhone);
+        return {
+          action: 'problem_no_signal',
+          replyToCustomer: buildProblemNoSignal(templates),
+          supportPhone: '0599991274',
+          supportMessage: updateState.simNumber,
+          simNumber: updateState.simNumber,
+          daysRemaining: match?.daysRemaining ?? null,
+          customerName: (updateState.customerName || match?.sale.customerName) ?? null,
+          saleId: (updateState.saleId || match?.sale.id) ?? null,
+          chargeDuration: null,
+          companyName: updateState.companyName,
+        };
+      }
+      if (isProblemWeakInternet(message)) {
+        // Weak internet → send explanation + execute update
+        clearUpdateConversationState(senderPhone);
+        return {
+          action: 'problem_weak_internet',
+          replyToCustomer: buildProblemWeakInternet(templates),
+          supportPhone: '0599991274',
+          supportMessage: updateState.simNumber,
+          simNumber: updateState.simNumber,
+          daysRemaining: match?.daysRemaining ?? null,
+          customerName: (updateState.customerName || match?.sale.customerName) ?? null,
+          saleId: (updateState.saleId || match?.sale.id) ?? null,
+          chargeDuration: null,
+          companyName: updateState.companyName,
+        };
+      }
+      // Answer not recognized → fall through to unrecognized handling (self-learning)
+      clearUpdateConversationState(senderPhone);
+      // Fall through to normal classification
+    }
     // Customer sends a sim number in response to update_ask_number
     const { primarySimNumber: updateSim } = extractSimNumbersFromMessage(message);
     if (updateSim && !isRechargeRequest(message) && !isUrgencyMessage(message)) {
@@ -388,6 +431,7 @@ export function classifyIncomingMessage(
         ...updateState,
         simNumber: updateSim,
         startedAt: Date.now(),
+        problemAskedAt: null,
       });
       return {
         action: 'update_request',
@@ -816,6 +860,48 @@ export function isUpdateNotWorking(message: string): boolean {
   return false;
 }
 
+// ============ Problem Classification (after customer reports issue) ============
+// Keywords indicating "no signal / no sending" (ارسال / اشارة)
+const PROBLEM_NO_SIGNAL_KEYWORDS = [
+  'ارسال', 'الارسال', 'الارسال نهائيا', 'اختفت الارسال', 'اختاف الارسال',
+  'ما في ارسال', 'ما فيش ارسال', 'اختفت الاشاره', 'اختافت الاشاره',
+  'الاشاره', 'اشارة', 'اشاره', 'اختفت اشارة', 'اختافت اشارة',
+  'ما في اشارة', 'ما فيش اشارة', 'ما في اشاره', 'ما فيش اشاره',
+  'اختفت النت', 'اختافت النت', 'ما في نت نهائيا', 'ما فيش نت نهائيا',
+  'لا اشارة', 'لا اشاره', 'لا ارسال', 'no signal', 'no sending',
+  '1', '١',
+];
+
+// Keywords indicating "weak internet" (ضعف الانترنت)
+const PROBLEM_WEAK_INTERNET_KEYWORDS = [
+  'ضعف', 'ضعيف', 'النت ضعيف', 'النت ضعيف', 'نت ضعيف', 'النت ضعيف',
+  'النت سيء', 'نت سيء', 'سيء', 'سيئ', 'بطيء', 'بطئ', 'بطيئ',
+  'نت جوال احسن', 'نت جوال احسن منه', 'نت جوال أفضل',
+  'اوريدوا احسن', 'اوريدو احسن', 'اوريدوا افضل', 'اوريدو افضل',
+  'نت الشارع احسن', 'شارع احسن', 'نت الشارع افضل',
+  'كان كويس قبل', 'كان كويس والات', 'كان كويس والان', 'كان كويس والآن',
+  'كان تمام والات', 'كان تمام والان', 'كان تمام والآن',
+  'بفتحش', 'بفتحش حاجه', 'بفتحش حاجة', 'ما بفتح', 'ما بفتحش',
+  'بطيء جدا', 'بطئ جدا', 'بطيئ جدا', 'very slow', 'weak internet',
+  '3', '٣',
+];
+
+export function isProblemNoSignal(message: string): boolean {
+  const lower = message.toLowerCase().trim();
+  for (const kw of PROBLEM_NO_SIGNAL_KEYWORDS) {
+    if (lower.includes(kw.toLowerCase().trim())) return true;
+  }
+  return false;
+}
+
+export function isProblemWeakInternet(message: string): boolean {
+  const lower = message.toLowerCase().trim();
+  for (const kw of PROBLEM_WEAK_INTERNET_KEYWORDS) {
+    if (lower.includes(kw.toLowerCase().trim())) return true;
+  }
+  return false;
+}
+
 // ============ Update Conversation State ============
 export interface UpdateConversationState {
   simNumber: string;
@@ -824,6 +910,7 @@ export interface UpdateConversationState {
   companyName: string | null;
   startedAt: number;
   updateDoneAt: number | null;
+  problemAskedAt: number | null;
 }
 
 const updateConversations = new Map<string, UpdateConversationState>();
@@ -857,6 +944,18 @@ function buildUpdateDone(templates?: AutoReplyTemplates | null): string {
 
 function buildUpdateNotWorkingForwarded(templates?: AutoReplyTemplates | null): string {
   return getTemplates(templates).updateNotWorkingForwarded;
+}
+
+function buildProblemAskDetails(templates?: AutoReplyTemplates | null): string {
+  return getTemplates(templates).problemAskDetails;
+}
+
+function buildProblemNoSignal(templates?: AutoReplyTemplates | null): string {
+  return getTemplates(templates).problemNoSignalUpdate;
+}
+
+function buildProblemWeakInternet(templates?: AutoReplyTemplates | null): string {
+  return getTemplates(templates).problemWeakInternet;
 }
 
 function extractSimNumbersFromMessage(message: string): { primarySimNumber: string | null } {

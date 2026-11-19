@@ -871,6 +871,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 if (result.action === 'update_ask_number') {
                   void sendLocalNotification('طلب تحديث - رقم مفقود', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
                 }
+                // Problem: ask customer to specify problem type
+                if (result.action === 'problem_ask_details') {
+                  void sendLocalNotification('مشكلة في الرقم - تحديد النوع', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
+                }
+                // Problem: no signal / no sending → execute update procedure (SMS to 0599991274)
+                if (result.action === 'problem_no_signal' && result.simNumber) {
+                  void logOutboundSmsRef.current('0599991274', result.simNumber, 'sms');
+                  const problemTicket: SupportTicket = {
+                    id: storage.generateId(),
+                    saleId: sale?.id ?? result.saleId ?? null,
+                    customerName: result.customerName ?? '',
+                    customerPhone: reply.senderPhone,
+                    simNumber: result.simNumber,
+                    companyName: sale?.companyName ?? result.companyName ?? '',
+                    companySupportPhone: '0599991274',
+                    originalMessage: reply.message,
+                    supportMessage: result.simNumber,
+                    status: 'pending' as const,
+                    whatsappOpened: false,
+                    customerReplySent: result.replyToCustomer,
+                    autoForwarded: false,
+                    forwardReason: 'update_request' as const,
+                    rechargeConfirmedAt: null,
+                    queuedForSubAgentId: null,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  };
+                  setSupportTickets((prev) => { const next = [problemTicket, ...prev]; storage.saveSupportTickets(next); return next; });
+                  void sendLocalNotification('تحديث رقم - اختفاء الارسال/الاشارة', `الرقم ${result.simNumber} - ${result.customerName ?? ''}`, { phone: reply.senderPhone ?? '' });
+                }
+                // Problem: weak internet → send explanation + execute update (SMS to 0599991274)
+                if (result.action === 'problem_weak_internet' && result.simNumber) {
+                  void logOutboundSmsRef.current('0599991274', result.simNumber, 'sms');
+                  const problemTicket: SupportTicket = {
+                    id: storage.generateId(),
+                    saleId: sale?.id ?? result.saleId ?? null,
+                    customerName: result.customerName ?? '',
+                    customerPhone: reply.senderPhone,
+                    simNumber: result.simNumber,
+                    companyName: sale?.companyName ?? result.companyName ?? '',
+                    companySupportPhone: '0599991274',
+                    originalMessage: reply.message,
+                    supportMessage: result.simNumber,
+                    status: 'pending' as const,
+                    whatsappOpened: false,
+                    customerReplySent: result.replyToCustomer,
+                    autoForwarded: false,
+                    forwardReason: 'update_request' as const,
+                    rechargeConfirmedAt: null,
+                    queuedForSubAgentId: null,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  };
+                  setSupportTickets((prev) => { const next = [problemTicket, ...prev]; storage.saveSupportTickets(next); return next; });
+                  void sendLocalNotification('تحديث رقم - ضعف الانترنت', `الرقم ${result.simNumber} - ${result.customerName ?? ''}`, { phone: reply.senderPhone ?? '' });
+                }
                 if ((result.action === 'support_forward' || result.action === 'urgency') && result.supportPhone && result.supportMessage && result.simNumber) {
                   if (!agentOpen && agent && result.action !== 'urgency') {
                     if (result.replyToCustomer !== offHoursMsg) {
