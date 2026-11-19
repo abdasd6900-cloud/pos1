@@ -3204,6 +3204,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [loaded]);
 
+  const checkRemindersRef = useRef(checkAndSendReminders);
+  checkRemindersRef.current = checkAndSendReminders;
+
+  useEffect(() => {
+    if (!loaded) return;
+    const interval = setInterval(() => checkRemindersRef.current(), 60000);
+    return () => clearInterval(interval);
+  }, [loaded]);
+
   // ============ Support Tickets ============
   const addSupportTicket: AppData['addSupportTicket'] = useCallback((t) => {
     const ticket: SupportTicket = { ...t, id: storage.generateId(), createdAt: Date.now(), updatedAt: Date.now() };
