@@ -265,6 +265,30 @@ public class BusinessHoursModule extends ReactContextBaseJavaModule {
      * queue is cleared so they aren't imported twice.
      */
     @ReactMethod
+    public void getOfflinePendingOperations(com.facebook.react.bridge.Callback callback) {
+        try {
+            android.content.SharedPreferences prefs = getReactApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            org.json.JSONArray queue = new org.json.JSONArray(prefs.getString("offline_pending_operations", "[]"));
+            com.facebook.react.bridge.WritableArray result = new com.facebook.react.bridge.WritableNativeArray();
+            for (int i = 0; i < queue.length(); i++) {
+                org.json.JSONObject item = queue.getJSONObject(i);
+                com.facebook.react.bridge.WritableMap map = new com.facebook.react.bridge.WritableNativeMap();
+                map.putString("senderPhone", item.optString("senderPhone", ""));
+                map.putString("simNumber", item.optString("simNumber", ""));
+                map.putString("originalMessage", item.optString("originalMessage", ""));
+                map.putString("source", item.optString("source", "sms"));
+                map.putDouble("timestamp", (double) item.optLong("timestamp", 0));
+                result.pushMap(map);
+            }
+            prefs.edit().remove("offline_pending_operations").apply();
+            callback.invoke(null, result);
+        } catch (Exception e) {
+            Log.e(TAG, "getOfflinePendingOperations error: " + e.getMessage());
+            callback.invoke(e.getMessage(), null);
+        }
+    }
+
+    @ReactMethod
     public void getOfflineCustomerReplies(com.facebook.react.bridge.Callback callback) {
         try {
             android.content.SharedPreferences prefs =

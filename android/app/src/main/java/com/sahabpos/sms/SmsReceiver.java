@@ -47,6 +47,7 @@ public class SmsReceiver extends BroadcastReceiver {
     private static final String RECHARGE_ACCEPTED_MSG = "تم استلام طلبك وسيتم إبلاغك حين تنفيذه، شكراً لصبركم.";
     private static final String IMAGE_SIM_NUMBER_MSG = "استلمنا صورتك، لكننا لا نستطيع قراءة الأرقام من الصور تلقائياً. يرجى كتابة رقم الشريحة كنص حتى نتمكن من تنفيذ طلبك.";
     private static final String VOICE_MESSAGE_MSG = "أنا مساعدة آلية ولا أستطيع الاستماع للرسائل الصوتية. يرجى كتابة ما تريد نصاً حتى أتمكن من مساعدتك.";
+    private static final String ASK_SIM_NUMBER_MSG = "يرجى إرسال رقم الشريحة أو الرقم المطلوب شحنه أو تحديثه حتى نتمكن من متابعة طلبك.";
 
     private Context appContext;
 
@@ -158,7 +159,12 @@ public class SmsReceiver extends BroadcastReceiver {
         boolean storeOpen = isStoreOpen(prefs);
         String simNumber = extractSimNumber(message);
         boolean isRecharge = isRechargeRequest(message);
+        boolean isUpdate = isUpdateRequest(message);
         boolean isEsimReq = isEsimRequest(message);
+        if (monitoringEnabled && simNumber == null && (isRecharge || isUpdate)) {
+            if (autoResponderEnabled) sendReplyAndLog(senderPhone, ASK_SIM_NUMBER_MSG, supabaseUrl, supabaseAnonKey, authToken);
+            return;
+        }
         if (internetAvailable && supabaseUrl != null && !supabaseUrl.isEmpty()) {
             flushOfflinePendingOperations(prefs, supabaseUrl, supabaseAnonKey, authToken);
             flushOfflineCustomerReplies(prefs, supabaseUrl, supabaseAnonKey, authToken);
@@ -512,6 +518,11 @@ public class SmsReceiver extends BroadcastReceiver {
             }
         }
         return lastMatch;
+    }
+
+    private boolean isUpdateRequest(String message) {
+        String lower = message.toLowerCase();
+        return lower.contains("تحديث") || lower.contains("حدث") || lower.contains("update");
     }
 
     private boolean isRechargeRequest(String message) {

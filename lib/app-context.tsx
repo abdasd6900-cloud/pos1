@@ -44,7 +44,7 @@ import {
   startRealtimeSync,
   type SyncCollectionName,
 } from './data-sync';
-import { syncBusinessHoursToNative, startScreenshotDetection, stopScreenshotDetection, setNativeSupabaseCredentials, setNativeSupabaseCredentialsV2, setSmsGatewayEnabled, startSmsObservation, stopSmsObservation, subscribeToNativeSmsEvents, getOfflineCustomerReplies, type NativeSmsEvent } from './native-bridge';
+import { syncBusinessHoursToNative, startScreenshotDetection, stopScreenshotDetection, setNativeSupabaseCredentials, setNativeSupabaseCredentialsV2, setSmsGatewayEnabled, startSmsObservation, stopSmsObservation, subscribeToNativeSmsEvents, getOfflineCustomerReplies, getOfflinePendingOperations, type NativeSmsEvent } from './native-bridge';
 import { buildCustomerFiles, type CustomerFile } from './customer-files';
 import { shareBackupFile, pickBackupFile } from './backup-export';
 import { uploadCloudSnapshot, listCloudSnapshots, downloadCloudSnapshot, deleteCloudSnapshot, type CloudSnapshot, type FullBackupData } from './cloud-backup';
@@ -990,6 +990,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 if (result.action === 'update_ask_number') {
                   void sendLocalNotification('طلب تحديث - رقم مفقود', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
                 }
+                if (result.action === 'recharge_ask_number') {
+                  void sendLocalNotification('طلب شحن - رقم مفقود', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
+                }
                 // Problem: ask customer to specify problem type
                 if (result.action === 'problem_ask_details') {
                   void sendLocalNotification('مشكلة في الرقم - تحديد النوع', `من ${reply.senderPhone}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
@@ -1524,15 +1527,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     void (async () => {
       const replies = await getOfflineCustomerReplies();
-      if (cancelled || replies.length === 0) return;
+      if (cancelled) return;
       for (const reply of replies) {
         remoteChangeHandlerRef.current?.('customerReplies', {
           senderPhone: reply.senderPhone,
           senderName: reply.senderName ?? '',
           message: reply.message,
-          channel: 'bank_notification' as const,
+          channel: 'sms' as const,
           timestamp: reply.timestamp,
         });
+      }
+      const pending = await getOfflinePendingOperations();
+      if (cancelled || pending.length === 0) return;
+      for (const operation of pending) {
+        const duplicate = pendingOperationsRef.current.some(
+          (existing) => existing.senderPhone === operation.senderPhone && existing.originalMessage === operation.originalMessage && existing.status === 'pending',
+        );
+        if (duplicate) continue;
+        const op: PendingOperation = {
+          id: storage.generateId(),
+          source: operation.source,
+          senderPhone: operation.senderPhone,
+          senderName: '',
+          simNumber: operation.simNumber,
+          originalMessage: operation.originalMessage,
+          status: 'pending',
+          customerMatched: false,
+          customerId: null,
+          customerName: '',
+          customerPhone: operation.senderPhone,
+          companyGuess: '',
+          bundleGuess: '',
+          createdAt: operation.timestamp || Date.now(),
+          executedAt: null,
+          transferReportId: null,
+          transferNotificationId: null,
+          transferStatus: 'none',
+          chargeDuration: null,
+          companyName: null,
+        };
+        setPendingOperations((prev) => {
+          const next = [op, ...prev];
+          storage.savePendingOperations(next);
+          return next;
+        });
+        void sendLocalNotification('عملية قيد الانتظار', `من ${operation.senderPhone}: ${operation.originalMessage.slice(0, 50)}`, { phone: operation.senderPhone });
       }
     })();
     return () => { cancelled = true; };

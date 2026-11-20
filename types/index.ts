@@ -89,6 +89,7 @@ export interface AutoReplyTemplates {
   welcome: string;
   greeting: string;
   rechargeRequestReceived: string;
+  rechargeRequestAskNumber: string;
   supportAcknowledgement: string;
   supportForwardMessage: string;
   rechargeConfirmed: string;
@@ -124,6 +125,7 @@ export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
   welcome: 'أهلاً وسهلاً بك {name}، متبقي في شريحتك عدد {days} يوم، كيف يمكنني مساعدتك؟',
   greeting: 'أهلاً وسهلاً بك في {storeName}، يسعدنا خدمتك. كيف يمكننا مساعدتك اليوم؟ (للشحن أرسل "شحن"، لطلب eSIM أرسل "eSIM"، لمعرفة أرقام التحويل أرسل "تحويل")',
   rechargeRequestReceived: 'تم استلام طلبك لتجديد الرقم {sim}، سيتم تنفيذه في أقرب وقت ممكن.',
+  rechargeRequestAskNumber: 'يرجى إرسال رقم الشريحة أو الرقم المطلوب شحنه حتى نتمكن من تنفيذ طلبك.',
   supportAcknowledgement: 'سيتم متابعة طلبك خلال لحظات',
   supportForwardMessage: 'يعطيكم العافية يرجى شحن الرقم {sim} بعد اذنكم لم نتمكن من شحنه من طرفنا لضعف الانترنت',
   rechargeConfirmed: 'تم شحن الرقم {sim} بنجاح، شكراً لصبركم.',

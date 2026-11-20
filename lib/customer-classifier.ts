@@ -262,7 +262,7 @@ export function normalizePhone(phone: string): string {
   return p;
 }
 
-export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_forward' | 'recharge_active' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'update_request' | 'update_ask_number' | 'update_not_working' | 'problem_ask_details' | 'problem_no_signal' | 'problem_weak_internet' | 'sim_lookup' | 'default';
+export type ClassificationAction = 'greeting' | 'welcome' | 'recharge_request' | 'recharge_ask_number' | 'recharge_forward' | 'recharge_active' | 'support_forward' | 'urgency' | 'keyword_reply' | 'transfer_numbers' | 'specify_duration' | 'esim_request' | 'esim_ask_phone_model' | 'esim_not_supported' | 'esim_ask_company' | 'esim_ask_bundle' | 'esim_bundle_list' | 'esim_transfer_to_staff' | 'esim_company_list' | 'update_request' | 'update_ask_number' | 'update_not_working' | 'problem_ask_details' | 'problem_no_signal' | 'problem_weak_internet' | 'sim_lookup' | 'default';
 
 export interface ClassificationResult {
   action: ClassificationAction;
@@ -616,13 +616,29 @@ export function classifyIncomingMessage(
   // Priority 2: Recharge request (all customers)
   if (isRechargeRequest(message)) {
     const msgDuration = detectChargeDuration(message);
+    const { primarySimNumber: bodySim } = extractSimNumbersFromMessage(message);
+    // No sim number from customer record or message body — ask for it
+    if (!simNumber && !bodySim) {
+      return {
+        action: 'recharge_ask_number',
+        replyToCustomer: buildRechargeAskNumber(templates),
+        supportPhone: null,
+        supportMessage: null,
+        simNumber: null,
+        daysRemaining: match?.daysRemaining ?? null,
+        customerName,
+        saleId,
+        chargeDuration: null,
+        companyName: enriched?.company?.name ?? null,
+      };
+    }
     if (msgDuration) {
       return {
         action: 'recharge_request',
         replyToCustomer: buildRechargeAccepted(templates),
         supportPhone: null,
         supportMessage: null,
-        simNumber,
+        simNumber: simNumber ?? bodySim,
         daysRemaining: match?.daysRemaining ?? null,
         customerName,
         saleId,
@@ -633,7 +649,7 @@ export function classifyIncomingMessage(
     // Active subscription with >3 days remaining → inform customer and create support ticket
     if (match?.hasActiveCharge && match.daysRemaining > 3) {
       setRechargeActiveState(senderPhone, {
-        simNumber: simNumber ?? '',
+        simNumber: simNumber ?? bodySim ?? '',
         customerName: customerName ?? '',
         daysRemaining: match.daysRemaining,
         saleId: saleId ?? '',
@@ -645,7 +661,7 @@ export function classifyIncomingMessage(
         replyToCustomer: buildRechargeActiveReminder(customerName ?? 'زبوننا العزيز', match.daysRemaining, templates),
         supportPhone: null,
         supportMessage: null,
-        simNumber,
+        simNumber: simNumber ?? bodySim,
         daysRemaining: match.daysRemaining,
         customerName,
         saleId,
@@ -655,13 +671,13 @@ export function classifyIncomingMessage(
     }
     // For companies that require duration, ask for it first
     if (enriched && COMPANIES_REQUIRING_DURATION.some((c) => (enriched.company?.name ?? '').includes(c))) {
-      setRechargeConversationState(senderPhone, { simNumber: simNumber ?? '', companyName: enriched.company?.name ?? null, startedAt: Date.now() });
+      setRechargeConversationState(senderPhone, { simNumber: simNumber ?? bodySim ?? '', companyName: enriched.company?.name ?? null, startedAt: Date.now() });
       return {
         action: 'specify_duration',
         replyToCustomer: buildSpecifyDuration(templates),
         supportPhone: null,
         supportMessage: null,
-        simNumber,
+        simNumber: simNumber ?? bodySim,
         daysRemaining: match?.daysRemaining ?? null,
         customerName,
         saleId,
@@ -671,10 +687,10 @@ export function classifyIncomingMessage(
     }
     return {
       action: 'recharge_request',
-      replyToCustomer: buildRechargeReceivedMessage(simNumber ?? extractSimNumbersFromMessage(message).primarySimNumber ?? '', templates),
+      replyToCustomer: buildRechargeReceivedMessage(simNumber ?? bodySim ?? '', templates),
       supportPhone: null,
       supportMessage: null,
-      simNumber,
+      simNumber: simNumber ?? bodySim,
       daysRemaining: match?.daysRemaining ?? null,
       customerName,
       saleId,
@@ -855,6 +871,10 @@ function buildRechargeActiveReminder(customerName: string, daysRemaining: number
 
 function buildRechargeInsistAccepted(templates?: AutoReplyTemplates | null): string {
   return getTemplates(templates).rechargeInsistAccepted;
+}
+
+function buildRechargeAskNumber(templates?: AutoReplyTemplates | null): string {
+  return getTemplates(templates).rechargeRequestAskNumber;
 }
 
 // Customer insists on renewing despite having days remaining

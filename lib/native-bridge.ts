@@ -89,6 +89,14 @@ export interface OfflineCustomerReply {
   timestamp: number;
 }
 
+export interface OfflinePendingOperation {
+  senderPhone: string;
+  simNumber: string;
+  originalMessage: string;
+  source: 'sms' | 'whatsapp' | 'manual';
+  timestamp: number;
+}
+
 export function getOfflineCustomerReplies(): Promise<OfflineCustomerReply[]> {
   return new Promise((resolve) => {
     if (Platform.OS !== 'android') {
@@ -107,6 +115,31 @@ export function getOfflineCustomerReplies(): Promise<OfflineCustomerReply[]> {
           return;
         }
         resolve(replies);
+      });
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
+export function getOfflinePendingOperations(): Promise<OfflinePendingOperation[]> {
+  return new Promise((resolve) => {
+    if (Platform.OS !== 'android') {
+      resolve([]);
+      return;
+    }
+    try {
+      const module = NativeModules.BusinessHoursNative;
+      if (!module?.getOfflinePendingOperations) {
+        resolve([]);
+        return;
+      }
+      module.getOfflinePendingOperations((error: string | null, operations: OfflinePendingOperation[]) => {
+        if (error || !operations) {
+          resolve([]);
+          return;
+        }
+        resolve(operations);
       });
     } catch {
       resolve([]);
