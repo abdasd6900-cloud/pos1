@@ -721,6 +721,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
                 // Check if this is a bank/wallet transfer notification (not a customer message)
                 const parsedTransfer = parseTransferSms(reply.message);
+                if (reply.channel === 'bank_notification' && !parsedTransfer.isTransfer) {
+                  const existingUnknownTransfer = unrecognizedMessagesRef.current.find(
+                    (m) => m.originalMessage === reply.message && m.status === 'pending',
+                  );
+                  if (!existingUnknownTransfer) {
+                    const unknownTransfer: UnrecognizedMessage = {
+                      id: storage.generateId(),
+                      senderPhone: reply.senderPhone ?? '',
+                      senderName: reply.senderName ?? '',
+                      originalMessage: reply.message,
+                      status: 'pending',
+                      learnedReply: null,
+                      learnedKeywords: [],
+                      learnedCategory: null,
+                      createdAt: Date.now(),
+                      resolvedAt: null,
+                    };
+                    setUnrecognizedMessages((prev) => {
+                      const next = [unknownTransfer, ...prev];
+                      storage.saveUnrecognizedMessages(next);
+                      return next;
+                    });
+                    void sendLocalNotification('حوالة تحتاج تعلماً', reply.message.slice(0, 80));
+                  }
+                }
                 if (parsedTransfer.isTransfer) {
                   const senderLabel = parsedTransfer.senderName || parsedTransfer.senderPhone || 'غير معروف';
                   const tnId = storage.generateId();
@@ -1503,9 +1528,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       for (const reply of replies) {
         remoteChangeHandlerRef.current?.('customerReplies', {
           senderPhone: reply.senderPhone,
-          senderName: '',
+          senderName: reply.senderName ?? '',
           message: reply.message,
-          channel: 'sms' as const,
+          channel: 'bank_notification' as const,
           timestamp: reply.timestamp,
         });
       }

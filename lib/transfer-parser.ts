@@ -15,6 +15,8 @@ const BANK_PATTERNS: { bank: string; patterns: RegExp[] }[] = [
   {
     bank: 'بنك فلسطين',
     patterns: [
+      // "بنك فلسطين: موبايل: تحويل بنكي: علاء معين عوني المصري، بمبلغ ILS 55.00"
+      /(?:بنك\s*فلسطين|Bank\s*of\s*Palestine|BOP).*?(?:تحويل\s*بنكي|تحويل)\s*[:：]?\s*([^،,\n]+?)\s*[،,]?\s*(?:بمبلغ|مبلغ)\s*(?:ILS|USD|JOD|شيكل|₪|\$)\s*([\d.,]+)/i,
       // "بنك فلسطين: تم إيداع مبلغ 70.00 ILS من محمد أحمد - مرجع BP123456"
       /(?:بنك\s*فلسطين|Bank\s*of\s*Palestine|BOP).*?(?:تم\s*إيداع|إيداع|تحويل|استلام).*?مبلغ[:\s]*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:من|from)\s+([^\d\n,]+)/i,
       /(?:بنك\s*فلسطين|BOP).*?(?:من|from)\s+([^\d]+?)\s+مبلغ[:\s]*([\d.,]+)/i,
@@ -196,7 +198,7 @@ export function parseTransferSms(sms: string): ParsedTransferNotification {
   // PalPay friend-payment notifications include two names and place the
   // currency before the amount, for example: "تحويل دفع لصديق: yousra ibrahem: ahmaad ghunaim مبلغ ILS 60.00".
   const palPayFriendMatch = sms.match(
-    /تحويل\s*دفع\s*لصديق\s*[:：]\s*([^:：\n]+?)\s*[:：]\s*([^\n]+?)\s+مبلغ\s+(?:ILS|USD|JOD|شيكل|₪|\$)\s*([\d.,]+)/i,
+    /(?:تحويل\s*)?دفع\s*لصديق\s*[:：]?\s*([^:：\n]+?)\s*[:：]\s*([^\n]+?)\s+(?:بمبلغ|مبلغ)\s+(?:ILS|USD|JOD|شيكل|₪|\$)\s*([\d.,]+)/i,
   );
   if (palPayFriendMatch) {
     const firstName = cleanName(palPayFriendMatch[1]);

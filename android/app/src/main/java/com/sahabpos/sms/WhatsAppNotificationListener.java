@@ -118,7 +118,6 @@ public class WhatsAppNotificationListener extends NotificationListenerService {
         for (String bankPkg : BANK_PKGS) {
             if (bankPkg.equals(pkg)) { isBankApp = true; break; }
         }
-        if (!isWhatsApp && !isBankApp) return;
 
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         // WhatsApp requires whatsapp_monitoring_enabled; bank notifications require transfer_detection_enabled
@@ -143,7 +142,9 @@ public class WhatsAppNotificationListener extends NotificationListenerService {
         NotificationContent content = extractNotificationContent(notification, extras);
         String title = content.title;
         String text = content.text;
+        boolean isBankNotification = isBankApp || isLikelyBankNotification(title, text);
 
+        if (!isWhatsApp && !isBankNotification) return;
         if (title.isEmpty() && text.isEmpty()) return;
         if (isWhatsAppSummary(text)) return;
 
@@ -165,6 +166,8 @@ public class WhatsAppNotificationListener extends NotificationListenerService {
 
         String supabaseUrl = prefs.getString("supabase_url", "");
         String supabaseAnonKey = prefs.getString("supabase_anon_key", "");
+        String supabaseAccessToken = prefs.getString("supabase_access_token", "");
+        String supabaseUserId = prefs.getString("supabase_user_id", "");
 
         if (supabaseUrl == null || supabaseUrl.isEmpty()) {
             Log.w(TAG, "Supabase URL not configured, skipping");
@@ -173,18 +176,18 @@ public class WhatsAppNotificationListener extends NotificationListenerService {
 
         // For bank/wallet app notifications: push as customerReply with channel "bank_notification"
         // so the app context runs parseTransferSms on the message text.
-        if (isBankApp) {
-            // Bank notifications have the bank name in the title and transaction details in the text
-            // Use the notification title as senderName, and the full text as the message
+        if (isBankNotification) {
+            // Preserve the title and body because either one may contain the bank name or transfer details.
             String bankSenderName = title.isEmpty() ? pkg : title;
             String bankText = title.isEmpty() ? text : title + ": " + text;
-            pushCustomerReply("", bankSenderName, bankText, "bank_notification", supabaseUrl, supabaseAnonKey);
+            boolean delivered = pushCustomerReply("", bankSenderName, bankText, "bank_notification", supabaseUrl, supabaseAnonKey, supabaseAccessToken, supabaseUserId);
+            if (!delivered) saveOfflineCustomerReply(prefs, bankSenderName, bankText);
             Log.i(TAG, "Bank/wallet notification captured from " + pkg + ": " + text.substring(0, Math.min(text.length(), 80)));
             return;
         }
 
         // Always push as customer reply (for debt escalation matching)
-        pushCustomerReply(senderPhone, senderName, text, "whatsapp", supabaseUrl, supabaseAnonKey);
+        pushCustomerReply(senderPhone, senderName, text, "whatsapp", supabaseUrl, supabaseAnonKey, supabaseAccessToken, supabaseUserId);
 
         // For voice / image: push a customer reply but no pending operation
         // (we cannot extract a SIM number from a voice clip or photo notification)
@@ -394,14 +397,15 @@ public class WhatsAppNotificationListener extends NotificationListenerService {
         return false;
     }
 
-    private void pushCustomerReply(String senderPhone, String senderName, String message,
-                                    String channel, String supabaseUrl, String supabaseAnonKey) {
+    private boolean pushCustomerReply(String senderPhone, String senderName, String message,
+                                      String channel, String supabaseUrl, String supabaseAnonKey,
+                                      String supabaseAccessToken, String supabaseUserId) {
         try {
             URL url = new URL(supabaseUrl + "/rest/v1/sms_inbox_events");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("apikey", supabaseAnonKey);
-            conn.setRequestProperty("Authorization", "Bearer " + supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + (supabaseAccessToken.isEmpty() ? supabaseAnonKey : supabaseAccessToken));
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Prefer", "return=minimal");
 
@@ -412,17 +416,48 @@ public class WhatsAppNotificationListener extends NotificationListenerService {
             payload.put("message", message);
             payload.put("channel", channel);
             payload.put("source", channel);
+            if (!supabaseUserId.isEmpty()) payload.put("user_id", supabaseUserId);
 
             conn.setDoOutput(true);
             OutputStream os = conn.getOutputStream();
             os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
             os.close();
 
-            Log.i(TAG, "WhatsApp customer reply pushed to event queue");
+            int responseCode = conn.getResponseCode();
             conn.disconnect();
+            if (responseCode >= 200 && responseCode < 300) {
+                Log.i(TAG, "Customer reply pushed to event queue");
+                return true;
+            }
+            Log.e(TAG, "Customer reply rejected with HTTP " + responseCode);
         } catch (Exception e) {
             Log.e(TAG, "pushCustomerReply error: " + e.getMessage());
         }
+        return false;
+    }
+
+    private void saveOfflineCustomerReply(android.content.SharedPreferences prefs,
+                                          String senderName, String message) {
+        try {
+            org.json.JSONArray queue = new org.json.JSONArray(prefs.getString("offline_customer_replies", "[]"));
+            queue.put(new JSONObject()
+                .put("senderPhone", "")
+                .put("senderName", senderName)
+                .put("message", message)
+                .put("timestamp", System.currentTimeMillis()));
+            prefs.edit().putString("offline_customer_replies", queue.toString()).apply();
+            Log.i(TAG, "Offline bank notification saved");
+        } catch (Exception e) {
+            Log.e(TAG, "saveOfflineCustomerReply error: " + e.getMessage());
+        }
+    }
+
+    private boolean isLikelyBankNotification(String title, String text) {
+        String content = ((title == null ? "" : title) + " " + (text == null ? "" : text)).toLowerCase(Locale.ROOT);
+        boolean hasTransfer = content.contains("تحويل") || content.contains("حوالة") || content.contains("حواله") || content.contains("transfer");
+        boolean hasAmount = content.matches(".*(?:ils|usd|jod|شيكل|₪|مبلغ|بمبلغ).*\\d[\\d.,]*.*");
+        boolean hasBank = content.contains("بنك") || content.contains("palpay") || content.contains("بال بي") || content.contains("محفظة") || content.contains("pal pay");
+        return hasTransfer && hasAmount && hasBank;
     }
 
     private void pushPendingOperation(String senderPhone, String simNumber, String message,

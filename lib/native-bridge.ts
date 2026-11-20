@@ -84,6 +84,7 @@ export function setSmsGatewayEnabled(enabled: boolean): Promise<boolean> {
 
 export interface OfflineCustomerReply {
   senderPhone: string;
+  senderName: string;
   message: string;
   timestamp: number;
 }

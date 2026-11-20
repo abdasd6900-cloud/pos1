@@ -277,6 +277,7 @@ public class BusinessHoursModule extends ReactContextBaseJavaModule {
                 org.json.JSONObject item = queue.getJSONObject(i);
                 com.facebook.react.bridge.WritableMap map = new com.facebook.react.bridge.WritableNativeMap();
                 map.putString("senderPhone", item.optString("senderPhone", ""));
+                map.putString("senderName", item.optString("senderName", ""));
                 map.putString("message", item.optString("message", ""));
                 map.putDouble("timestamp", (double) item.optLong("timestamp", 0));
                 result.pushMap(map);
