@@ -157,7 +157,7 @@ public class BusinessHoursModule extends ReactContextBaseJavaModule {
                 editor.putString("keyword_replies_json", json.toString());
             }
 
-            // Sync telecom sales (simNumber + companyName) for offline company lookup
+            // Sync telecom sales (simNumber + companyName + customer info for offline subscription check)
             ReadableArray sales = config.getArray("telecomSales");
             if (sales != null) {
                 StringBuilder salesJson = new StringBuilder("[");
@@ -167,7 +167,11 @@ public class BusinessHoursModule extends ReactContextBaseJavaModule {
                     if (salesJson.length() > 1) salesJson.append(",");
                     salesJson.append("{");
                     salesJson.append("\"simNumber\":\"").append(escapeJson(s.getString("simNumber"))).append("\",");
-                    salesJson.append("\"companyName\":\"").append(escapeJson(s.getString("companyName"))).append("\"");
+                    salesJson.append("\"companyName\":\"").append(escapeJson(s.getString("companyName"))).append("\",");
+                    salesJson.append("\"customerName\":\"").append(escapeJson(s.hasKey("customerName") ? s.getString("customerName") : "")).append("\",");
+                    salesJson.append("\"customerPhone\":\"").append(escapeJson(s.hasKey("customerPhone") ? s.getString("customerPhone") : "")).append("\",");
+                    salesJson.append("\"createdAt\":").append(s.hasKey("createdAt") ? (long) s.getDouble("createdAt") : 0).append(",");
+                    salesJson.append("\"chargeDuration\":\"").append(escapeJson(s.hasKey("chargeDuration") ? s.getString("chargeDuration") : "month")).append("\"");
                     salesJson.append("}");
                 }
                 salesJson.append("]");

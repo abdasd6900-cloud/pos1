@@ -13,7 +13,7 @@ export interface NativeBusinessHoursConfig {
   autoReplyCooldownMinutes: number;
   days: Record<number, { enabled: boolean; openTime: string; closeTime: string }>;
   keywordReplies: { active: boolean; reply: string; keywords: string[] }[];
-  telecomSales: { simNumber: string; companyName: string }[];
+  telecomSales: { simNumber: string; companyName: string; customerName: string; customerPhone: string; createdAt: number; chargeDuration: string }[];
   telecomCompanies: { id: string; name: string }[];
   bundles: { id: string; companyId: string; companyName: string; name: string; price: number; durationDays: number; active: boolean }[];
 }

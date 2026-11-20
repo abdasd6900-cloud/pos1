@@ -1512,7 +1512,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         autoReplyCooldownMinutes: businessHours.autoReplyCooldownMinutes,
         days: businessHours.days,
         keywordReplies,
-        telecomSales: telecomSales.map((s) => ({ simNumber: s.simNumber, companyName: s.companyName })),
+        telecomSales: telecomSales.map((s) => ({ simNumber: s.simNumber, companyName: s.companyName, customerName: s.customerName, customerPhone: s.customerPhone, createdAt: s.createdAt, chargeDuration: s.chargeDuration })),
         telecomCompanies: telecomCompanies.map((c) => ({ id: c.id, name: c.name })),
         bundles: bundles.filter((b) => b.active).map((b) => ({ id: b.id, companyId: b.companyId, companyName: b.companyName, name: b.name, price: b.price, durationDays: b.durationDays, active: b.active })),
       });

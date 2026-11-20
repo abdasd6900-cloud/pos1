@@ -50,6 +50,23 @@ public class SmsReceiver extends BroadcastReceiver {
 
     private Context appContext;
 
+    // Dedup: track recently processed messages to avoid double-processing
+    // when both SMS_RECEIVED and SMS_DELIVER fire for the same message.
+    private static final long DEDUP_WINDOW_MS = 10 * 1000; // 10 seconds
+    private static String lastProcessedKey = "";
+    private static long lastProcessedTime = 0;
+
+    private boolean isDuplicateMessage(String senderPhone, String message) {
+        String key = senderPhone + ":" + message.hashCode();
+        long now = System.currentTimeMillis();
+        if (key.equals(lastProcessedKey) && (now - lastProcessedTime) < DEDUP_WINDOW_MS) {
+            return true;
+        }
+        lastProcessedKey = key;
+        lastProcessedTime = now;
+        return false;
+    }
+
     @Override
     public void onReceive(Context context, Intent intent) {
         if (intent == null || (!intent.getAction().equals("android.provider.Telephony.SMS_RECEIVED")
@@ -80,6 +97,12 @@ public class SmsReceiver extends BroadcastReceiver {
 
         if (senderPhone == null || fullMessage.length() == 0) return;
 
+        // Dedup: skip if we just processed this exact message
+        if (isDuplicateMessage(senderPhone, fullMessage.toString())) {
+            Log.i(TAG, "Duplicate SMS event, skipping");
+            return;
+        }
+
         appContext = context.getApplicationContext();
 
         String message = fullMessage.toString();
@@ -103,11 +126,9 @@ public class SmsReceiver extends BroadcastReceiver {
             showIncomingSmsNotification(context, senderPhone, message);
         }
 
-        // When we ARE the default SMS app, write the incoming message to the
-        // system SMS content provider so it appears in our own inbox view.
-        if (isDefaultSms) {
-            writeInboxMessage(context, senderPhone, message);
-        }
+        // Always write the incoming message to the system SMS content provider
+        // so it appears in the app's inbox view regardless of which app is default.
+        writeInboxMessage(context, senderPhone, message);
 
         // Always push the incoming message to Supabase so it appears in the app's
         // conversation view, regardless of message type (image, voice, eSIM, etc).
@@ -151,8 +172,50 @@ public class SmsReceiver extends BroadcastReceiver {
             return;
         }
 
+        // Check for recharge-active follow-up: customer was told they have days remaining
+        // and now replies with "جدد" or similar — accept the renewal
+        if (monitoringEnabled && autoResponderEnabled && hasRechargeActiveConversation(prefs, senderPhone)) {
+            String lower = message.toLowerCase().trim();
+            if (lower.contains("جدد") || lower.contains("ماشي") || lower.contains("نعم") || lower.contains("اوكي") || lower.contains("تمام")) {
+                String simNum = prefs.getString("recharge_active_" + senderPhone, "");
+                if (simNum == null || simNum.isEmpty()) simNum = extractSimNumber(message);
+                saveOfflinePendingOperation(prefs, senderPhone, simNum != null ? simNum : "", message);
+                if (internetAvailable && supabaseUrl != null && !supabaseUrl.isEmpty()) {
+                    if (autoResponderEnabled) sendReplyAndLog(senderPhone, RECHARGE_ACCEPTED_MSG, supabaseUrl, supabaseAnonKey, authToken);
+                    pushPendingOperation(context, senderPhone, simNum != null ? simNum : "", message, "sms", supabaseUrl, supabaseAnonKey, authToken);
+                } else {
+                    String maintenanceMessage = "نعتذر، سيتأخر شحن الرقم نظراً لأعمال الصيانة. تم وضع طلبك ضمن قوائم الانتظار وسيتم تنفيذه عند عودة الخدمة.";
+                    if (autoResponderEnabled) sendReplyAndLog(senderPhone, maintenanceMessage, supabaseUrl, supabaseAnonKey, authToken);
+                }
+                clearRechargeActiveConversation(prefs, senderPhone);
+                return;
+            }
+        }
+
         // Duration logic for recharge requests with a sim number
         if (monitoringEnabled && simNumber != null && isRecharge) {
+            // Step 1: Check subscription status against local sales data
+            int daysRemaining = checkSubscriptionBySim(prefs, simNumber);
+            if (daysRemaining < 0) {
+                // Also try matching by sender phone
+                daysRemaining = checkSubscriptionByPhone(prefs, senderPhone);
+            }
+            String customerName = findCustomerNameBySim(prefs, simNumber);
+
+            // Step 2: If subscription is active with > 3 days remaining, send reminder
+            if (daysRemaining > 3) {
+                String reminderMsg = "عزيزي " + (customerName != null && !customerName.isEmpty() ? customerName : "زبوننا العزيز")
+                    + "، لديك حالياً " + daysRemaining + " يوم متبقية في اشتراكك الحالي. إذا كنت ترغب في التجديد رغم ذلك، يرجى إرسال \"جدد\" أو \"ماشي جدد\" وسنقوم بتنفيذ طلبك.";
+                if (autoResponderEnabled) sendReplyAndLog(senderPhone, reminderMsg, supabaseUrl, supabaseAnonKey, authToken);
+                // Store recharge-active state so follow-up "جدد" can be detected
+                prefs.edit()
+                    .putString("recharge_active_" + senderPhone, simNumber)
+                    .putLong("recharge_active_time_" + senderPhone, System.currentTimeMillis())
+                    .apply();
+                return;
+            }
+
+            // Step 3: Check duration requirement
             String duration = detectChargeDuration(message);
             String companyName = lookupCompanyNameBySim(prefs, simNumber);
             if (duration == null && (companyName == null || requiresDuration(companyName))) {
@@ -160,30 +223,58 @@ public class SmsReceiver extends BroadcastReceiver {
                 saveOfflinePendingOperation(prefs, senderPhone, simNumber, message);
                 return;
             }
-            String effectiveDuration = duration != null ? duration : "month";
-            if (!storeOpen || !internetAvailable) {
+
+            // Step 4: Queue the operation locally (always, regardless of internet)
+            saveOfflinePendingOperation(prefs, senderPhone, simNumber, message);
+
+            // Step 5: Send appropriate reply based on store hours and internet status
+            if (!storeOpen) {
+                // Store is closed — send off-hours message
+                String offHoursMsg = prefs.getString("bh_closed_message", "عذراً، الشركة مغلقة حالياً ولا يمكن تنفيذ طلبك. سيتم تنفيذه مع بدء دوام الغد إن شاء الله.");
+                if (autoResponderEnabled) sendReplyAndLog(senderPhone, offHoursMsg, supabaseUrl, supabaseAnonKey, authToken);
+            } else if (internetAvailable && supabaseUrl != null && !supabaseUrl.isEmpty()) {
+                // Store open + internet available — accept and push to Supabase
+                if (autoResponderEnabled) sendReplyAndLog(senderPhone, RECHARGE_ACCEPTED_MSG, supabaseUrl, supabaseAnonKey, authToken);
+                pushPendingOperation(context, senderPhone, simNumber, message, "sms", supabaseUrl, supabaseAnonKey, authToken);
+            } else {
+                // Store open but no internet — send maintenance message AFTER queuing
                 String maintenanceMessage = "نعتذر، سيتأخر شحن الرقم نظراً لأعمال الصيانة. تم وضع طلبك ضمن قوائم الانتظار وسيتم تنفيذه عند عودة الخدمة.";
                 if (autoResponderEnabled) sendReplyAndLog(senderPhone, maintenanceMessage, supabaseUrl, supabaseAnonKey, authToken);
-                saveOfflinePendingOperation(prefs, senderPhone, simNumber, message);
-            } else {
-                if (autoResponderEnabled) sendReplyAndLog(senderPhone, RECHARGE_ACCEPTED_MSG, supabaseUrl, supabaseAnonKey, authToken);
-                if (supabaseUrl != null && !supabaseUrl.isEmpty()) {
-                    pushPendingOperation(context, senderPhone, simNumber, message, "sms", supabaseUrl, supabaseAnonKey, authToken);
-                }
             }
             return;
         }
 
-        // Non-recharge SMS: the incoming message was already pushed above.
-        // Handle auto-reply for non-recharge, non-sim-number messages.
+        // Non-recharge SMS with a sim number: check subscription, then handle
         if (monitoringEnabled && simNumber != null && (!storeOpen || !internetAvailable)) {
-            String maintenanceMessage = "نعتذر، سيتأخر شحن الرقم نظراً لأعمال الصيانة. تم وضع طلبك ضمن قوائم الانتظار وسيتم تنفيذه عند عودة الخدمة.";
-            if (autoResponderEnabled) {
-                sendReplyAndLog(senderPhone, maintenanceMessage, supabaseUrl, supabaseAnonKey, authToken);
+            // Check subscription before sending maintenance message
+            int daysRemaining = checkSubscriptionBySim(prefs, simNumber);
+            if (daysRemaining < 0) {
+                daysRemaining = checkSubscriptionByPhone(prefs, senderPhone);
             }
-            saveOfflinePendingOperation(prefs, senderPhone, simNumber, message);
+
+            if (daysRemaining > 0) {
+                // Subscription active — send appropriate reply via handleAutoReply
+                if (autoResponderEnabled && supabaseUrl != null && !supabaseUrl.isEmpty()) {
+                    handleAutoReply(context, prefs, senderPhone, message, storeOpen, supabaseUrl, supabaseAnonKey, authToken);
+                } else if (autoResponderEnabled) {
+                    handleAutoReply(context, prefs, senderPhone, message, storeOpen, "", "", authToken);
+                }
+            } else {
+                // No active subscription or unknown — queue and send maintenance only if no internet
+                saveOfflinePendingOperation(prefs, senderPhone, simNumber, message);
+                if (!internetAvailable) {
+                    String maintenanceMessage = "نعتذر، سيتأخر شحن الرقم نظراً لأعمال الصيانة. تم وضع طلبك ضمن قوائم الانتظار وسيتم تنفيذه عند عودة الخدمة.";
+                    if (autoResponderEnabled) sendReplyAndLog(senderPhone, maintenanceMessage, supabaseUrl, supabaseAnonKey, authToken);
+                } else if (!storeOpen) {
+                    String offHoursMsg = prefs.getString("bh_closed_message", "عذراً، الشركة مغلقة حالياً ولا يمكن تنفيذ طلبك. سيتم تنفيذه مع بدء دوام الغد إن شاء الله.");
+                    if (autoResponderEnabled) sendReplyAndLog(senderPhone, offHoursMsg, supabaseUrl, supabaseAnonKey, authToken);
+                }
+            }
         } else if (autoResponderEnabled && supabaseUrl != null && !supabaseUrl.isEmpty()) {
             handleAutoReply(context, prefs, senderPhone, message, storeOpen, supabaseUrl, supabaseAnonKey, authToken);
+        } else if (autoResponderEnabled) {
+            // No Supabase configured — still handle auto-reply offline
+            handleAutoReply(context, prefs, senderPhone, message, storeOpen, "", "", authToken);
         }
 
         // Recharge requests are also kept in the pending-operation queue.
@@ -484,15 +575,136 @@ public class SmsReceiver extends BroadcastReceiver {
         return null;
     }
 
+    // ============ Offline Subscription Check ============
+
+    private static final java.util.HashMap<String, Integer> CHARGE_DURATION_DAYS = new java.util.HashMap<String, Integer>() {{
+        put("3_days", 3);
+        put("week", 7);
+        put("2_weeks", 14);
+        put("3_weeks", 21);
+        put("month", 30);
+        put("2_months", 60);
+        put("3_months", 90);
+        put("offer", 30);
+    }};
+
+    private static final long DAY_MS = 86400000L;
+
+    /**
+     * Checks subscription status by matching the sim number (from the SMS text)
+     * against telecom_sales_json stored locally in SharedPreferences.
+     * Returns: daysRemaining > 0 means subscription is still active.
+     */
+    private int checkSubscriptionBySim(android.content.SharedPreferences prefs, String simNumber) {
+        if (simNumber == null || simNumber.isEmpty()) return -1;
+        String salesJson = prefs.getString("telecom_sales_json", "[]");
+        try {
+            String normalizedSim = simNumber.replaceAll("[^0-9]", "");
+            org.json.JSONArray sales = new org.json.JSONArray(salesJson);
+            // Find the most recent sale for this sim number
+            long latestCreatedAt = 0;
+            String latestDuration = "month";
+            String latestCustomerName = "";
+            boolean found = false;
+            for (int i = 0; i < sales.length(); i++) {
+                JSONObject sale = sales.getJSONObject(i);
+                String saleSim = sale.optString("simNumber", "").replaceAll("[^0-9]", "");
+                if (saleSim.equals(normalizedSim)) {
+                    long createdAt = sale.optLong("createdAt", 0);
+                    if (createdAt >= latestCreatedAt) {
+                        latestCreatedAt = createdAt;
+                        latestDuration = sale.optString("chargeDuration", "month");
+                        latestCustomerName = sale.optString("customerName", "");
+                        found = true;
+                    }
+                }
+            }
+            if (!found) return -1;
+            int durationDays = CHARGE_DURATION_DAYS.containsKey(latestDuration)
+                ? CHARGE_DURATION_DAYS.get(latestDuration) : 30;
+            long elapsed = (System.currentTimeMillis() - latestCreatedAt) / DAY_MS;
+            int daysRemaining = durationDays - (int) elapsed;
+            return daysRemaining;
+        } catch (Exception e) {
+            Log.e(TAG, "checkSubscriptionBySim error: " + e.getMessage());
+            return -1;
+        }
+    }
+
+    /**
+     * Finds customer name by sim number from telecom_sales_json.
+     */
+    private String findCustomerNameBySim(android.content.SharedPreferences prefs, String simNumber) {
+        if (simNumber == null || simNumber.isEmpty()) return "";
+        String salesJson = prefs.getString("telecom_sales_json", "[]");
+        try {
+            String normalizedSim = simNumber.replaceAll("[^0-9]", "");
+            org.json.JSONArray sales = new org.json.JSONArray(salesJson);
+            long latestCreatedAt = 0;
+            String latestName = "";
+            for (int i = 0; i < sales.length(); i++) {
+                JSONObject sale = sales.getJSONObject(i);
+                String saleSim = sale.optString("simNumber", "").replaceAll("[^0-9]", "");
+                if (saleSim.equals(normalizedSim)) {
+                    long createdAt = sale.optLong("createdAt", 0);
+                    if (createdAt >= latestCreatedAt) {
+                        latestCreatedAt = createdAt;
+                        latestName = sale.optString("customerName", "");
+                    }
+                }
+            }
+            return latestName;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * Checks subscription by sender phone (matches customerPhone in sales).
+     */
+    private int checkSubscriptionByPhone(android.content.SharedPreferences prefs, String senderPhone) {
+        if (senderPhone == null || senderPhone.isEmpty()) return -1;
+        String salesJson = prefs.getString("telecom_sales_json", "[]");
+        try {
+            String normalizedPhone = normalizePhone(senderPhone);
+            org.json.JSONArray sales = new org.json.JSONArray(salesJson);
+            long latestCreatedAt = 0;
+            String latestDuration = "month";
+            boolean found = false;
+            for (int i = 0; i < sales.length(); i++) {
+                JSONObject sale = sales.getJSONObject(i);
+                String salePhone = normalizePhone(sale.optString("customerPhone", ""));
+                if (salePhone.equals(normalizedPhone) && !salePhone.isEmpty()) {
+                    long createdAt = sale.optLong("createdAt", 0);
+                    if (createdAt >= latestCreatedAt) {
+                        latestCreatedAt = createdAt;
+                        latestDuration = sale.optString("chargeDuration", "month");
+                        found = true;
+                    }
+                }
+            }
+            if (!found) return -1;
+            int durationDays = CHARGE_DURATION_DAYS.containsKey(latestDuration)
+                ? CHARGE_DURATION_DAYS.get(latestDuration) : 30;
+            long elapsed = (System.currentTimeMillis() - latestCreatedAt) / DAY_MS;
+            int daysRemaining = durationDays - (int) elapsed;
+            return daysRemaining;
+        } catch (Exception e) {
+            Log.e(TAG, "checkSubscriptionByPhone error: " + e.getMessage());
+            return -1;
+        }
+    }
+
     private boolean hasInternetConnection(Context context) {
         ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
         if (manager == null) return false;
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             android.net.Network network = manager.getActiveNetwork();
             android.net.NetworkCapabilities capabilities = network == null ? null : manager.getNetworkCapabilities(network);
+            // Only check NET_CAPABILITY_INTERNET — VALIDATED is unreliable on Palestinian
+            // mobile networks and causes false negatives even when internet is available.
             return capabilities != null
-                && capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                && capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                && capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET);
         }
         NetworkInfo network = manager.getActiveNetworkInfo();
         return network != null && network.isConnected();
@@ -901,6 +1113,27 @@ public class SmsReceiver extends BroadcastReceiver {
             return false;
         }
         return true;
+    }
+
+    // ============ Recharge Active Conversation (native) ============
+
+    private boolean hasRechargeActiveConversation(android.content.SharedPreferences prefs, String senderPhone) {
+        String sim = prefs.getString("recharge_active_" + senderPhone, "");
+        if (sim == null || sim.isEmpty()) return false;
+        long startedAt = prefs.getLong("recharge_active_time_" + senderPhone, 0);
+        // 30 minute timeout
+        if (System.currentTimeMillis() - startedAt > 30 * 60 * 1000) {
+            clearRechargeActiveConversation(prefs, senderPhone);
+            return false;
+        }
+        return true;
+    }
+
+    private void clearRechargeActiveConversation(android.content.SharedPreferences prefs, String senderPhone) {
+        prefs.edit()
+            .remove("recharge_active_" + senderPhone)
+            .remove("recharge_active_time_" + senderPhone)
+            .apply();
     }
 
     private void handleEsimRequest(android.content.SharedPreferences prefs, String senderPhone,
