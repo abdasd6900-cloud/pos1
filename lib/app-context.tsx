@@ -28,7 +28,7 @@ import { createEscalationState, processReminderTick, processCustomerReply, execu
 import { buildReminderMessage, buildAskForDateMessage, buildFreezeWarningMessage, buildReactivationMessage } from './reply-parser';
 import { sendMessageByChannel, isSupplierOrAgentPhone, type MessageChannel, importDeviceSms, type ImportedSms, sendSmsAuto } from './sms-gateway';
 import { sendLocalNotification, sendWebNotification, ensureNotificationPermissions } from './notifications';
-import { classifyIncomingMessage, classifyRechargeWithDuration, openWhatsApp, buildRechargeConfirmedMessage, buildSupportForwardMessage, buildWelcomeMessage } from './customer-classifier';
+import { classifyIncomingMessage, classifyRechargeWithDuration, openWhatsApp, buildRechargeConfirmedMessage, buildSupportForwardMessage, buildWelcomeMessage, buildRechargePendingClosed, buildRechargeAccepted } from './customer-classifier';
 import { parseTransferSms, isTransferReport, parseTransferReport, matchPhoneToCustomer } from './transfer-parser';
 import { classifySmsMessage } from './sms-classifier';
 import { extractKeywords, matchLearnedRule, categoryToProcessAction, CATEGORY_LABELS } from './sms-learner';
@@ -1142,6 +1142,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     companyName: result.companyName ?? null,
                   };
                   setPendingOperations((prev) => { const next = [op, ...prev]; storage.savePendingOperations(next); return next; });
+                }
+                if (result.action === 'recharge_checking' && result.simNumber) {
+                  const sale = result.saleId ? telecomSalesRef.current.find((s) => s.id === result.saleId) : null;
+                  const shopOpen = businessHoursRef.current ? isStoreOpen(businessHoursRef.current) : true;
+                  const finalReply = shopOpen ? buildRechargeAccepted(templates) : buildRechargePendingClosed(templates);
+                  if (!isNative) {
+                    void logOutboundSmsRef.current(reply.senderPhone ?? '', finalReply, replyChannel);
+                  }
+                  setSmsMessages((prev) => {
+                    const next = prev.map((m) =>
+                      m.id === smsMsg.id ? { ...m, autoReplied: true, autoReplyText: finalReply } : m
+                    );
+                    storage.saveSmsMessages(next);
+                    return next;
+                  });
+                  const op: PendingOperation = {
+                    id: storage.generateId(),
+                    source: 'sms' as const,
+                    senderPhone: reply.senderPhone ?? '',
+                    senderName: result.customerName ?? '',
+                    simNumber: result.simNumber ?? '',
+                    originalMessage: reply.message,
+                    status: 'pending' as const,
+                    customerMatched: !!sale?.customerId,
+                    customerId: sale?.customerId ?? null,
+                    customerName: result.customerName ?? '',
+                    customerPhone: reply.senderPhone ?? '',
+                    companyGuess: sale?.companyId ?? '',
+                    bundleGuess: sale?.bundleName ?? '',
+                    createdAt: Date.now(),
+                    executedAt: null,
+                    transferReportId: null,
+                    transferNotificationId: null,
+                    transferStatus: 'none' as const,
+                    chargeDuration: result.chargeDuration ?? null,
+                    companyName: result.companyName ?? sale?.companyName ?? null,
+                  };
+                  setPendingOperations((prev) => { const next = [op, ...prev]; storage.savePendingOperations(next); return next; });
+                  void sendLocalNotification('عملية قيد الانتظار', `طلب شحن للرقم ${result.simNumber} من ${result.customerName ?? reply.senderPhone}`, { phone: reply.senderPhone ?? '' });
+                }
+                if (result.action === 'update_expired') {
+                  void sendLocalNotification('تحديث - اشتراك منتهي', `الرقم ${result.simNumber ?? ''} - ${result.customerName ?? ''} - الاشتراك منتهي يحتاج تجديد`, { phone: reply.senderPhone ?? '' });
                 }
                 if (result.action === 'recharge_request') {
                   if (result.simNumber) {

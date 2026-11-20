@@ -41,7 +41,7 @@ public class SmsReceiver extends BroadcastReceiver {
 
     // Palestinian mobile prefixes
     private static final String[] SIM_PREFIXES = {"050", "052", "053", "054", "055", "056", "058", "059"};
-    private static final Pattern PHONE_PATTERN = Pattern.compile("0\\d{9,10}");
+    private static final Pattern PHONE_PATTERN = Pattern.compile("0\\d{2}[-\\s]?\\d{3}[-\\s]?\\d{4}|\\+970\\d{9,10}|\\+972\\d{9,10}|970\\d{9}|972\\d{9}|0\\d{9,10}");
     private static final String[] COMPANIES_REQUIRING_DURATION = {"ويكم", "الوها"};
     private static final String SPECIFY_DURATION_MSG = "يرجى تحديد مدة الشحن المطلوبة (شهر، شهرين، إلخ) حتى نتمكن من تنفيذ طلبك.";
     private static final String RECHARGE_ACCEPTED_MSG = "تم استلام طلبك وسيتم إبلاغك حين تنفيذه، شكراً لصبركم.";
@@ -509,7 +509,7 @@ public class SmsReceiver extends BroadcastReceiver {
         Matcher matcher = PHONE_PATTERN.matcher(message);
         String lastMatch = null;
         while (matcher.find()) {
-            String num = matcher.group();
+            String num = normalizeSimNumber(matcher.group());
             for (String prefix : SIM_PREFIXES) {
                 if (num.startsWith(prefix)) {
                     lastMatch = num;
@@ -518,6 +518,19 @@ public class SmsReceiver extends BroadcastReceiver {
             }
         }
         return lastMatch;
+    }
+
+    private String normalizeSimNumber(String raw) {
+        String digits = raw.replaceAll("[^0-9]", "");
+        if (digits.startsWith("970")) digits = digits.substring(3);
+        else if (digits.startsWith("972")) digits = digits.substring(3);
+        if (digits.length() >= 9) {
+            String last9 = digits.substring(digits.length() - 9);
+            return "0" + last9;
+        }
+        if (digits.length() == 10 && digits.startsWith("0")) return digits;
+        if (digits.length() == 9) return "0" + digits;
+        return digits;
     }
 
     private boolean isUpdateRequest(String message) {

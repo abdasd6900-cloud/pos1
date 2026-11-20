@@ -119,6 +119,9 @@ export interface AutoReplyTemplates {
   simLookupActive: string;
   simLookupExpired: string;
   simLookupNotFound: string;
+  rechargeCheckingProgress: string;
+  rechargePendingClosed: string;
+  updateExpiredSubscription: string;
 }
 
 export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
@@ -155,6 +158,9 @@ export const DEFAULT_AUTO_REPLY_TEMPLATES: AutoReplyTemplates = {
   simLookupActive: 'عزيزي {name}، رقمك {sim} مسجل لدينا. متبقي في اشتراكك {days} يوم. اذا كنت ترغب بالتجديد ارسل "شحن" او "تجديد".',
   simLookupExpired: 'عزيزي {name}، رقمك {sim} مسجل لدينا لكن اشتراكك منتهي. لتجديد الاشتراك ارسل "شحن" او "تجديد".',
   simLookupNotFound: 'الرقم {sim} غير مسجل لدينا. اذا كنت ترغب بالشحن او التجديد، يرجى ارسال "شحن" متبوعاً بالرقم، او تواصل معنا لمساعدتك.',
+  rechargeCheckingProgress: 'أهلاً وسهلاً بك، تم استلام رقمك وجاري فحصه الآن. سيتم إبلاغك بالنتيجة خلال لحظات.',
+  rechargePendingClosed: 'تم استلام طلبك ووضعه على قائمة الانتظار. سيتم تنفيذه فور بدء الدوام في صباح الغد. شكراً لتفهمكم.',
+  updateExpiredSubscription: 'عذراً، اشتراكك منتهي ولا يمكن تنفيذ التحديث. يلزم تجديد الاشتراك أولاً للتمتع بخدمة الانترنت. يرجى إرسال "شحن" أو "تجديد" مع رقم الشريحة.',
 };
 
 export interface TelecomCompany {
