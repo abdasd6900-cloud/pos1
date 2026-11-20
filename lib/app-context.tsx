@@ -44,7 +44,7 @@ import {
   startRealtimeSync,
   type SyncCollectionName,
 } from './data-sync';
-import { syncBusinessHoursToNative, startScreenshotDetection, stopScreenshotDetection, setNativeSupabaseCredentials, setNativeSupabaseCredentialsV2, setSmsGatewayEnabled, startSmsObservation, stopSmsObservation, subscribeToNativeSmsEvents, type NativeSmsEvent } from './native-bridge';
+import { syncBusinessHoursToNative, startScreenshotDetection, stopScreenshotDetection, setNativeSupabaseCredentials, setNativeSupabaseCredentialsV2, setSmsGatewayEnabled, startSmsObservation, stopSmsObservation, subscribeToNativeSmsEvents, getOfflineCustomerReplies, type NativeSmsEvent } from './native-bridge';
 import { buildCustomerFiles, type CustomerFile } from './customer-files';
 import { shareBackupFile, pickBackupFile } from './backup-export';
 import { uploadCloudSnapshot, listCloudSnapshots, downloadCloudSnapshot, deleteCloudSnapshot, type CloudSnapshot, type FullBackupData } from './cloud-backup';
@@ -1489,6 +1489,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (unsubscribe) unsubscribe();
       void stopSmsObservation();
     };
+  }, [loaded, session]);
+
+  // Import offline customer replies that were saved by the native SmsReceiver
+  // while the app was closed and no internet was available. This ensures SMS
+  // messages reach the pending tabs even if the app wasn't running when they arrived.
+  useEffect(() => {
+    if (!loaded || !session) return;
+    let cancelled = false;
+    void (async () => {
+      const replies = await getOfflineCustomerReplies();
+      if (cancelled || replies.length === 0) return;
+      for (const reply of replies) {
+        remoteChangeHandlerRef.current?.('customerReplies', {
+          senderPhone: reply.senderPhone,
+          senderName: '',
+          message: reply.message,
+          channel: 'sms' as const,
+          timestamp: reply.timestamp,
+        });
+      }
+    })();
+    return () => { cancelled = true; };
   }, [loaded, session]);
 
   const syncPush = useCallback(<T,>(collection: SyncCollectionName, data: T) => {

@@ -259,6 +259,39 @@ public class BusinessHoursModule extends ReactContextBaseJavaModule {
         }
     }
 
+    /**
+     * Returns offline customer replies that were saved by SmsReceiver while
+     * the app was closed and no internet was available. After reading, the
+     * queue is cleared so they aren't imported twice.
+     */
+    @ReactMethod
+    public void getOfflineCustomerReplies(com.facebook.react.bridge.Callback callback) {
+        try {
+            android.content.SharedPreferences prefs =
+                getReactApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            String json = prefs.getString("offline_customer_replies", "[]");
+            org.json.JSONArray queue = new org.json.JSONArray(json);
+
+            com.facebook.react.bridge.WritableArray result = new com.facebook.react.bridge.WritableNativeArray();
+            for (int i = 0; i < queue.length(); i++) {
+                org.json.JSONObject item = queue.getJSONObject(i);
+                com.facebook.react.bridge.WritableMap map = new com.facebook.react.bridge.WritableNativeMap();
+                map.putString("senderPhone", item.optString("senderPhone", ""));
+                map.putString("message", item.optString("message", ""));
+                map.putDouble("timestamp", (double) item.optLong("timestamp", 0));
+                result.pushMap(map);
+            }
+
+            // Clear the queue after reading
+            prefs.edit().remove("offline_customer_replies").apply();
+
+            callback.invoke(null, result);
+        } catch (Exception e) {
+            Log.e(TAG, "getOfflineCustomerReplies error: " + e.getMessage());
+            callback.invoke(e.getMessage(), null);
+        }
+    }
+
     private String escapeJson(String s) {
         if (s == null) return "";
         StringBuilder sb = new StringBuilder(s.length() + 16);

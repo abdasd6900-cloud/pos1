@@ -68,18 +68,49 @@ export async function replyToWhatsAppNotification(recipient: string, message: st
   }
 }
 
-export async function setSmsGatewayEnabled(enabled: boolean): Promise<boolean> {
-  if (Platform.OS === 'web') return false;
+export function setSmsGatewayEnabled(enabled: boolean): Promise<boolean> {
+  if (Platform.OS === 'web') return Promise.resolve(false);
   try {
     const module = NativeModules.BusinessHoursNative;
     if (module?.setSmsGatewayEnabled) {
       module.setSmsGatewayEnabled(enabled);
-      return true;
+      return Promise.resolve(true);
     }
   } catch {
     // fall through
   }
-  return false;
+  return Promise.resolve(false);
+}
+
+export interface OfflineCustomerReply {
+  senderPhone: string;
+  message: string;
+  timestamp: number;
+}
+
+export function getOfflineCustomerReplies(): Promise<OfflineCustomerReply[]> {
+  return new Promise((resolve) => {
+    if (Platform.OS !== 'android') {
+      resolve([]);
+      return;
+    }
+    try {
+      const module = NativeModules.BusinessHoursNative;
+      if (!module?.getOfflineCustomerReplies) {
+        resolve([]);
+        return;
+      }
+      module.getOfflineCustomerReplies((error: string | null, replies: OfflineCustomerReply[]) => {
+        if (error || !replies) {
+          resolve([]);
+          return;
+        }
+        resolve(replies);
+      });
+    } catch {
+      resolve([]);
+    }
+  });
 }
 
 export async function setDoNotDisturb(enabled: boolean): Promise<{ success: boolean; error?: string }> {

@@ -138,6 +138,8 @@ public class SmsReceiver extends BroadcastReceiver {
         boolean canPush = internetAvailable && supabaseUrl != null && !supabaseUrl.isEmpty();
         if (canPush) {
             pushCustomerReply(senderPhone, message, supabaseUrl, supabaseAnonKey, authToken);
+        } else {
+            saveOfflineCustomerReply(prefs, senderPhone, message);
         }
 
         // Detect MMS (image) messages — ask customer to type the sim number as text
@@ -159,6 +161,7 @@ public class SmsReceiver extends BroadcastReceiver {
         boolean isEsimReq = isEsimRequest(message);
         if (internetAvailable && supabaseUrl != null && !supabaseUrl.isEmpty()) {
             flushOfflinePendingOperations(prefs, supabaseUrl, supabaseAnonKey, authToken);
+            flushOfflineCustomerReplies(prefs, supabaseUrl, supabaseAnonKey, authToken);
         }
 
         // eSIM request handling — ask for phone model, check compatibility, ask company/duration
@@ -869,6 +872,39 @@ public class SmsReceiver extends BroadcastReceiver {
             Log.i(TAG, "Offline pending operation saved");
         } catch (Exception e) {
             Log.e(TAG, "saveOfflinePendingOperation error: " + e.getMessage());
+        }
+    }
+
+    private void saveOfflineCustomerReply(android.content.SharedPreferences prefs,
+                                           String senderPhone, String message) {
+        try {
+            org.json.JSONArray queue = new org.json.JSONArray(prefs.getString("offline_customer_replies", "[]"));
+            queue.put(new JSONObject()
+                .put("senderPhone", normalizePhone(senderPhone))
+                .put("message", message)
+                .put("timestamp", System.currentTimeMillis()));
+            prefs.edit().putString("offline_customer_replies", queue.toString()).apply();
+            Log.i(TAG, "Offline customer reply saved");
+        } catch (Exception e) {
+            Log.e(TAG, "saveOfflineCustomerReply error: " + e.getMessage());
+        }
+    }
+
+    private void flushOfflineCustomerReplies(android.content.SharedPreferences prefs,
+                                              String supabaseUrl, String supabaseAnonKey,
+                                              String authToken) {
+        try {
+            org.json.JSONArray queue = new org.json.JSONArray(prefs.getString("offline_customer_replies", "[]"));
+            if (queue.length() == 0) return;
+            for (int i = 0; i < queue.length(); i++) {
+                JSONObject item = queue.getJSONObject(i);
+                pushCustomerReply(item.optString("senderPhone"), item.optString("message"),
+                    supabaseUrl, supabaseAnonKey, authToken);
+            }
+            prefs.edit().remove("offline_customer_replies").apply();
+            Log.i(TAG, "Offline customer replies synced: " + queue.length());
+        } catch (Exception e) {
+            Log.e(TAG, "flushOfflineCustomerReplies error: " + e.getMessage());
         }
     }
 
