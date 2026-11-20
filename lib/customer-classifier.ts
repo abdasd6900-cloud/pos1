@@ -555,156 +555,36 @@ export function classifyIncomingMessage(
     }
   }
 
+  // If no match by phone/serial, try matching by SIM number in the message body
   if (!match) {
-    // Check keyword replies even for unknown customers
-    if (keywordReplies && keywordReplies.length > 0) {
-      const kr = matchKeywordReply(message, keywordReplies);
-      if (kr) {
-        return { action: 'keyword_reply', replyToCustomer: kr.reply, supportPhone: null, supportMessage: null, simNumber: null, daysRemaining: null, customerName: null, saleId: null, chargeDuration: null, companyName: null };
-      }
-    }
-    // Check if the message contains a SIM number — look it up in sales
     const { primarySimNumber: bodySim } = extractSimNumbersFromMessage(message);
     if (bodySim) {
       const simMatch = findCustomerBySimNumber(sales, bodySim);
       if (simMatch) {
-        const enrichedSim = enrichWithCompany(simMatch, companies);
-        const tpl = getTemplates(templates);
-        // If the message also contains a recharge request keyword, treat as recharge request
-        if (isRechargeRequest(message)) {
-          // If the customer already specified a duration, create the request directly
-          const msgDuration = detectChargeDuration(message);
-          if (msgDuration) {
-            return {
-              action: 'recharge_request',
-              replyToCustomer: buildRechargeAccepted(templates),
-              supportPhone: null,
-              supportMessage: null,
-              simNumber: bodySim,
-              daysRemaining: simMatch.daysRemaining,
-              customerName: simMatch.sale.customerName ?? null,
-              saleId: simMatch.sale.id,
-              chargeDuration: msgDuration,
-              companyName: enrichedSim.company?.name ?? null,
-            };
-          }
-          if (simMatch.hasActiveCharge && simMatch.daysRemaining > 3) {
-            setRechargeActiveState(senderPhone, {
-              simNumber: bodySim,
-              customerName: simMatch.sale.customerName ?? '',
-              daysRemaining: simMatch.daysRemaining,
-              saleId: simMatch.sale.id,
-              companyName: enrichedSim.company?.name ?? null,
-              startedAt: Date.now(),
-            });
-            return {
-              action: 'recharge_active',
-              replyToCustomer: buildRechargeActiveReminder(simMatch.sale.customerName ?? 'زبوننا العزيز', simMatch.daysRemaining, templates),
-              supportPhone: null,
-              supportMessage: null,
-              simNumber: bodySim,
-              daysRemaining: simMatch.daysRemaining,
-              customerName: simMatch.sale.customerName ?? null,
-              saleId: simMatch.sale.id,
-              chargeDuration: null,
-              companyName: enrichedSim.company?.name ?? null,
-            };
-          }
-          // Check if duration is already specified in the message
-          if (COMPANIES_REQUIRING_DURATION.some((c) => (enrichedSim.company?.name ?? '').includes(c))) {
-            setRechargeConversationState(senderPhone, { simNumber: bodySim, companyName: enrichedSim.company?.name ?? null, startedAt: Date.now() });
-            return {
-              action: 'specify_duration',
-              replyToCustomer: buildSpecifyDuration(templates),
-              supportPhone: null,
-              supportMessage: null,
-              simNumber: bodySim,
-              daysRemaining: simMatch.daysRemaining,
-              customerName: simMatch.sale.customerName ?? null,
-              saleId: simMatch.sale.id,
-              chargeDuration: null,
-              companyName: enrichedSim.company?.name ?? null,
-            };
-          }
-          return {
-            action: 'recharge_request',
-            replyToCustomer: buildRechargeReceivedMessage(bodySim, templates),
-            supportPhone: null,
-            supportMessage: null,
-            simNumber: bodySim,
-            daysRemaining: simMatch.daysRemaining,
-            customerName: simMatch.sale.customerName ?? null,
-            saleId: simMatch.sale.id,
-            chargeDuration: null,
-            companyName: enrichedSim.company?.name ?? null,
-          };
-        }
-        // No recharge request — just report subscription status
-        if (simMatch.hasActiveCharge) {
-          return {
-            action: 'sim_lookup',
-            replyToCustomer: fillTemplate(tpl.simLookupActive, { name: simMatch.sale.customerName || 'زبوننا العزيز', sim: bodySim, days: simMatch.daysRemaining }),
-            supportPhone: null,
-            supportMessage: null,
-            simNumber: bodySim,
-            daysRemaining: simMatch.daysRemaining,
-            customerName: simMatch.sale.customerName ?? null,
-            saleId: simMatch.sale.id,
-            chargeDuration: null,
-            companyName: enrichedSim.company?.name ?? null,
-          };
-        }
-        return {
-          action: 'sim_lookup',
-          replyToCustomer: fillTemplate(tpl.simLookupExpired, { name: simMatch.sale.customerName || 'زبوننا العزيز', sim: bodySim }),
-          supportPhone: null,
-          supportMessage: null,
-          simNumber: bodySim,
-          daysRemaining: 0,
-          customerName: simMatch.sale.customerName ?? null,
-          saleId: simMatch.sale.id,
-          chargeDuration: null,
-          companyName: enrichedSim.company?.name ?? null,
-        };
+        match = simMatch;
       }
-      // SIM number not found in sales — inform customer
-      const tpl = getTemplates(templates);
-      return {
-        action: 'sim_lookup',
-        replyToCustomer: fillTemplate(tpl.simLookupNotFound, { sim: bodySim }),
-        supportPhone: null,
-        supportMessage: null,
-        simNumber: bodySim,
-        daysRemaining: null,
-        customerName: null,
-        saleId: null,
-        chargeDuration: null,
-        companyName: null,
-      };
     }
-    // Greeting for first-time / unknown customers — always auto-reply
-    return { action: 'greeting', replyToCustomer: fillTemplate(getTemplates(templates).greeting, { storeName: storeName || 'متجرنا' }), supportPhone: null, supportMessage: null, simNumber: null, daysRemaining: null, customerName: null, saleId: null, chargeDuration: null, companyName: null };
   }
 
-  const enriched = enrichWithCompany(match, companies);
-  const simNumber = match.sale.simNumber;
-  const customerName = match.sale.customerName;
-  const supportPhone = enriched.company?.supportPhone ?? null;
-  const saleId = match.sale.id;
+  const enriched = match ? enrichWithCompany(match, companies) : null;
+  const simNumber = match?.sale.simNumber ?? null;
+  const customerName = match?.sale.customerName ?? null;
+  const supportPhone = enriched?.company?.supportPhone ?? null;
+  const saleId = match?.sale.id ?? null;
 
-  // Priority 1: Internet problem → immediate support forward
+  // Priority 1: Internet problem → immediate support forward (all customers)
   if (isInternetProblem(message)) {
     return {
       action: 'support_forward',
       replyToCustomer: buildSupportAcknowledgement(templates),
       supportPhone,
-      supportMessage: supportPhone ? buildSupportForwardMessage(simNumber, templates) : null,
+      supportMessage: supportPhone ? buildSupportForwardMessage(simNumber ?? '', templates) : null,
       simNumber,
-      daysRemaining: match.daysRemaining,
+      daysRemaining: match?.daysRemaining ?? null,
       customerName,
       saleId,
       chargeDuration: null,
-      companyName: enriched.company?.name ?? null,
+      companyName: enriched?.company?.name ?? null,
     };
   }
 
@@ -727,19 +607,14 @@ export function classifyIncomingMessage(
       };
     }
     if (isRechargeRequest(message)) {
-      // Customer re-sent recharge request — remind again
       clearRechargeActiveState(senderPhone);
-      // Fall through to normal recharge handling below
     } else {
       clearRechargeActiveState(senderPhone);
-      // Fall through to normal classification
     }
   }
 
-  // Priority 2: Recharge request
+  // Priority 2: Recharge request (all customers)
   if (isRechargeRequest(message)) {
-    // If the customer already specified a duration, create the request directly
-    // — skip the "active subscription" reminder since they explicitly asked to renew with a duration
     const msgDuration = detectChargeDuration(message);
     if (msgDuration) {
       return {
@@ -748,21 +623,21 @@ export function classifyIncomingMessage(
         supportPhone: null,
         supportMessage: null,
         simNumber,
-        daysRemaining: match.daysRemaining,
+        daysRemaining: match?.daysRemaining ?? null,
         customerName,
         saleId,
         chargeDuration: msgDuration,
-        companyName: enriched.company?.name ?? null,
+        companyName: enriched?.company?.name ?? null,
       };
     }
     // Active subscription with >3 days remaining → inform customer and create support ticket
-    if (match.hasActiveCharge && match.daysRemaining > 3) {
+    if (match?.hasActiveCharge && match.daysRemaining > 3) {
       setRechargeActiveState(senderPhone, {
-        simNumber,
+        simNumber: simNumber ?? '',
         customerName: customerName ?? '',
         daysRemaining: match.daysRemaining,
         saleId: saleId ?? '',
-        companyName: enriched.company?.name ?? null,
+        companyName: enriched?.company?.name ?? null,
         startedAt: Date.now(),
       });
       return {
@@ -775,22 +650,19 @@ export function classifyIncomingMessage(
         customerName,
         saleId,
         chargeDuration: null,
-        companyName: enriched.company?.name ?? null,
+        companyName: enriched?.company?.name ?? null,
       };
     }
-    // Active subscription with ≤3 days remaining → create pending operation (not forward to support)
-    // Fall through to normal recharge_request handling below
-    // No active subscription or no support phone → create pending operation for manual handling
     // For companies that require duration, ask for it first
-    if (COMPANIES_REQUIRING_DURATION.some((c) => (enriched.company?.name ?? '').includes(c))) {
-      setRechargeConversationState(senderPhone, { simNumber, companyName: enriched.company?.name ?? null, startedAt: Date.now() });
+    if (enriched && COMPANIES_REQUIRING_DURATION.some((c) => (enriched.company?.name ?? '').includes(c))) {
+      setRechargeConversationState(senderPhone, { simNumber: simNumber ?? '', companyName: enriched.company?.name ?? null, startedAt: Date.now() });
       return {
         action: 'specify_duration',
         replyToCustomer: buildSpecifyDuration(templates),
         supportPhone: null,
         supportMessage: null,
         simNumber,
-        daysRemaining: match.daysRemaining,
+        daysRemaining: match?.daysRemaining ?? null,
         customerName,
         saleId,
         chargeDuration: null,
@@ -799,39 +671,39 @@ export function classifyIncomingMessage(
     }
     return {
       action: 'recharge_request',
-      replyToCustomer: buildRechargeReceivedMessage(simNumber, templates),
+      replyToCustomer: buildRechargeReceivedMessage(simNumber ?? extractSimNumbersFromMessage(message).primarySimNumber ?? '', templates),
       supportPhone: null,
       supportMessage: null,
       simNumber,
-      daysRemaining: match.daysRemaining,
+      daysRemaining: match?.daysRemaining ?? null,
       customerName,
       saleId,
       chargeDuration: null,
-      companyName: enriched.company?.name ?? null,
+      companyName: enriched?.company?.name ?? null,
     };
   }
 
-  // Priority 3: Urgency message → immediate support forward
+  // Priority 3: Urgency message → immediate support forward (all customers)
   if (isUrgencyMessage(message)) {
     return {
       action: 'urgency',
       replyToCustomer: buildUrgencyMessage(templates),
       supportPhone,
-      supportMessage: supportPhone ? buildSupportForwardMessage(simNumber, templates) : null,
+      supportMessage: supportPhone ? buildSupportForwardMessage(simNumber ?? '', templates) : null,
       simNumber,
-      daysRemaining: match.daysRemaining,
+      daysRemaining: match?.daysRemaining ?? null,
       customerName,
       saleId,
       chargeDuration: null,
-      companyName: enriched.company?.name ?? null,
+      companyName: enriched?.company?.name ?? null,
     };
   }
 
   // Priority 4: Known customer with active charge → welcome
-  if (match.hasActiveCharge && match.daysRemaining >= 3) {
+  if (match?.hasActiveCharge && match.daysRemaining >= 3) {
     return {
       action: 'welcome',
-      replyToCustomer: buildWelcomeMessage(customerName, match.daysRemaining, templates),
+      replyToCustomer: buildWelcomeMessage(customerName ?? '', match.daysRemaining, templates),
       supportPhone: null,
       supportMessage: null,
       simNumber,
@@ -839,11 +711,11 @@ export function classifyIncomingMessage(
       customerName,
       saleId,
       chargeDuration: null,
-      companyName: enriched.company?.name ?? null,
+      companyName: enriched?.company?.name ?? null,
     };
   }
 
-  // Priority 5: Keyword replies (user-taught auto-replies)
+  // Priority 5: Keyword replies (user-taught auto-replies) — all customers
   if (keywordReplies && keywordReplies.length > 0) {
     const kr = matchKeywordReply(message, keywordReplies);
     if (kr) {
@@ -853,13 +725,36 @@ export function classifyIncomingMessage(
         supportPhone: null,
         supportMessage: null,
         simNumber,
-        daysRemaining: match.daysRemaining,
+        daysRemaining: match?.daysRemaining ?? null,
         customerName,
         saleId,
         chargeDuration: null,
-        companyName: enriched.company?.name ?? null,
+        companyName: enriched?.company?.name ?? null,
       };
     }
+  }
+
+  // Priority 6: SIM lookup — customer sent a bare number, reply with subscription status
+  if (!match) {
+    const { primarySimNumber: bodySim } = extractSimNumbersFromMessage(message);
+    if (bodySim) {
+      const tpl2 = getTemplates(templates);
+      // We already tried matching above and found nothing
+      return {
+        action: 'sim_lookup',
+        replyToCustomer: fillTemplate(tpl2.simLookupNotFound, { sim: bodySim }),
+        supportPhone: null,
+        supportMessage: null,
+        simNumber: bodySim,
+        daysRemaining: null,
+        customerName: null,
+        saleId: null,
+        chargeDuration: null,
+        companyName: null,
+      };
+    }
+    // No match, no SIM number — greeting for first-time customers
+    return { action: 'greeting', replyToCustomer: fillTemplate(getTemplates(templates).greeting, { storeName: storeName || 'متجرنا' }), supportPhone: null, supportMessage: null, simNumber: null, daysRemaining: null, customerName: null, saleId: null, chargeDuration: null, companyName: null };
   }
 
   return {
@@ -872,7 +767,7 @@ export function classifyIncomingMessage(
     customerName,
     saleId,
     chargeDuration: null,
-    companyName: enriched.company?.name ?? null,
+    companyName: enriched?.company?.name ?? null,
   };
 }
 
