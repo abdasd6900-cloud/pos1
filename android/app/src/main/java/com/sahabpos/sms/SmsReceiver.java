@@ -288,6 +288,8 @@ public class SmsReceiver extends BroadcastReceiver {
 
     private static final String SMS_NOTIF_CHANNEL = "sms_incoming_channel";
     private static final int SMS_NOTIF_ID_BASE = 2000;
+    private static final String PENDING_TASK_CHANNEL = "pending_task_channel";
+    private static final int PENDING_TASK_NOTIF_ID = 3000;
 
     private boolean isDefaultSmsApp(Context context) {
         try {
@@ -395,6 +397,47 @@ public class SmsReceiver extends BroadcastReceiver {
             }
         } catch (Exception e) {
             Log.e(TAG, "showIncomingSmsNotification error: " + e.getMessage());
+        }
+    }
+
+    private void showPendingTaskNotification(Context context, int pendingCount, String latestMessage) {
+        try {
+            if (context == null) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(
+                    PENDING_TASK_CHANNEL,
+                    "مهام بانتظار التنفيذ",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                );
+                channel.setDescription("إشعارات المهام المعلقة من الرسائل");
+                NotificationManager nm = context.getSystemService(NotificationManager.class);
+                if (nm != null) nm.createNotificationChannel(channel);
+            }
+
+            String title = "لديك " + pendingCount + " مهمة بانتظار التنفيذ";
+            String body = latestMessage.length() > 50 ? latestMessage.substring(0, 50) + "..." : latestMessage;
+
+            Notification.Builder builder;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder = new Notification.Builder(context, PENDING_TASK_CHANNEL);
+            } else {
+                builder = new Notification.Builder(context);
+            }
+
+            builder
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new Notification.BigTextStyle().bigText(body))
+                .setPriority(Notification.PRIORITY_DEFAULT)
+                .setAutoCancel(true);
+
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.notify(PENDING_TASK_NOTIF_ID, builder.build());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "showPendingTaskNotification error: " + e.getMessage());
         }
     }
 
@@ -870,6 +913,7 @@ public class SmsReceiver extends BroadcastReceiver {
                 .put("timestamp", System.currentTimeMillis()));
             prefs.edit().putString("offline_pending_operations", queue.toString()).apply();
             Log.i(TAG, "Offline pending operation saved");
+            showPendingTaskNotification(appContext, queue.length(), message);
         } catch (Exception e) {
             Log.e(TAG, "saveOfflinePendingOperation error: " + e.getMessage());
         }
@@ -885,6 +929,7 @@ public class SmsReceiver extends BroadcastReceiver {
                 .put("timestamp", System.currentTimeMillis()));
             prefs.edit().putString("offline_customer_replies", queue.toString()).apply();
             Log.i(TAG, "Offline customer reply saved");
+            showPendingTaskNotification(appContext, queue.length(), message);
         } catch (Exception e) {
             Log.e(TAG, "saveOfflineCustomerReply error: " + e.getMessage());
         }
