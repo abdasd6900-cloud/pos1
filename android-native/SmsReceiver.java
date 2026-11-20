@@ -110,6 +110,7 @@ public class SmsReceiver extends BroadcastReceiver {
         // conversation view, regardless of message type (image, voice, eSIM, etc).
         // Previously, early-return paths skipped pushCustomerReply, causing messages
         // to vanish from the app.
+        boolean internetAvailable = hasInternetConnection(context);
         boolean canPush = internetAvailable && supabaseUrl != null && !supabaseUrl.isEmpty();
         if (canPush) {
             pushCustomerReply(senderPhone, message, supabaseUrl, supabaseAnonKey);
@@ -129,7 +130,6 @@ public class SmsReceiver extends BroadcastReceiver {
 
         // Check if store is open
         boolean storeOpen = isStoreOpen(prefs);
-        boolean internetAvailable = hasInternetConnection(context);
         String simNumber = extractSimNumber(message);
         boolean isRecharge = isRechargeRequest(message);
         boolean isEsimReq = isEsimRequest(message);
