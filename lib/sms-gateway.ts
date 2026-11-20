@@ -293,6 +293,9 @@ export function useSmsGateway() {
 
   const processOutbox = useCallback(async () => {
     if (!activeRef.current) return;
+    // On native Android, the Java SmsGatewayService processes the outbox.
+    // Running the JS processor here too would cause duplicate sends.
+    if (Platform.OS === 'android') return;
 
     const { data, error } = await supabase
       .from('sms_outbox')

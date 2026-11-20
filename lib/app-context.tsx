@@ -723,8 +723,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   break;
                 }
 
-                if (result.replyToCustomer) {
+                // On native Android, the Java SmsReceiver already sent the auto-reply
+                // via SmsManager and logged it as a manual_reply event. Sending it again
+                // here would duplicate the reply. On web, JS is the only sender.
+                const isNative = Platform.OS === 'android' || Platform.OS === 'ios';
+                if (result.replyToCustomer && !isNative) {
                   void logOutboundSmsRef.current(reply.senderPhone ?? '', result.replyToCustomer, replyChannel);
+                }
+                if (result.replyToCustomer) {
                   // Mark the inbound message as auto-replied so it's visible in the conversation
                   setSmsMessages((prev) => {
                     const next = prev.map((m) =>
@@ -742,7 +748,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 if (result.action === 'recharge_forward' && result.supportPhone && result.supportMessage) {
                   if (!agentOpen && agent) {
                     // offHoursMsg replaces the default auto-reply for off-hours
-                    if (result.replyToCustomer !== offHoursMsg) {
+                    if (result.replyToCustomer !== offHoursMsg && !isNative) {
                       void logOutboundSmsRef.current(reply.senderPhone ?? '', offHoursMsg, replyChannel);
                     }
                     const ticket: SupportTicket = {
@@ -932,7 +938,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 }
                 if ((result.action === 'support_forward' || result.action === 'urgency') && result.supportPhone && result.supportMessage && result.simNumber) {
                   if (!agentOpen && agent && result.action !== 'urgency') {
-                    if (result.replyToCustomer !== offHoursMsg) {
+                    if (result.replyToCustomer !== offHoursMsg && !isNative) {
                       void logOutboundSmsRef.current(reply.senderPhone ?? '', offHoursMsg, replyChannel);
                     }
                     const ticket: SupportTicket = {
@@ -1140,7 +1146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 // Unrecognized message — queue for user to teach a reply, but still send a reply
                 if (result.action === 'default') {
                   // Known customer with no specific match — send welcome as fallback reply
-                  if (!result.replyToCustomer) {
+                  if (!result.replyToCustomer && !isNative) {
                     const fallbackReply = buildWelcomeMessage(result.customerName ?? 'زبوننا العزيز', result.daysRemaining ?? 0, templates);
                     void logOutboundSmsRef.current(reply.senderPhone ?? '', fallbackReply, replyChannel);
                     setSmsMessages((prev) => {

@@ -106,15 +106,24 @@ public class SmsReceiver extends BroadcastReceiver {
             writeInboxMessage(context, senderPhone, message);
         }
 
+        // Always push the incoming message to Supabase so it appears in the app's
+        // conversation view, regardless of message type (image, voice, eSIM, etc).
+        // Previously, early-return paths skipped pushCustomerReply, causing messages
+        // to vanish from the app.
+        boolean canPush = internetAvailable && supabaseUrl != null && !supabaseUrl.isEmpty();
+        if (canPush) {
+            pushCustomerReply(senderPhone, message, supabaseUrl, supabaseAnonKey);
+        }
+
         // Detect MMS (image) messages — ask customer to type the sim number as text
         if (autoResponderEnabled && isImageMessage(message)) {
-            sendReply(senderPhone, IMAGE_SIM_NUMBER_MSG);
+            sendReplyAndLog(senderPhone, IMAGE_SIM_NUMBER_MSG, supabaseUrl, supabaseAnonKey);
             return;
         }
 
         // Detect voice messages — ask customer to type their request as text
         if (autoResponderEnabled && isVoiceMessage(message)) {
-            sendReply(senderPhone, VOICE_MESSAGE_MSG);
+            sendReplyAndLog(senderPhone, VOICE_MESSAGE_MSG, supabaseUrl, supabaseAnonKey);
             return;
         }
 
@@ -144,32 +153,30 @@ public class SmsReceiver extends BroadcastReceiver {
             String duration = detectChargeDuration(message);
             String companyName = lookupCompanyNameBySim(prefs, simNumber);
             if (duration == null && (companyName == null || requiresDuration(companyName))) {
-                if (autoResponderEnabled) sendReply(senderPhone, SPECIFY_DURATION_MSG);
+                if (autoResponderEnabled) sendReplyAndLog(senderPhone, SPECIFY_DURATION_MSG, supabaseUrl, supabaseAnonKey);
                 saveOfflinePendingOperation(prefs, senderPhone, simNumber, message);
                 return;
             }
             String effectiveDuration = duration != null ? duration : "month";
             if (!storeOpen || !internetAvailable) {
                 String maintenanceMessage = "نعتذر، سيتأخر شحن الرقم نظراً لأعمال الصيانة. تم وضع طلبك ضمن قوائم الانتظار وسيتم تنفيذه عند عودة الخدمة.";
-                if (autoResponderEnabled) sendReply(senderPhone, maintenanceMessage);
+                if (autoResponderEnabled) sendReplyAndLog(senderPhone, maintenanceMessage, supabaseUrl, supabaseAnonKey);
                 saveOfflinePendingOperation(prefs, senderPhone, simNumber, message);
             } else {
-                if (autoResponderEnabled) sendReply(senderPhone, RECHARGE_ACCEPTED_MSG);
+                if (autoResponderEnabled) sendReplyAndLog(senderPhone, RECHARGE_ACCEPTED_MSG, supabaseUrl, supabaseAnonKey);
                 if (supabaseUrl != null && !supabaseUrl.isEmpty()) {
                     pushPendingOperation(context, senderPhone, simNumber, message, "sms", supabaseUrl, supabaseAnonKey);
-                    pushCustomerReply(senderPhone, message, supabaseUrl, supabaseAnonKey);
                 }
             }
             return;
         }
 
-        // Non-recharge SMS: send every monitored message to the app policy engine.
-        if (monitoringEnabled && internetAvailable && supabaseUrl != null && !supabaseUrl.isEmpty()) {
-            pushCustomerReply(senderPhone, message, supabaseUrl, supabaseAnonKey);
-        } else if (monitoringEnabled && simNumber != null && (!storeOpen || !internetAvailable)) {
+        // Non-recharge SMS: the incoming message was already pushed above.
+        // Handle auto-reply for non-recharge, non-sim-number messages.
+        if (monitoringEnabled && simNumber != null && (!storeOpen || !internetAvailable)) {
             String maintenanceMessage = "نعتذر، سيتأخر شحن الرقم نظراً لأعمال الصيانة. تم وضع طلبك ضمن قوائم الانتظار وسيتم تنفيذه عند عودة الخدمة.";
             if (autoResponderEnabled) {
-                sendReply(senderPhone, maintenanceMessage);
+                sendReplyAndLog(senderPhone, maintenanceMessage, supabaseUrl, supabaseAnonKey);
             }
             saveOfflinePendingOperation(prefs, senderPhone, simNumber, message);
         } else if (autoResponderEnabled && supabaseUrl != null && !supabaseUrl.isEmpty()) {
@@ -517,6 +524,58 @@ public class SmsReceiver extends BroadcastReceiver {
         }
     }
 
+    /**
+     * Sends an auto-reply via SMS and also pushes it to Supabase as a
+     * manual_reply event so it appears in the app's conversation view.
+     * This ensures outbound auto-replies are visible in the app and not lost.
+     */
+    private void sendReplyAndLog(String senderPhone, String replyText,
+                                  String supabaseUrl, String supabaseAnonKey) {
+        sendReply(senderPhone, replyText);
+        if (supabaseUrl != null && !supabaseUrl.isEmpty() && supabaseAnonKey != null && !supabaseAnonKey.isEmpty()) {
+            pushOutboundReply(senderPhone, replyText, supabaseUrl, supabaseAnonKey);
+        }
+    }
+
+    /**
+     * Pushes an outbound auto-reply as a manual_reply event to sms_inbox_events
+     * so the JS app can pick it up and display it in the conversation view.
+     */
+    private void pushOutboundReply(String senderPhone, String replyText,
+                                    String supabaseUrl, String supabaseAnonKey) {
+        try {
+            URL url = new URL(supabaseUrl + "/rest/v1/sms_inbox_events");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("apikey", supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + supabaseAnonKey);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Prefer", "return=minimal");
+
+            String userId = appContext != null
+                ? appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("supabase_user_id", "")
+                : "";
+            JSONObject payload = new JSONObject();
+            payload.put("event_type", "manual_reply");
+            payload.put("user_id", userId);
+            payload.put("sender_phone", normalizePhone(senderPhone));
+            payload.put("sender_name", "");
+            payload.put("message", replyText);
+            payload.put("channel", "sms");
+            payload.put("source", "native_auto_reply");
+
+            conn.setDoOutput(true);
+            OutputStream os = conn.getOutputStream();
+            os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+            os.close();
+
+            Log.i(TAG, "Outbound auto-reply logged to event queue");
+            conn.disconnect();
+        } catch (Exception e) {
+            Log.e(TAG, "pushOutboundReply error: " + e.getMessage());
+        }
+    }
+
     private void sendWhatsAppReply(String senderPhone, String replyText) {
         if (appContext == null) return;
         try {
@@ -654,7 +713,7 @@ public class SmsReceiver extends BroadcastReceiver {
 
         if (replyText == null || replyText.isEmpty()) return;
 
-        sendReply(senderPhone, replyText);
+        sendReplyAndLog(senderPhone, replyText, supabaseUrl, supabaseAnonKey);
         prefs.edit().putLong(cooldownKey, System.currentTimeMillis()).apply();
     }
 
@@ -847,7 +906,7 @@ public class SmsReceiver extends BroadcastReceiver {
                 .putString("esim_phone_model_" + senderPhone, phoneModel)
                 .putLong("esim_started_" + senderPhone, System.currentTimeMillis())
                 .apply();
-            sendReply(senderPhone, ESIM_ASK_COMPANY_MSG);
+            sendReplyAndLog(senderPhone, ESIM_ASK_COMPANY_MSG, supabaseUrl, supabaseAnonKey);
             return;
         }
         // If model extracted but not supported
@@ -859,7 +918,7 @@ public class SmsReceiver extends BroadcastReceiver {
                 if (lower.contains(pattern)) { hasKnownBrand = true; break; }
             }
             if (hasKnownBrand) {
-                sendReply(senderPhone, ESIM_NOT_SUPPORTED_MSG);
+                sendReplyAndLog(senderPhone, ESIM_NOT_SUPPORTED_MSG, supabaseUrl, supabaseAnonKey);
                 return;
             }
         }
@@ -868,7 +927,7 @@ public class SmsReceiver extends BroadcastReceiver {
             .putString("esim_step_" + senderPhone, "ask_phone_model")
             .putLong("esim_started_" + senderPhone, System.currentTimeMillis())
             .apply();
-        sendReply(senderPhone, ESIM_ASK_PHONE_MSG);
+        sendReplyAndLog(senderPhone, ESIM_ASK_PHONE_MSG, supabaseUrl, supabaseAnonKey);
     }
 
     private void handleEsimFollowup(android.content.SharedPreferences prefs, String senderPhone,
@@ -879,7 +938,7 @@ public class SmsReceiver extends BroadcastReceiver {
         if ("ask_phone_model".equals(step)) {
             String phoneModel = extractPhoneModel(message);
             if (phoneModel == null) {
-                sendReply(senderPhone, ESIM_ASK_PHONE_MSG);
+                sendReplyAndLog(senderPhone, ESIM_ASK_PHONE_MSG, supabaseUrl, supabaseAnonKey);
                 return;
             }
             if (isEsimDeviceSupported(phoneModel)) {
@@ -887,10 +946,10 @@ public class SmsReceiver extends BroadcastReceiver {
                     .putString("esim_step_" + senderPhone, "ask_company")
                     .putString("esim_phone_model_" + senderPhone, phoneModel)
                     .apply();
-                sendReply(senderPhone, ESIM_ASK_COMPANY_MSG);
+                sendReplyAndLog(senderPhone, ESIM_ASK_COMPANY_MSG, supabaseUrl, supabaseAnonKey);
             } else {
                 prefs.edit().remove("esim_step_" + senderPhone).apply();
-                sendReply(senderPhone, ESIM_NOT_SUPPORTED_MSG);
+                sendReplyAndLog(senderPhone, ESIM_NOT_SUPPORTED_MSG, supabaseUrl, supabaseAnonKey);
             }
             return;
         }
@@ -898,7 +957,7 @@ public class SmsReceiver extends BroadcastReceiver {
         if ("ask_company".equals(step)) {
             if (isAdviceRequest(message)) {
                 prefs.edit().putString("esim_step_" + senderPhone, "transfer_to_staff").apply();
-                sendReply(senderPhone, ESIM_TRANSFER_STAFF_MSG);
+                sendReplyAndLog(senderPhone, ESIM_TRANSFER_STAFF_MSG, supabaseUrl, supabaseAnonKey);
                 saveOfflinePendingOperation(prefs, senderPhone, "", message);
                 return;
             }
@@ -911,13 +970,13 @@ public class SmsReceiver extends BroadcastReceiver {
                     .putString("esim_company_" + senderPhone, companyName)
                     .apply();
                 if (bundleListMsg != null) {
-                    sendReply(senderPhone, bundleListMsg);
+                    sendReplyAndLog(senderPhone, bundleListMsg, supabaseUrl, supabaseAnonKey);
                 } else {
                     // No bundles — fall back to asking duration
-                    sendReply(senderPhone, ESIM_ASK_DURATION_MSG);
+                    sendReplyAndLog(senderPhone, ESIM_ASK_DURATION_MSG, supabaseUrl, supabaseAnonKey);
                 }
             } else {
-                sendReply(senderPhone, ESIM_COMPANY_LIST_MSG);
+                sendReplyAndLog(senderPhone, ESIM_COMPANY_LIST_MSG, supabaseUrl, supabaseAnonKey);
             }
             return;
         }
@@ -938,7 +997,7 @@ public class SmsReceiver extends BroadcastReceiver {
                         int durationDays = selected.optInt("durationDays", 30);
                         String durationLabel = durationDaysToLabel(durationDays);
                         prefs.edit().remove("esim_step_" + senderPhone).apply();
-                        sendReply(senderPhone, RECHARGE_ACCEPTED_MSG);
+                        sendReplyAndLog(senderPhone, RECHARGE_ACCEPTED_MSG, supabaseUrl, supabaseAnonKey);
                         if (supabaseUrl != null && !supabaseUrl.isEmpty() && internetAvailable) {
                             pushPendingOperation(null, senderPhone, "", message + " [eSIM:" + companyName + ":" + bundleName + ":" + durationLabel + "]", "sms", supabaseUrl, supabaseAnonKey);
                         } else {
@@ -947,7 +1006,7 @@ public class SmsReceiver extends BroadcastReceiver {
                         return;
                     }
                     // Invalid number — re-send list
-                    sendReply(senderPhone, bundleListMsg);
+                    sendReplyAndLog(senderPhone, bundleListMsg, supabaseUrl, supabaseAnonKey);
                     return;
                 }
             } catch (NumberFormatException | org.json.JSONException e) {
@@ -966,7 +1025,7 @@ public class SmsReceiver extends BroadcastReceiver {
                             int durationDays = b.optInt("durationDays", 30);
                             String durationLabel = durationDaysToLabel(durationDays);
                             prefs.edit().remove("esim_step_" + senderPhone).apply();
-                            sendReply(senderPhone, RECHARGE_ACCEPTED_MSG);
+                            sendReplyAndLog(senderPhone, RECHARGE_ACCEPTED_MSG, supabaseUrl, supabaseAnonKey);
                             if (supabaseUrl != null && !supabaseUrl.isEmpty() && internetAvailable) {
                                 pushPendingOperation(null, senderPhone, "", message + " [eSIM:" + companyName + ":" + bName + ":" + durationLabel + "]", "sms", supabaseUrl, supabaseAnonKey);
                             } else {
@@ -981,16 +1040,16 @@ public class SmsReceiver extends BroadcastReceiver {
             String duration = detectChargeDuration(message);
             if (duration != null) {
                 prefs.edit().remove("esim_step_" + senderPhone).apply();
-                sendReply(senderPhone, RECHARGE_ACCEPTED_MSG);
+                sendReplyAndLog(senderPhone, RECHARGE_ACCEPTED_MSG, supabaseUrl, supabaseAnonKey);
                 if (supabaseUrl != null && !supabaseUrl.isEmpty() && internetAvailable) {
                     pushPendingOperation(null, senderPhone, "", message + " [eSIM:" + companyName + ":" + duration + "]", "sms", supabaseUrl, supabaseAnonKey);
                 } else {
                     saveOfflinePendingOperation(prefs, senderPhone, "", message + " [eSIM:" + companyName + ":" + duration + "]");
                 }
             } else if (bundleListMsg != null) {
-                sendReply(senderPhone, bundleListMsg);
+                sendReplyAndLog(senderPhone, bundleListMsg, supabaseUrl, supabaseAnonKey);
             } else {
-                sendReply(senderPhone, ESIM_ASK_DURATION_MSG);
+                sendReplyAndLog(senderPhone, ESIM_ASK_DURATION_MSG, supabaseUrl, supabaseAnonKey);
             }
             return;
         }
