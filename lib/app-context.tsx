@@ -3105,6 +3105,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!sale || sale.remaining <= 0) return;
     const collectAmount = Math.min(amount, sale.remaining);
     const now = Date.now();
+    const fullyPaid = sale.remaining - collectAmount <= 0;
 
     setTelecomSales((prev) => {
       const next = prev.map((s) => s.id === id ? {
@@ -3113,6 +3114,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         remaining: Math.max(0, s.remaining - collectAmount),
         paymentStatus: s.remaining - collectAmount <= 0 ? 'paid_full' as PaymentStatus : 'paid_partial' as PaymentStatus,
         customerBalanceAfter: (s.customerBalanceAfter ?? 0) - collectAmount,
+        escalationState: (fullyPaid && s.escalationState)
+          ? reactivateFromPaymentOrPromise(s.escalationState, 'تم تحصيل كامل المبلغ')
+          : s.escalationState,
       } : s);
       storage.saveTelecomSales(next);
       return next;
@@ -3127,6 +3131,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
         } : c);
         storage.saveCustomers(next);
+        return next;
+      });
+    }
+
+    // Stop periodic debt reminders when fully paid
+    if (fullyPaid && sale.customerPhone) {
+      setDebtReminders((prev) => {
+        const next = prev.map((r) => r.customerPhone === sale.customerPhone ? { ...r, active: false } : r);
+        storage.saveDebtReminders(next);
         return next;
       });
     }
@@ -3188,15 +3201,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const checkAndSendReminders: AppData['checkAndSendReminders'] = useCallback(() => {
     const now = Date.now();
+    const sales = telecomSalesRef.current;
     setDebtReminders((prev) => {
       const next = prev.map((r) => {
-        if (r.active && r.nextSend && now >= r.nextSend) {
-          if (r.customerPhone && r.message) {
-            void logOutboundSmsRef.current(r.customerPhone, r.message, 'sms');
-          }
-          return { ...r, lastSent: now, nextSend: now + (r.frequency === 'daily' ? 86400000 : r.frequency === 'weekly' ? 7 * 86400000 : r.frequency === 'every_3_days' ? 3 * 86400000 : r.frequency === 'every_5_days' ? 5 * 86400000 : (r.customDays || 1) * 86400000) };
+        if (!r.active || !r.nextSend || now < r.nextSend) return r;
+
+        const customerSales = sales.filter((s) => s.customerPhone === r.customerPhone);
+        const hasUnpaid = customerSales.some((s) => s.remaining > 0);
+        if (!hasUnpaid) {
+          return { ...r, active: false };
         }
-        return r;
+
+        const hasScheduledFuture = customerSales.some((s) =>
+          s.escalationState?.phase === 'awaiting_reply' &&
+          s.escalationState.customerReplyDate != null &&
+          s.escalationState.customerReplyDate > now
+        );
+        if (hasScheduledFuture) {
+          return r;
+        }
+
+        if (r.customerPhone && r.message) {
+          void logOutboundSmsRef.current(r.customerPhone, r.message, 'sms');
+        }
+        return { ...r, lastSent: now, nextSend: now + (r.frequency === 'daily' ? 86400000 : r.frequency === 'weekly' ? 7 * 86400000 : r.frequency === 'every_3_days' ? 3 * 86400000 : r.frequency === 'every_5_days' ? 5 * 86400000 : (r.customDays || 1) * 86400000) };
       });
       storage.saveDebtReminders(next);
       return next;
@@ -3532,7 +3560,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           };
           setPendingOperations((prevOP) => { const nextOP = [op, ...prevOP]; storage.savePendingOperations(nextOP); return nextOP; });
         }
-        return { ...s, escalationState: result.newState };
+        const updated = { ...s, escalationState: result.newState };
+        if (result.newState.phase === 'awaiting_reply' && result.newState.customerReplyDate != null && s.customerPhone) {
+          setDebtReminders((prevDR) => {
+            const nextDR = prevDR.map((r) => r.customerPhone === s.customerPhone ? { ...r, active: false } : r);
+            storage.saveDebtReminders(nextDR);
+            return nextDR;
+          });
+        }
+        if (result.newState.phase === 'reactivated' && s.customerPhone) {
+          setDebtReminders((prevDR) => {
+            const nextDR = prevDR.map((r) => r.customerPhone === s.customerPhone ? { ...r, active: false } : r);
+            storage.saveDebtReminders(nextDR);
+            return nextDR;
+          });
+        }
+        return updated;
       });
       storage.saveTelecomSales(next);
       return next;
@@ -3547,6 +3590,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!s.escalationState) return s;
         const st = s.escalationState;
         if (st.phase === 'frozen' || st.phase === 'reactivated' || st.phase === 'freeze_pending') return s;
+        // Scheduled collection date passed without payment → restart daily reminders
+        if (st.phase === 'awaiting_reply' && st.customerReplyDate != null && st.customerReplyDate <= now) {
+          const resetState = {
+            ...st,
+            phase: 'reminding' as const,
+            remindersSent: 0,
+            lastReminderAt: null,
+            nextReminderAt: now,
+            customerReplyDate: null,
+            awaitingReplySince: null,
+            updatedAt: now,
+          };
+          const result = processReminderTick(resetState, settings?.currency ?? '₪');
+          if (result.messageToSend && s.customerPhone) {
+            void logOutboundSmsRef.current(s.customerPhone, result.messageToSend, 'sms');
+          }
+          if (result.newState.phase === 'freeze_pending') {
+            const fr = createFreezeRequestFromState(result.newState, storage.generateId);
+            setFreezeRequests((prevFR) => { const nextFR = [fr, ...prevFR]; storage.saveFreezeRequests(nextFR); return nextFR; });
+          }
+          changed = true;
+          return { ...s, escalationState: result.newState };
+        }
         if (st.phase === 'awaiting_reply' && st.customerReplyDate && st.customerReplyDate > now) return s;
         if (st.nextReminderAt === null || st.nextReminderAt > now) return s;
         const result = processReminderTick(st, settings?.currency ?? '₪');
