@@ -241,6 +241,7 @@ export function TelecomSaleHistory({
             <Text style={[styles.col, styles.headerCell, { color: colors.textSecondary, borderLeftColor: colors.border }]}>الشركة الفرعية</Text>
             <Text style={[styles.col, styles.headerCell, { color: colors.textSecondary, borderLeftColor: colors.border }]}>الحزمة</Text>
             <Text style={[styles.colSmall, styles.headerCell, { color: colors.textSecondary, borderLeftColor: colors.border }]}>المدة</Text>
+            <Text style={[styles.colSmall, styles.headerCell, { color: colors.textSecondary, borderLeftColor: colors.border }]}>المتبقي</Text>
             <Text style={[styles.colSmall, styles.headerCell, { color: colors.textSecondary, borderLeftColor: colors.border }]}>النوع</Text>
             <Text style={[styles.col, styles.headerCell, { color: colors.textSecondary, borderLeftColor: colors.border }]}>الزبون</Text>
             <Text style={[styles.colSmall, styles.headerCell, { color: colors.textSecondary, borderLeftColor: colors.border }]}>التواصل</Text>
@@ -267,6 +268,7 @@ export function TelecomSaleHistory({
                   <Text style={[styles.col, styles.bodyCell, styles.cellText, { color: colors.textSecondary, borderLeftColor: colors.border }]} numberOfLines={1}>{sale.subAgentName}</Text>
                   <Text style={[styles.col, styles.bodyCell, styles.cellText, { color: colors.textSecondary, borderLeftColor: colors.border }]} numberOfLines={1}>{sale.bundleName || '-'}</Text>
                   <Text style={[styles.colSmall, styles.bodyCell, styles.cellText, { color: colors.textMuted, borderLeftColor: colors.border }]} numberOfLines={1}>{DURATION_LABELS[sale.chargeDuration] || sale.chargeDuration || '-'}</Text>
+                  <Text style={[styles.colSmall, styles.bodyCell, styles.cellTextBold, { color: (() => { const rd = getRemainingChargeDays(sale); if (rd === null) return colors.textMuted; return getRemainingDaysColor(rd, colors); })(), borderLeftColor: colors.border }]} numberOfLines={1}>{(() => { const rd = getRemainingChargeDays(sale); if (rd === null) return '-'; return `${rd} يوم`; })()}</Text>
                   <View style={[styles.colSmall, styles.bodyCell, { borderLeftColor: colors.border }]}>
                     <View style={[styles.payBadge, { backgroundColor: (sale.operationType === 'cancelled' ? colors.danger : sale.operationType === 'renewal' ? colors.info : colors.success) + '20' }]}>
                       <Text style={[styles.payBadgeText, { color: sale.operationType === 'cancelled' ? colors.danger : sale.operationType === 'renewal' ? colors.info : colors.success }]}>{getSaleTypeLabel(sale)}</Text>
