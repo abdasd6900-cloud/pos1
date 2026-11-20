@@ -151,7 +151,7 @@ type Tab = 'dashboard' | 'customers' | 'requests' | 'offers' | 'sims' | 'debts' 
 
 // ============ MAIN COMPONENT ============
 export default function DealerPortalPage() {
-  const params = useLocalSearchParams<{ action?: string }>();
+  const params = useLocalSearchParams<{ action?: string; phone?: string }>();
   const [token, setToken] = useState<string | null>(null);
   const [dealer, setDealer] = useState<DealerInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -203,7 +203,7 @@ export default function DealerPortalPage() {
   }
 
   if (!token || !dealer) {
-    return <LoginScreen onLogin={handleLogin} error={error} setError={setError} />;
+    return <LoginScreen onLogin={handleLogin} error={error} setError={setError} initialPhone={params.phone || ''} />;
   }
 
   return (
@@ -219,8 +219,8 @@ export default function DealerPortalPage() {
 }
 
 // ============ LOGIN SCREEN ============
-function LoginScreen({ onLogin, error, setError }: { onLogin: (t: string, d: DealerInfo) => void; error: string; setError: (e: string) => void }) {
-  const [phone, setPhone] = useState('');
+function LoginScreen({ onLogin, error, setError, initialPhone }: { onLogin: (t: string, d: DealerInfo) => void; error: string; setError: (e: string) => void; initialPhone?: string }) {
+  const [phone, setPhone] = useState(initialPhone || '');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 

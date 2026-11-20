@@ -15,6 +15,7 @@ import { BaseModal } from '@/components/BaseModal';
 import { EmptyState } from '@/components/EmptyState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Linking, Platform } from 'react-native';
+import { router } from 'expo-router';
 
 interface Dealer {
   id: string;
@@ -87,20 +88,7 @@ interface EsimRequest {
   created_at: string;
 }
 
-interface CustomerDebt {
-  id: string;
-  dealer_id: string;
-  customer_id: string | null;
-  amount: number;
-  paid_amount: number;
-  payment_status: 'full' | 'partial' | 'debt';
-  description: string | null;
-  related_request_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-type Tab = 'dealers' | 'requests' | 'pricing' | 'sims' | 'debts';
+type Tab = 'dealers' | 'requests' | 'pricing' | 'sims';
 
 export default function DealersManagementScreen() {
   const { session } = useAuth();
@@ -111,7 +99,7 @@ export default function DealersManagementScreen() {
   const [pricing, setPricing] = useState<PricingEntry[]>([]);
   const [sims, setSims] = useState<PlasticSim[]>([]);
   const [esimRequests, setEsimRequests] = useState<EsimRequest[]>([]);
-  const [debts, setDebts] = useState<CustomerDebt[]>([]);
+  const [dealerCustomers, setDealerCustomers] = useState<{ dealer_id: string; status: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -256,13 +244,14 @@ export default function DealersManagementScreen() {
         existingPricing = (pricingRes.data || []) as PricingEntry[];
       }
 
-      const [dealersRes, reqRes, simsRes, esimRes, debtsRes] = await Promise.all([
+      const [dealersRes, reqRes, simsRes, esimRes, customersRes] = await Promise.all([
         supabase.from('dealers').select('*').eq('owner_user_id', session.user.id).order('created_at', { ascending: false }),
         supabase.from('dealer_recharge_requests').select('*, dealer_id').order('created_at', { ascending: false }).limit(100),
         supabase.from('dealer_plastic_sims').select('*').order('created_at', { ascending: false }),
         supabase.from('dealer_esim_requests').select('*').order('created_at', { ascending: false }).limit(100),
-        supabase.from('dealer_customer_debts').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('dealer_customers').select('dealer_id, status').order('created_at', { ascending: false }).limit(500),
       ]);
+      if (customersRes.data) setDealerCustomers(customersRes.data as { dealer_id: string; status: string }[]);
 
       if (dealersRes.data) setDealers(dealersRes.data as Dealer[]);
       if (reqRes.data) {
@@ -277,10 +266,6 @@ export default function DealersManagementScreen() {
       if (esimRes.data) {
         const dealerIds = new Set((dealersRes.data || []).map((d) => d.id));
         setEsimRequests((esimRes.data as EsimRequest[]).filter((e) => dealerIds.has(e.dealer_id)));
-      }
-      if (debtsRes.data) {
-        const dealerIds = new Set((dealersRes.data || []).map((d) => d.id));
-        setDebts((debtsRes.data as CustomerDebt[]).filter((db) => dealerIds.has(db.dealer_id)));
       }
     } catch {
       setError('تعذر تحميل البيانات');
@@ -297,7 +282,12 @@ export default function DealersManagementScreen() {
   }, [fetchData]);
 
   const pendingCount = requests.filter((r) => r.status === 'pending').length + esimRequests.filter((e) => e.status === 'pending').length;
-  const totalDebtRemaining = debts.reduce((sum, d) => sum + (Number(d.amount) - Number(d.paid_amount)), 0);
+  const getDealerNumbersCount = (dealerId: string) => {
+    const dealerNums = dealerCustomers.filter((c) => c.dealer_id === dealerId);
+    const active = dealerNums.filter((c) => c.status === 'active').length;
+    const inactive = dealerNums.filter((c) => c.status !== 'active').length;
+    return { active, inactive, total: dealerNums.length };
+  };
   const filteredDealers = dealers.filter((d) => {
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
@@ -459,7 +449,6 @@ export default function DealersManagementScreen() {
     { key: 'dealers', label: 'الموزعون', icon: <Users size={18} color={tab === 'dealers' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
     { key: 'pricing', label: 'التسعير', icon: <Tag size={18} color={tab === 'pricing' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
     { key: 'sims', label: 'الشرائح', icon: <Smartphone size={18} color={tab === 'sims' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
-    { key: 'debts', label: 'الديون', icon: <Wallet size={18} color={tab === 'debts' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} /> },
   ];
 
   return (
@@ -559,7 +548,7 @@ export default function DealersManagementScreen() {
             data={filteredDealers}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <DealerRow dealer={item} colors={colors} onToggle={() => toggleDealerStatus(item)} onDelete={() => deleteDealer(item.id)} onTopUp={(amt) => updateDealerBalance(item, amt, 'topup')} />
+              <DealerRow dealer={item} colors={colors} numbersCount={getDealerNumbersCount(item.id)} onToggle={() => toggleDealerStatus(item)} onDelete={() => deleteDealer(item.id)} onTopUp={(amt) => updateDealerBalance(item, amt, 'topup')} />
             )}
             contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, gap: 10 }}
             showsVerticalScrollIndicator={false}
@@ -589,30 +578,6 @@ export default function DealersManagementScreen() {
             }
           />
         </>
-      ) : tab === 'debts' ? (
-        <FlatList
-          data={debts}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <DebtRow debt={item} dealerName={dealerName(item.dealer_id)} colors={colors} />
-          )}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, gap: 10 }}
-          showsVerticalScrollIndicator={false}
-          scrollEnabled={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-          ListHeaderComponent={debts.length > 0 ? (
-            <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 10 }]}>
-              <Wallet size={20} color={colors.danger} strokeWidth={2} />
-              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>إجمالي الديون المتبقية</Text>
-              <Text style={[styles.summaryValue, { color: colors.danger }]}>₪{totalDebtRemaining.toFixed(2)}</Text>
-            </View>
-          ) : undefined}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <EmptyState icon={<Wallet size={32} color={colors.textMuted} strokeWidth={2} />} title="لا توجد ديون" subtitle="ستظهر ديون زبائن الموزعين هنا" />
-            </View>
-          }
-        />
       ) : (
         <FlatList
           data={sims}
@@ -699,46 +664,6 @@ function EsimRequestRow({ req, dealerName, colors, onProcess }: { req: EsimReque
   );
 }
 
-function DebtRow({ debt, dealerName, colors }: { debt: CustomerDebt; dealerName: string; colors: any }) {
-  const statusColors: Record<string, string> = { full: colors.success, partial: colors.warning, debt: colors.danger };
-  const statusLabels: Record<string, string> = { full: 'مدفوع كامل', partial: 'مدفوع جزئي', debt: 'دين' };
-  const remaining = Number(debt.amount) - Number(debt.paid_amount);
-  const color = statusColors[debt.payment_status] || colors.textMuted;
-
-  return (
-    <View style={[styles.card, { backgroundColor: colors.surface }]}>
-      <View style={styles.cardHeader}>
-        <View style={[styles.simIcon, { backgroundColor: color + '20' }]}>
-          <Wallet size={18} color={color} strokeWidth={2} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={styles.reqTopRow}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>₪{Number(debt.amount).toFixed(2)}</Text>
-            <View style={[styles.statusPill, { backgroundColor: color + '20' }]}>
-              <Text style={[styles.statusText, { color }]}>{statusLabels[debt.payment_status] || debt.payment_status}</Text>
-            </View>
-          </View>
-          <Text style={[styles.cardSub, { color: colors.textMuted }]}>الموزع: {dealerName}</Text>
-          {debt.description && <Text style={[styles.cardSub, { color: colors.textMuted }]}>{debt.description}</Text>}
-          {debt.paid_amount > 0 && (
-            <View style={styles.priceRow}>
-              <View style={styles.priceCol}>
-                <Text style={[styles.priceLabel, { color: colors.textMuted }]}>المدفوع</Text>
-                <Text style={[styles.priceValue, { color: colors.success }]}>₪{Number(debt.paid_amount).toFixed(2)}</Text>
-              </View>
-              <View style={styles.priceCol}>
-                <Text style={[styles.priceLabel, { color: colors.textMuted }]}>المتبقي</Text>
-                <Text style={[styles.priceValue, { color: colors.warning }]}>₪{remaining.toFixed(2)}</Text>
-              </View>
-            </View>
-          )}
-          <Text style={[styles.timeText, { color: colors.textMuted }]}>{new Date(debt.created_at).toLocaleString('ar')}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 function RequestRow({ req, dealerName, colors, onProcess }: { req: RechargeRequest; dealerName: string; colors: any; onProcess: () => void }) {
   const statusColors: Record<string, string> = { pending: colors.warning, approved: colors.info, completed: colors.success, rejected: colors.danger };
   const statusLabels: Record<string, string> = { pending: 'قيد الانتظار', approved: 'موافق عليه', completed: 'مكتمل', rejected: 'مرفوض' };
@@ -788,19 +713,22 @@ function RequestRow({ req, dealerName, colors, onProcess }: { req: RechargeReque
   );
 }
 
-function DealerRow({ dealer, colors, onToggle, onDelete, onTopUp }: { dealer: Dealer; colors: any; onToggle: () => void; onDelete: () => void; onTopUp: (amount: number) => void }) {
+function DealerRow({ dealer, colors, numbersCount, onToggle, onDelete, onTopUp }: { dealer: Dealer; colors: any; numbersCount: { active: number; inactive: number; total: number }; onToggle: () => void; onDelete: () => void; onTopUp: (amount: number) => void }) {
   const [showTopUp, setShowTopUp] = useState(false);
   const [amount, setAmount] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const copyLoginLink = () => {
+  const copyLoginLink = async () => {
     const origin = (typeof window !== 'undefined' && window.location?.origin) || '';
-    const link = `${origin}/dealer`;
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      void navigator.clipboard.writeText(link).then(() => {
+    const link = `${origin}/dealer?phone=${encodeURIComponent(dealer.phone)}`;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(link);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-      });
+      }
+    } catch {
+      router.push('/dealer');
     }
   };
 
@@ -843,6 +771,21 @@ function DealerRow({ dealer, colors, onToggle, onDelete, onTopUp }: { dealer: De
           </TouchableOpacity>
         </View>
       )}
+
+      <View style={[styles.numbersSummary, { borderColor: colors.border }]}>
+        <View style={styles.summaryChip}>
+          <Text style={[styles.summaryChipLabel, { color: colors.textMuted }]}>الأرقام</Text>
+          <Text style={[styles.summaryChipValue, { color: colors.text }]}>{numbersCount.total}</Text>
+        </View>
+        <View style={styles.summaryChip}>
+          <Text style={[styles.summaryChipLabel, { color: colors.success }]}>فعالة</Text>
+          <Text style={[styles.summaryChipValue, { color: colors.success }]}>{numbersCount.active}</Text>
+        </View>
+        <View style={styles.summaryChip}>
+          <Text style={[styles.summaryChipLabel, { color: colors.danger }]}>غير فعالة</Text>
+          <Text style={[styles.summaryChipValue, { color: colors.danger }]}>{numbersCount.inactive}</Text>
+        </View>
+      </View>
 
       <View style={styles.cardActions}>
         <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.success + '15' }]} onPress={() => setShowTopUp(!showTopUp)}>
@@ -1488,4 +1431,8 @@ const styles = StyleSheet.create({
   summaryCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'transparent' },
   summaryLabel: { flex: 1, fontSize: 13, fontFamily: 'Cairo-Regular' },
   summaryValue: { fontSize: 18, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  numbersSummary: { flexDirection: 'row', gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: 1 },
+  summaryChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.03)' },
+  summaryChipLabel: { fontSize: 10, fontFamily: 'Cairo-Regular' },
+  summaryChipValue: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-Bold' },
 });
