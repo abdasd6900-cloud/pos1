@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Product, Customer, Transaction, Settings, AuditEntry, Supplier, Expense, Shift, DraftBill, Currency, Staff, Promotion, Stocktake, Attachment, LicenseInfo, TelecomCompany, SimCard, Bundle, SubAgent, DebtReminderSchedule, TelecomSale, AgentBundle, SimLocation, SimLocationStock, TelecomSupplier, Shipment, RechargeRequest, BusinessHoursConfig, KeywordReply, PendingOperation, FreezeRequest, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport, NameMapping, SmsMessage, QuickReplyTemplate, ScheduledSms, PhoneNumberEntry, WalletTransaction, CompanyBalanceTxn } from '@/types';
+import type { Product, Customer, Transaction, Settings, AuditEntry, Supplier, Expense, Shift, DraftBill, Currency, Staff, Promotion, Stocktake, Attachment, LicenseInfo, TelecomCompany, SimCard, Bundle, SubAgent, DebtReminderSchedule, TelecomSale, AgentBundle, SimLocation, SimLocationStock, TelecomSupplier, Shipment, RechargeRequest, BusinessHoursConfig, KeywordReply, PendingOperation, FreezeRequest, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport, NameMapping, SmsMessage, QuickReplyTemplate, ScheduledSms, PhoneNumberEntry, WalletTransaction, CompanyBalanceTxn, LearnedSmsRule } from '@/types';
 import type { CustomerFile } from './customer-files';
 import { DEFAULT_SMS_TEMPLATE, DEFAULT_CURRENCIES, DEFAULT_TELECOM_COMPANIES, DEFAULT_TELECOM_BUNDLES, DEFAULT_AUTO_REPLY_TEMPLATES } from '@/types';
 import { createDefaultSchedule } from './business-hours';
@@ -40,6 +40,7 @@ const KEYS = {
   FREEZE_REQUESTS: 'sahab_freeze_requests',
   SUPPORT_TICKETS: 'sahab_support_tickets',
   UNRECOGNIZED_MESSAGES: 'sahab_unrecognized_messages',
+  LEARNED_SMS_RULES: 'sahab_learned_sms_rules',
   TRANSFER_NOTIFICATIONS: 'sahab_transfer_notifications',
   TRANSFER_REPORTS: 'sahab_transfer_reports',
   NAME_MAPPINGS: 'sahab_name_mappings',
@@ -281,6 +282,9 @@ export const storage = {
 
   getUnrecognizedMessages: (): Promise<UnrecognizedMessage[]> => load<UnrecognizedMessage[]>(KEYS.UNRECOGNIZED_MESSAGES, []),
   saveUnrecognizedMessages: (msgs: UnrecognizedMessage[]): Promise<void> => save(KEYS.UNRECOGNIZED_MESSAGES, msgs),
+
+  getLearnedSmsRules: (): Promise<LearnedSmsRule[]> => load<LearnedSmsRule[]>(KEYS.LEARNED_SMS_RULES, []),
+  saveLearnedSmsRules: (rules: LearnedSmsRule[]): Promise<void> => save(KEYS.LEARNED_SMS_RULES, rules),
 
   getTransferNotifications: (): Promise<TransferNotification[]> => load<TransferNotification[]>(KEYS.TRANSFER_NOTIFICATIONS, []),
   saveTransferNotifications: (tns: TransferNotification[]): Promise<void> => save(KEYS.TRANSFER_NOTIFICATIONS, tns),

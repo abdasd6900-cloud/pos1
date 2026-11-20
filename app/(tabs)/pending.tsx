@@ -10,7 +10,8 @@ import { useApp } from '@/lib/app-context';
 import { useTheme } from '@/lib/theme-context';
 import { formatDateTime, formatCurrency } from '@/lib/format';
 import { openWhatsApp } from '@/lib/customer-classifier';
-import type { PendingOperation, FreezeRequest, TelecomSale, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport } from '@/types';
+import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from '@/lib/sms-learner';
+import type { PendingOperation, FreezeRequest, TelecomSale, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport, LearnedSmsCategory, LearnedSmsRule } from '@/types';
 
 type TabKey = 'pending' | 'freeze' | 'support' | 'learning' | 'reactivation' | 'transfers' | 'executed';
 
@@ -20,7 +21,8 @@ export default function PendingOperationsScreen() {
     freezeRequests, executeFreezeRequest, cancelFreezeRequest,
     telecomSales, reactivateSale, customers, telecomCompanies,
     supportTickets, updateSupportTicket, deleteSupportTicket, forwardSupportReply, confirmRechargeBySupport, confirmUpdateDone,
-    unrecognizedMessages, learnFromMessage, ignoreUnrecognizedMessage, deleteUnrecognizedMessage,
+    unrecognizedMessages, learnMessageCategory, learnedSmsRules, deleteLearnedSmsRule,
+    ignoreUnrecognizedMessage, deleteUnrecognizedMessage,
     transferNotifications, transferReports, confirmTransferNotification, rejectTransferNotification,
     deleteTransferNotification, linkTransferNotification, pendingOperations: pendingOpsAll,
   } = useApp();
@@ -30,8 +32,6 @@ export default function PendingOperationsScreen() {
   const [replyModal, setReplyModal] = useState<SupportTicket | null>(null);
   const [replyText, setReplyText] = useState('');
   const [teachModal, setTeachModal] = useState<UnrecognizedMessage | null>(null);
-  const [teachReply, setTeachReply] = useState('');
-  const [teachKeywords, setTeachKeywords] = useState('');
   const [waLoadingId, setWaLoadingId] = useState<string | null>(null);
 
   const pending = useMemo(() => pendingOperations.filter((o) => o.status === 'pending'), [pendingOperations]);
@@ -228,16 +228,10 @@ export default function PendingOperationsScreen() {
     );
   };
 
-  const handleTeachReply = () => {
-    if (!teachModal || !teachReply.trim() || !teachKeywords.trim()) {
-      Alert.alert('تنبيه', 'يرجى إدخال الكلمات المفتاحية والرد');
-      return;
-    }
-    const keywords = teachKeywords.split(',').map((k) => k.trim()).filter(Boolean);
-    learnFromMessage(teachModal.id, teachReply.trim(), keywords);
+  const handleLearnCategory = (category: LearnedSmsCategory) => {
+    if (!teachModal) return;
+    learnMessageCategory(teachModal.id, category);
     setTeachModal(null);
-    setTeachReply('');
-    setTeachKeywords('');
   };
 
   const handleIgnoreMessage = (msg: UnrecognizedMessage) => {
@@ -746,15 +740,11 @@ export default function PendingOperationsScreen() {
       {msg.status === 'pending' ? (
         <View style={styles.opActions}>
           <TouchableOpacity
-            onPress={() => {
-              setTeachModal(msg);
-              setTeachReply('');
-              setTeachKeywords(msg.originalMessage.split(' ').slice(0, 3).join(', '));
-            }}
+            onPress={() => setTeachModal(msg)}
             style={[styles.opBtn, { backgroundColor: colors.primary }]}
           >
             <GraduationCap size={16} color="#FFFFFF" strokeWidth={2} />
-            <Text style={styles.opBtnText}>تعليم الرد</Text>
+            <Text style={styles.opBtnText}>تعلم التصنيف</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => handleIgnoreMessage(msg)}
@@ -770,7 +760,7 @@ export default function PendingOperationsScreen() {
             <>
               <Check size={14} color={colors.success} strokeWidth={2} />
               <Text style={[styles.opStatusText, { color: colors.success }]}>
-                تم تعلم رد تلقائي{msg.resolvedAt ? ` - ${formatDateTime(msg.resolvedAt)}` : ''}
+                {msg.learnedCategory ? `تم التعلم: ${CATEGORY_LABELS[msg.learnedCategory]}` : 'تم التعلم'}{msg.resolvedAt ? ` - ${formatDateTime(msg.resolvedAt)}` : ''}
               </Text>
             </>
           ) : (
@@ -968,7 +958,43 @@ export default function PendingOperationsScreen() {
             {tab === 'pending' && allPendingUnified.map(renderUnifiedItem)}
             {tab === 'freeze' && pendingFreeze.map(renderFreezeRequest)}
             {tab === 'support' && pendingSupport.map(renderSupportTicket)}
-            {tab === 'learning' && pendingUnrecognized.map(renderUnrecognizedMessage)}
+            {tab === 'learning' && (
+              <>
+                {pendingUnrecognized.map(renderUnrecognizedMessage)}
+                {learnedSmsRules.length > 0 && (
+                  <View style={[styles.opCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 16 }]}>
+                    <View style={styles.opCardTop}>
+                      <View style={[styles.opSource, { backgroundColor: colors.success + '15' }]}>
+                        <GraduationCap size={16} color={colors.success} strokeWidth={2} />
+                        <Text style={[styles.opSourceText, { color: colors.success }]}>القواعد المتعلمة</Text>
+                      </View>
+                      <Text style={[styles.opTime, { color: colors.textMuted }]}>{learnedSmsRules.length} قاعدة</Text>
+                    </View>
+                    <View style={styles.opBody}>
+                      {learnedSmsRules.map((rule) => (
+                        <View key={rule.id} style={[styles.learnedRuleRow, { borderBottomColor: colors.border }]}>
+                          <View style={[styles.categoryBadge, { backgroundColor: CATEGORY_COLORS[rule.category] + '20' }]}>
+                            <Text style={[styles.categoryBadgeText, { color: CATEGORY_COLORS[rule.category] }]}>
+                              {CATEGORY_LABELS[rule.category]}
+                            </Text>
+                          </View>
+                          <Text style={[styles.learnedRuleKeywords, { color: colors.textSecondary }]} numberOfLines={1}>
+                            {rule.keywords.join('، ')}
+                            {rule.matchCount > 0 ? `  (${rule.matchCount})` : ''}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => deleteLearnedSmsRule(rule.id)}
+                            style={styles.deleteBtn}
+                          >
+                            <Trash2 size={14} color={colors.danger} strokeWidth={2} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </>
+            )}
             {tab === 'reactivation' && reactivatedSales.map(renderReactivation)}
             {tab === 'transfers' && (
               <>
@@ -1028,58 +1054,47 @@ export default function PendingOperationsScreen() {
         </View>
       </Modal>
 
-      {/* Teach Reply Modal */}
+      {/* Teach Category Modal */}
       <Modal
         visible={teachModal !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => { setTeachModal(null); setTeachReply(''); setTeachKeywords(''); }}
+        onRequestClose={() => setTeachModal(null)}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalSheet, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
-              تعليم رد تلقائي
+              ماذا تعني هذه الرسالة؟
             </Text>
-            <Text style={[styles.modalSub, { color: colors.textSecondary }]}>
-              رسالة الزبون: {teachModal?.originalMessage}
-            </Text>
-            <View style={[styles.modalField, { borderColor: colors.border }]}>
-              <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>الكلمات المفتاحية (افصل بفاصلة)</Text>
-              <TextInput
-                style={[styles.modalInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border, minHeight: 44 }]}
-                value={teachKeywords}
-                onChangeText={setTeachKeywords}
-                placeholder="رقم تحويل, رقم الحساب, تحويل"
-                placeholderTextColor={colors.textMuted}
-              />
-              <Text style={[styles.opMessageText, { color: colors.textMuted, marginTop: 6, fontSize: 12 }]}>عند وصول رسالة تحتوي على أي من هذه الكلمات، سيتم الرد تلقائياً</Text>
+            <View style={[styles.opMessage, { backgroundColor: colors.surfaceAlt, marginBottom: 16 }]}>
+              <Text style={[styles.opMessageLabel, { color: colors.textMuted }]}>من: {teachModal?.senderPhone}</Text>
+              <Text style={[styles.opMessageText, { color: colors.text }]}>
+                {teachModal?.originalMessage}
+              </Text>
             </View>
-            <View style={[styles.modalField, { borderColor: colors.border }]}>
-              <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>الرد</Text>
-              <TextInput
-                style={[styles.modalInput, { backgroundColor: colors.surfaceAlt, color: colors.text, borderColor: colors.border }]}
-                value={teachReply}
-                onChangeText={setTeachReply}
-                placeholder="أدخل الرد الذي تريد إرساله تلقائياً..."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
+            <Text style={[styles.modalSub, { color: colors.textSecondary, marginBottom: 12 }]}>
+              اختر التصنيف المناسب — سيتعلم البرنامج ويتعامل مع الرسائل المشابهة تلقائياً
+            </Text>
+            <View style={styles.categoryButtonGrid}>
+              {ALL_CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => handleLearnCategory(cat)}
+                  style={[styles.categoryButton, { backgroundColor: CATEGORY_COLORS[cat] + '15', borderColor: CATEGORY_COLORS[cat] + '40' }]}
+                >
+                  <View style={[styles.categoryButtonDot, { backgroundColor: CATEGORY_COLORS[cat] }]} />
+                  <Text style={[styles.categoryButtonText, { color: colors.text }]}>
+                    {CATEGORY_LABELS[cat]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
             <View style={styles.modalActions}>
               <TouchableOpacity
-                onPress={() => { setTeachModal(null); setTeachReply(''); setTeachKeywords(''); }}
+                onPress={() => setTeachModal(null)}
                 style={[styles.modalCancel, { backgroundColor: colors.surfaceAlt }]}
               >
                 <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>إلغاء</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleTeachReply}
-                style={[styles.modalSave, { backgroundColor: colors.primary }]}
-              >
-                <GraduationCap size={18} color="#FFFFFF" strokeWidth={2} />
-                <Text style={styles.modalSaveText}>تعليم وإرسال</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1127,9 +1142,17 @@ const styles = StyleSheet.create({
   modalField: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 16 },
   modalLabel: { fontSize: 14, fontFamily: 'Cairo-SemiBold', marginBottom: 8 },
   modalInput: { borderRadius: 10, padding: 12, fontSize: 14, fontFamily: 'Cairo-Regular', minHeight: 80, borderWidth: 1, textAlignVertical: 'top' },
-  modalActions: { flexDirection: 'row', gap: 12 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
   modalCancel: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   modalCancelText: { fontSize: 15, fontFamily: 'Cairo-SemiBold' },
   modalSave: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   modalSaveText: { color: '#FFFFFF', fontSize: 15, fontFamily: 'Cairo-SemiBold' },
+  categoryButtonGrid: { gap: 10, marginBottom: 16 },
+  categoryButton: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1.5 },
+  categoryButtonDot: { width: 14, height: 14, borderRadius: 7 },
+  categoryButtonText: { fontSize: 17, fontFamily: 'Cairo-SemiBold' },
+  learnedRuleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1 },
+  categoryBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  categoryBadgeText: { fontSize: 12, fontFamily: 'Cairo-SemiBold' },
+  learnedRuleKeywords: { flex: 1, fontSize: 13, fontFamily: 'Cairo-Regular' },
 });

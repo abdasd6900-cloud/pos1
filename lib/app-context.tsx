@@ -18,7 +18,7 @@ import type {
   TransferNotification, TransferReport, NameMapping, TransferNotificationStatus, TransferReportStatus,
   SmsMessage, SmsMessageCategory, SmsMessageStatus, QuickReplyTemplate, ScheduledSms,
   PhoneNumberEntry, WalletTransaction, WalletType, WalletTxnType,
-  CompanyBalanceTxn, RechargeCompanyId,
+  CompanyBalanceTxn, RechargeCompanyId, LearnedSmsRule, LearnedSmsCategory,
 } from '@/types';
 import { WALLET_TYPES, ELECTRONIC_WALLET_TYPES, RECHARGE_COMPANIES } from '@/types';
 import { storage, type BackupData, DEFAULT_SETTINGS } from './storage';
@@ -31,6 +31,7 @@ import { sendLocalNotification, sendWebNotification, ensureNotificationPermissio
 import { classifyIncomingMessage, classifyRechargeWithDuration, openWhatsApp, buildRechargeConfirmedMessage, buildSupportForwardMessage, buildWelcomeMessage } from './customer-classifier';
 import { parseTransferSms, isTransferReport, parseTransferReport, matchPhoneToCustomer } from './transfer-parser';
 import { classifySmsMessage } from './sms-classifier';
+import { extractKeywords, matchLearnedRule, categoryToProcessAction, CATEGORY_LABELS } from './sms-learner';
 import { fetchOutboxStatuses } from './sms-gateway';
 import { normalizeName, extractNameTokens, matchNameAgainstCustomers } from './name-matcher';
 import { isAgentOpen, isStoreOpen, createDefaultSchedule, isSupplierWorkHours } from './business-hours';
@@ -119,8 +120,11 @@ interface AppData {
   confirmUpdateDone: (ticketId: string) => void;
 
   learnFromMessage: (id: string, reply: string, keywords: string[]) => void;
+  learnMessageCategory: (id: string, category: LearnedSmsCategory, reply?: string) => void;
   ignoreUnrecognizedMessage: (id: string) => void;
   deleteUnrecognizedMessage: (id: string) => void;
+  learnedSmsRules: LearnedSmsRule[];
+  deleteLearnedSmsRule: (id: string) => void;
 
   addTransferNotification: (tn: Omit<TransferNotification, 'id' | 'createdAt'>) => TransferNotification;
   updateTransferNotification: (id: string, updates: Partial<TransferNotification>) => void;
@@ -394,6 +398,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [freezeRequests, setFreezeRequests] = useState<FreezeRequest[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [unrecognizedMessages, setUnrecognizedMessages] = useState<UnrecognizedMessage[]>([]);
+  const [learnedSmsRules, setLearnedSmsRules] = useState<LearnedSmsRule[]>([]);
   const [transferNotifications, setTransferNotifications] = useState<TransferNotification[]>([]);
   const [transferReports, setTransferReports] = useState<TransferReport[]>([]);
   const [nameMappings, setNameMappings] = useState<NameMapping[]>([]);
@@ -431,7 +436,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (Platform.OS === 'web' && typeof window === 'undefined') { setLoaded(true); return; }
     (async () => {
       const s = await storage.getSettings();
-      const [p, c, t, a, sup, exp, sh, dr, cur, stf, prom, stkt, att, csi, lic, tc, sims, bdls, sags, drms, tsales, abundles, slocs, slocstock, tsups, shpmnts, rreqs, bhrs, kwreplies, pendops, freezereqs, suptickets, unrecmsgs, tnotifs, treports, nmappings, smstmp, pinned, blocked, archived, quickReplies, scheduled, phoneNums, wtxns, cbtxns] = await Promise.all([
+      const [p, c, t, a, sup, exp, sh, dr, cur, stf, prom, stkt, att, csi, lic, tc, sims, bdls, sags, drms, tsales, abundles, slocs, slocstock, tsups, shpmnts, rreqs, bhrs, kwreplies, pendops, freezereqs, suptickets, unrecmsgs, learnedRules, tnotifs, treports, nmappings, smstmp, pinned, blocked, archived, quickReplies, scheduled, phoneNums, wtxns, cbtxns] = await Promise.all([
         storage.getProducts(),
         storage.getCustomers(),
         storage.getTransactions(),
@@ -465,6 +470,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         storage.getFreezeRequests(),
         storage.getSupportTickets(),
         storage.getUnrecognizedMessages(),
+        storage.getLearnedSmsRules(),
         storage.getTransferNotifications(),
         storage.getTransferReports(),
         storage.getNameMappings(),
@@ -513,6 +519,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFreezeRequests(freezereqs);
       setSupportTickets(suptickets);
       setUnrecognizedMessages(unrecmsgs);
+      setLearnedSmsRules(learnedRules);
       setTransferNotifications(tnotifs);
       setTransferReports(treports);
       setNameMappings(nmappings);
@@ -658,6 +665,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   if (first) processedRepliesRef.current.delete(first);
                 }
                 const smsClassResult = classifySmsMessage(reply.message, reply.senderPhone ?? '');
+                // If the classifier doesn't recognize the message, check learned rules first
+                let learnedMatch: { rule: LearnedSmsRule; category: LearnedSmsCategory } | null = null;
+                if (smsClassResult.processAction === 'unrecognized') {
+                  learnedMatch = matchLearnedRule(reply.message, reply.senderPhone ?? '', learnedSmsRulesRef.current);
+                  if (learnedMatch) {
+                    const learnedAction = categoryToProcessAction(learnedMatch.category);
+                    smsClassResult.processAction = learnedAction;
+                    // Increment match count on the rule
+                    setLearnedSmsRules((prev) => {
+                      const next = prev.map((r) => r.id === learnedMatch!.rule.id ? { ...r, matchCount: r.matchCount + 1 } : r);
+                      storage.saveLearnedSmsRules(next);
+                      return next;
+                    });
+                    // Send learned reply if available
+                    if (learnedMatch.rule.reply && !isSupplierOrAgentPhone(reply.senderPhone ?? '', suppliersRef.current, subAgentsRef.current)) {
+                      const isNative0 = Platform.OS === 'android' || Platform.OS === 'ios';
+                      if (!isNative0) {
+                        void logOutboundSmsRef.current(reply.senderPhone ?? '', learnedMatch.rule.reply, reply.channel === 'whatsapp' ? 'whatsapp' : 'sms');
+                      }
+                    }
+                  }
+                }
                 const smsMsg: SmsMessage = {
                   id: storage.generateId(),
                   direction: 'inbound',
@@ -722,6 +751,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   break;
                 }
 
+                const sale = telecomSalesRef.current.find((s) => s.simNumber === result.simNumber);
+
+                // If a learned rule matched, create the appropriate operation/ticket and skip default processing
+                if (learnedMatch) {
+                  const learnedAction = categoryToProcessAction(learnedMatch.category);
+                  if (learnedAction === 'pending_op') {
+                    const op: PendingOperation = {
+                      id: storage.generateId(),
+                      source: 'sms' as const,
+                      senderPhone: reply.senderPhone ?? '',
+                      senderName: result.customerName ?? '',
+                      simNumber: result.simNumber ?? '',
+                      originalMessage: reply.message,
+                      status: 'pending' as const,
+                      customerMatched: !!sale?.customerId,
+                      customerId: sale?.customerId ?? null,
+                      customerName: result.customerName ?? '',
+                      customerPhone: reply.senderPhone ?? '',
+                      companyGuess: sale?.companyId ?? '',
+                      bundleGuess: sale?.bundleName ?? '',
+                      createdAt: Date.now(),
+                      executedAt: null,
+                      transferReportId: null,
+                      transferNotificationId: null,
+                      transferStatus: 'none' as const,
+                      chargeDuration: null,
+                      companyName: sale?.companyName ?? null,
+                    };
+                    setPendingOperations((prev) => { const next = [op, ...prev]; storage.savePendingOperations(next); return next; });
+                    void sendLocalNotification('عملية من تعلم سابق', `${CATEGORY_LABELS[learnedMatch.category]}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
+                  } else if (learnedAction === 'support_ticket') {
+                    const ticket: SupportTicket = {
+                      id: storage.generateId(),
+                      saleId: sale?.id ?? null,
+                      customerName: result.customerName ?? '',
+                      customerPhone: reply.senderPhone ?? '',
+                      simNumber: result.simNumber ?? '',
+                      companyName: sale?.companyName ?? '',
+                      companySupportPhone: '',
+                      originalMessage: reply.message,
+                      supportMessage: '',
+                      status: 'pending' as const,
+                      whatsappOpened: false,
+                      customerReplySent: learnedMatch.rule.reply,
+                      autoForwarded: false,
+                      forwardReason: 'manual' as const,
+                      rechargeConfirmedAt: null,
+                      queuedForSubAgentId: null,
+                      createdAt: Date.now(),
+                      updatedAt: Date.now(),
+                    };
+                    setSupportTickets((prev) => { const next = [ticket, ...prev]; storage.saveSupportTickets(next); return next; });
+                    void sendLocalNotification('مشكلة من تعلم سابق', `${CATEGORY_LABELS[learnedMatch.category]}: ${reply.message.slice(0, 50)}`, { phone: reply.senderPhone ?? '' });
+                  }
+                  // For 'normal' and 'transfer_notification' — normal = just reply (already sent), transfer = handled above
+                  break;
+                }
+
                 // On native Android, the Java SmsReceiver already sent the auto-reply
                 // via SmsManager and logged it as a manual_reply event. Sending it again
                 // here would duplicate the reply. On web, JS is the only sender.
@@ -739,7 +826,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     return next;
                   });
                 }
-                const sale = telecomSalesRef.current.find((s) => s.simNumber === result.simNumber);
                 const agent = sale ? subAgentsRef.current.find((a) => a.id === sale.subAgentId) : null;
                 const agentOpen = agent ? isAgentOpen(agent) : true;
                 const offHoursMsg = templates?.offHoursMessage ?? 'عذراً، الشركة مغلقة حالياً ولا يمكن تنفيذ طلبك. سيتم تنفيذه مع بدء دوام الغد إن شاء الله.';
@@ -1129,6 +1215,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       status: 'pending' as const,
                       learnedReply: null,
                       learnedKeywords: [],
+                      learnedCategory: null,
                       createdAt: Date.now(),
                       resolvedAt: null,
                     };
@@ -1166,6 +1253,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       status: 'pending' as const,
                       learnedReply: null,
                       learnedKeywords: [],
+                      learnedCategory: null,
                       createdAt: Date.now(),
                       resolvedAt: null,
                     };
@@ -3536,6 +3624,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const unrecognizedMessagesRef = useRef(unrecognizedMessages);
   unrecognizedMessagesRef.current = unrecognizedMessages;
 
+  const learnedSmsRulesRef = useRef(learnedSmsRules);
+  learnedSmsRulesRef.current = learnedSmsRules;
+
   const businessHoursRef = useRef(businessHours);
   businessHoursRef.current = businessHours;
 
@@ -3683,6 +3774,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const deleteUnrecognizedMessage: AppData['deleteUnrecognizedMessage'] = useCallback((id) => {
     setUnrecognizedMessages((prev) => { const next = prev.filter((m) => m.id !== id); storage.saveUnrecognizedMessages(next); return next; });
+  }, []);
+
+  const learnMessageCategory: AppData['learnMessageCategory'] = useCallback((id, category, reply) => {
+    const msg = unrecognizedMessages.find((m) => m.id === id);
+    if (!msg) return;
+
+    const keywords = extractKeywords(msg.originalMessage);
+    const trimmedReply = reply?.trim() || null;
+
+    const rule: LearnedSmsRule = {
+      id: storage.generateId(),
+      category,
+      keywords,
+      senderPhone: msg.senderPhone || null,
+      reply: trimmedReply,
+      active: true,
+      createdAt: Date.now(),
+      matchCount: 0,
+    };
+    setLearnedSmsRules((prev) => { const next = [rule, ...prev]; storage.saveLearnedSmsRules(next); return next; });
+
+    if (trimmedReply) {
+      void logOutboundSmsRef.current(msg.senderPhone, trimmedReply, 'sms');
+    }
+
+    setUnrecognizedMessages((prev) => {
+      const next = prev.map((m) => m.id === id ? {
+        ...m,
+        status: 'learned' as const,
+        learnedCategory: category,
+        learnedReply: trimmedReply,
+        learnedKeywords: keywords,
+        resolvedAt: Date.now(),
+      } : m);
+      storage.saveUnrecognizedMessages(next);
+      return next;
+    });
+    addAuditEntry('update', 'unrecognized_message', id, `تعلم تصنيف: ${CATEGORY_LABELS[category]} - كلمات: ${keywords.join(', ')}`);
+  }, [unrecognizedMessages, addAuditEntry]);
+
+  const deleteLearnedSmsRule: AppData['deleteLearnedSmsRule'] = useCallback((id) => {
+    setLearnedSmsRules((prev) => { const next = prev.filter((r) => r.id !== id); storage.saveLearnedSmsRules(next); return next; });
   }, []);
 
   // ============ Transfer Notifications ============
@@ -4813,8 +4946,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         confirmRechargeBySupport,
         confirmUpdateDone,
         learnFromMessage,
+        learnMessageCategory,
         ignoreUnrecognizedMessage,
         deleteUnrecognizedMessage,
+        learnedSmsRules,
+        deleteLearnedSmsRule,
         addTransferNotification,
         updateTransferNotification,
         deleteTransferNotification,

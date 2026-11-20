@@ -832,6 +832,8 @@ export interface KeywordReply {
 
 export type UnrecognizedMessageStatus = 'pending' | 'learned' | 'ignored';
 
+export type LearnedSmsCategory = 'recharge' | 'update' | 'problem' | 'transfer' | 'normal';
+
 export interface UnrecognizedMessage {
   id: string;
   senderPhone: string;
@@ -840,8 +842,20 @@ export interface UnrecognizedMessage {
   status: UnrecognizedMessageStatus;
   learnedReply: string | null;
   learnedKeywords: string[];
+  learnedCategory: LearnedSmsCategory | null;
   createdAt: number;
   resolvedAt: number | null;
+}
+
+export interface LearnedSmsRule {
+  id: string;
+  category: LearnedSmsCategory;
+  keywords: string[];
+  senderPhone: string | null;
+  reply: string | null;
+  active: boolean;
+  createdAt: number;
+  matchCount: number;
 }
 
 export type PendingOperationSource = 'sms' | 'whatsapp' | 'manual';
