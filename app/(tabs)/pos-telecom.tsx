@@ -2742,27 +2742,31 @@ export default function TelecomPOSScreen() {
         )}
 
         {/* Sale History */}
-        {!isMobileLayout && <Text style={[styles.historyTitle, { color: colors.text }]}>العمليات الأخيرة</Text>}
-        <TelecomSaleHistory
-          sales={telecomSales}
-          settings={settings}
-          onRenew={handleRenew}
-          onToggleAutoRenew={handleToggleAutoRenew}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onReceipt={handleReceipt}
-          onCollectDebt={handleCollectFromHistory}
-          onCancelSale={handleCancelSale}
-          onFollowUp={handleFollowUp}
-          onOpenCustomer={handleOpenCustomer}
-          hideToolbar={true}
-          externalSearchQuery={historySearch}
-          externalSortOrder={historySort}
-          externalStatusFilter={historyStatusFilter}
-          onSearchChange={setHistorySearch}
-          onSortChange={setHistorySort}
-          onStatusFilterChange={setHistoryStatusFilter}
-        />
+        {!showForm && (
+          <>
+            {!isMobileLayout && <Text style={[styles.historyTitle, { color: colors.text }]}>العمليات الأخيرة</Text>}
+            <TelecomSaleHistory
+              sales={telecomSales}
+              settings={settings}
+              onRenew={handleRenew}
+              onToggleAutoRenew={handleToggleAutoRenew}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onReceipt={handleReceipt}
+              onCollectDebt={handleCollectFromHistory}
+              onCancelSale={handleCancelSale}
+              onFollowUp={handleFollowUp}
+              onOpenCustomer={handleOpenCustomer}
+              hideToolbar={true}
+              externalSearchQuery={historySearch}
+              externalSortOrder={historySort}
+              externalStatusFilter={historyStatusFilter}
+              onSearchChange={setHistorySearch}
+              onSortChange={setHistorySort}
+              onStatusFilterChange={setHistoryStatusFilter}
+            />
+          </>
+        )}
       </ScrollView>
 
       {/* Customer Profile */}
