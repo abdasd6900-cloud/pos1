@@ -36,7 +36,7 @@ import { normalizeName, extractNameTokens, matchNameAgainstCustomers } from './n
 import { isAgentOpen, isStoreOpen, createDefaultSchedule, isSupplierWorkHours } from './business-hours';
 import { isToday, calculateProfit, predictStockOut, normalizePhoneNumber, formatDate } from './format';
 import { getOrCreateLicense, evaluateLicense, validateActivationKey, applyActivation, isReadOnly } from './license-engine';
-import { buildTransactionMessage, publishSyncEvent } from './sync';
+import { buildTransactionMessage, publishSyncEvent, flushOfflineSyncQueue } from './sync';
 import {
   pushCollection,
   pullAllCollections,
@@ -1191,6 +1191,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncUnsubscribeRef.current?.();
     };
   }, [session]);
+
+  // Periodically flush offline sync queue when online
+  useEffect(() => {
+    if (!loaded || !session) return;
+    const flushFn = async () => {
+      try {
+        await flushOfflineSyncQueue();
+      } catch {
+        // ignore
+      }
+    };
+    void flushFn();
+    const interval = setInterval(() => void flushFn(), 60000);
+    return () => clearInterval(interval);
+  }, [loaded, session]);
 
   // Poll sms_inbox_events for real-time SMS delivery from Android phone
   useEffect(() => {

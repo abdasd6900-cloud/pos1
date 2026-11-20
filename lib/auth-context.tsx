@@ -1,7 +1,12 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { Platform, AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
+
+const OFFLINE_SESSION_KEY = 'offline_session_cache';
+const OFFLINE_PROFILE_KEY = 'offline_profile_cache';
+const OFFLINE_SESSION_FLAG = 'offline_mode_active';
 
 export type UserRole = 'admin' | 'user';
 export type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'locked';
@@ -115,15 +120,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { data: { session: sess } } = await supabase.auth.getSession();
         if (!active) return;
-        if (sess) hadSessionRef.current = true;
-        setSession(sess);
-        if (sess?.user?.id) {
-          const p = await fetchProfile(sess.user.id);
-          if (!active) return;
-          setProfile(p);
+        if (sess) {
+          hadSessionRef.current = true;
+          setSession(sess);
+          // Cache session + profile for offline use
+          await AsyncStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify(sess));
+          if (sess?.user?.id) {
+            const p = await fetchProfile(sess.user.id);
+            if (!active) return;
+            setProfile(p);
+            if (p) await AsyncStorage.setItem(OFFLINE_PROFILE_KEY, JSON.stringify(p));
+          }
+        } else {
+          // No active Supabase session — check for cached offline session
+          // This allows the app to work when the token expired while offline
+          try {
+            const cachedSession = await AsyncStorage.getItem(OFFLINE_SESSION_KEY);
+            const cachedProfile = await AsyncStorage.getItem(OFFLINE_PROFILE_KEY);
+            if (cachedSession) {
+              const parsedSession = JSON.parse(cachedSession) as Session;
+              hadSessionRef.current = true;
+              setSession(parsedSession);
+              if (cachedProfile) {
+                setProfile(JSON.parse(cachedProfile) as UserProfile);
+              }
+              // Mark that we're in offline mode (token may be expired)
+              await AsyncStorage.setItem(OFFLINE_SESSION_FLAG, '1');
+            }
+          } catch {
+            // AsyncStorage error — proceed without cached session
+          }
         }
       } catch {
-        // Network or storage error — treat as no session
+        // Network or storage error — try cached session as fallback
+        try {
+          const cachedSession = await AsyncStorage.getItem(OFFLINE_SESSION_KEY);
+          const cachedProfile = await AsyncStorage.getItem(OFFLINE_PROFILE_KEY);
+          if (cachedSession) {
+            const parsedSession = JSON.parse(cachedSession) as Session;
+            hadSessionRef.current = true;
+            setSession(parsedSession);
+            if (cachedProfile) {
+              setProfile(JSON.parse(cachedProfile) as UserProfile);
+            }
+            await AsyncStorage.setItem(OFFLINE_SESSION_FLAG, '1');
+          }
+        } catch {
+          // No cached session available
+        }
       } finally {
         finishLoading();
       }
@@ -148,26 +192,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (recovered) {
             hadSessionRef.current = true;
             setSession(recovered);
+            void AsyncStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify(recovered)).catch(() => {});
           } else {
+            // Could not recover — check if we have a cached offline session
+            // before giving up. This keeps the app usable when offline for
+            // extended periods (expired refresh token).
+            AsyncStorage.getItem(OFFLINE_SESSION_KEY).then((cached) => {
+              if (cached) {
+                // Keep the cached session — app stays in offline mode
+                hadSessionRef.current = true;
+                try { setSession(JSON.parse(cached) as Session); } catch {}
+              } else {
+                hadSessionRef.current = false;
+                setSession(null);
+                setProfile(null);
+              }
+            }).catch(() => {
+              hadSessionRef.current = false;
+              setSession(null);
+              setProfile(null);
+            });
+          }
+        }).catch(() => {
+          // Network error during recovery — try cached session
+          AsyncStorage.getItem(OFFLINE_SESSION_KEY).then((cached) => {
+            if (cached) {
+              hadSessionRef.current = true;
+              try { setSession(JSON.parse(cached) as Session); } catch {}
+            } else {
+              hadSessionRef.current = false;
+              setSession(null);
+              setProfile(null);
+            }
+          }).catch(() => {
             hadSessionRef.current = false;
             setSession(null);
             setProfile(null);
-          }
-        }).catch(() => {
-          hadSessionRef.current = false;
-          setSession(null);
-          setProfile(null);
+          });
         });
         finishLoading();
         return;
       }
       (async () => {
-        if (sess) hadSessionRef.current = true;
-        else hadSessionRef.current = false;
+        if (sess) {
+          hadSessionRef.current = true;
+          // Cache session for offline use
+          void AsyncStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify(sess)).catch(() => {});
+          await AsyncStorage.removeItem(OFFLINE_SESSION_FLAG).catch(() => {});
+        } else {
+          hadSessionRef.current = false;
+        }
         setSession((prev) => prev?.access_token === sess?.access_token ? prev : sess);
         if (sess?.user?.id) {
           const p = await fetchProfile(sess.user.id);
           setProfile((prev) => prev?.id === p?.id ? prev : p);
+          if (p) void AsyncStorage.setItem(OFFLINE_PROFILE_KEY, JSON.stringify(p)).catch(() => {});
         } else {
           setProfile(null);
         }
@@ -307,10 +386,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    try {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+      ]);
+    } catch {
+      // Network error during signOut — proceed with local cleanup
+    }
     hadSessionRef.current = false;
     setSession(null);
     setProfile(null);
+    try {
+      await AsyncStorage.removeItem(OFFLINE_SESSION_KEY);
+      await AsyncStorage.removeItem(OFFLINE_PROFILE_KEY);
+      await AsyncStorage.removeItem(OFFLINE_SESSION_FLAG);
+    } catch {
+      // AsyncStorage error
+    }
   }, []);
 
   return (
