@@ -193,6 +193,28 @@ export function parseTransferSms(sms: string): ParsedTransferNotification {
 
   if (!sms || sms.length < 10) return empty;
 
+  // PalPay friend-payment notifications include two names and place the
+  // currency before the amount, for example: "تحويل دفع لصديق: yousra ibrahem: ahmaad ghunaim مبلغ ILS 60.00".
+  const palPayFriendMatch = sms.match(
+    /تحويل\s*دفع\s*لصديق\s*[:：]\s*([^:：\n]+?)\s*[:：]\s*([^\n]+?)\s+مبلغ\s+(?:ILS|USD|JOD|شيكل|₪|\$)\s*([\d.,]+)/i,
+  );
+  if (palPayFriendMatch) {
+    const firstName = cleanName(palPayFriendMatch[1]);
+    const secondName = cleanName(palPayFriendMatch[2]);
+    const amount = extractAmount(palPayFriendMatch[3]);
+    if (firstName && secondName && amount > 0) {
+      return {
+        isTransfer: true,
+        senderName: `${firstName} ${secondName}`,
+        senderPhone: '',
+        amount,
+        currency: extractCurrency(sms),
+        bankName: 'بال باي (PalPay)',
+        reference: extractReference(sms),
+      };
+    }
+  }
+
   // Check wallet patterns first (phone-based, most common for Palestinian market)
   for (const { bank, patterns } of WALLET_PATTERNS) {
     for (const pattern of patterns) {
