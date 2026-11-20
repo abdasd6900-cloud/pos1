@@ -603,7 +603,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const remoteHandler = (collection: SyncCollectionName, data: Record<string, unknown> | unknown[]) => {
           syncSkipPushRef.current.add(collection);
-          remoteChangeHandlerRef.current = remoteHandler;
           switch (collection) {
             case 'products': mergeRemote(setProducts, data as Product[], storage.saveProducts); break;
             case 'customers': {
@@ -1179,6 +1178,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
           }
         };
+
+        // Set the ref immediately so the SMS poller can use it before any data_sync
+        // event arrives. Previously this was set inside remoteHandler, meaning the
+        // SMS poller would skip all events until a sync event triggered the handler.
+        remoteChangeHandlerRef.current = remoteHandler;
         syncUnsubscribeRef.current = startRealtimeSync(remoteHandler);
       })();
     })();

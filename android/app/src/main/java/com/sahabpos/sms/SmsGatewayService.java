@@ -49,7 +49,12 @@ public class SmsGatewayService extends Service {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private String supabaseUrl;
     private String supabaseAnonKey;
+    private String supabaseAccessToken;
     private boolean gatewayEnabled = false;
+
+    private String authToken() {
+        return (supabaseAccessToken != null && !supabaseAccessToken.isEmpty()) ? supabaseAccessToken : supabaseAnonKey;
+    }
 
     @Override
     public void onCreate() {
@@ -64,6 +69,7 @@ public class SmsGatewayService extends Service {
         android.content.SharedPreferences prefs = getSharedPreferences("sahab_prefs", MODE_PRIVATE);
         supabaseUrl = prefs.getString("supabase_url", "");
         supabaseAnonKey = prefs.getString("supabase_anon_key", "");
+        supabaseAccessToken = prefs.getString("supabase_access_token", "");
         gatewayEnabled = prefs.getBoolean("sms_gateway_enabled", false);
 
         Log.i(TAG, "Service created. Gateway enabled: " + gatewayEnabled);
@@ -98,6 +104,7 @@ public class SmsGatewayService extends Service {
                 gatewayEnabled = prefs.getBoolean("sms_gateway_enabled", false);
                 supabaseUrl = prefs.getString("supabase_url", "");
                 supabaseAnonKey = prefs.getString("supabase_anon_key", "");
+                supabaseAccessToken = prefs.getString("supabase_access_token", "");
                 if (gatewayEnabled && supabaseUrl != null && !supabaseUrl.isEmpty() && supabaseUrl.startsWith("https://")) {
                     new Thread(() -> {
                         sendHeartbeat();
@@ -116,7 +123,7 @@ public class SmsGatewayService extends Service {
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("apikey", supabaseAnonKey);
-            conn.setRequestProperty("Authorization", "Bearer " + supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + authToken());
             conn.setRequestProperty("Content-Type", "application/json");
 
             if (conn.getResponseCode() != 200) {
@@ -226,7 +233,7 @@ public class SmsGatewayService extends Service {
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("apikey", supabaseAnonKey);
-            conn.setRequestProperty("Authorization", "Bearer " + supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + authToken());
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Prefer", "return=minimal, resolution=merge-duplicates");
 
@@ -255,7 +262,7 @@ public class SmsGatewayService extends Service {
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("PATCH");
             conn.setRequestProperty("apikey", supabaseAnonKey);
-            conn.setRequestProperty("Authorization", "Bearer " + supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + authToken());
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Prefer", "return=representation");
 
@@ -291,7 +298,7 @@ public class SmsGatewayService extends Service {
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("PATCH");
             conn.setRequestProperty("apikey", supabaseAnonKey);
-            conn.setRequestProperty("Authorization", "Bearer " + supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + authToken());
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Prefer", "return=minimal");
 
@@ -320,7 +327,7 @@ public class SmsGatewayService extends Service {
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("PATCH");
             conn.setRequestProperty("apikey", supabaseAnonKey);
-            conn.setRequestProperty("Authorization", "Bearer " + supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + authToken());
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Prefer", "return=minimal");
 

@@ -34,10 +34,17 @@ export async function setNativeSupabaseCredentialsV2(url: string, accessToken: s
   try {
     // Store the user's authenticated access token so native services (SMS gateway,
     // screenshot observer, WhatsApp listener) can make RLS-protected Supabase calls.
-    // Native code reads this as "supabase_anon_key" from SharedPreferences.
+    // The native module stores the access token as "supabase_access_token" and keeps
+    // the anon key separate so it can be used as "apikey" while the JWT is used for
+    // "Authorization: Bearer".
     const module = NativeModules.BusinessHoursNative;
     if (module?.setSupabaseCredentials) {
       module.setSupabaseCredentials(url, accessToken, userId);
+    }
+    // Also pass the anon key so native code can use it as apikey header
+    const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_KEY || '';
+    if (anonKey && module?.setAnonKey) {
+      module.setAnonKey(anonKey);
     }
     const ssModule = NativeModules.ScreenshotNative;
     if (ssModule?.setSupabaseCredentials) {

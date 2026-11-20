@@ -37,15 +37,39 @@ public class BusinessHoursModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void setSupabaseCredentials(String url, String accessToken, String userId) {
         try {
+            android.content.SharedPreferences prefs =
+                getReactApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            String existingAnonKey = prefs.getString("supabase_anon_key", "");
+            // If the new token looks like a JWT (contains a dot), store it as the
+            // access token and keep the previous anon key (set by setAnonKey) intact.
+            // Otherwise treat it as the anon key (backward-compatible first call).
+            android.content.SharedPreferences.Editor editor = prefs.edit();
+            editor.putString("supabase_url", url);
+            if (accessToken != null && accessToken.contains(".")) {
+                editor.putString("supabase_access_token", accessToken);
+                if (existingAnonKey.isEmpty() || !existingAnonKey.contains(".")) {
+                    editor.putString("supabase_anon_key", accessToken);
+                }
+            } else {
+                editor.putString("supabase_anon_key", accessToken);
+            }
+            editor.putString("supabase_user_id", userId);
+            editor.apply();
+        } catch (Exception e) {
+            Log.e(TAG, "setSupabaseCredentials error: " + e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setAnonKey(String anonKey) {
+        try {
             getReactApplicationContext()
                 .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
-                .putString("supabase_url", url)
-                .putString("supabase_anon_key", accessToken)
-                .putString("supabase_user_id", userId)
+                .putString("supabase_anon_key", anonKey)
                 .apply();
         } catch (Exception e) {
-            Log.e(TAG, "setSupabaseCredentials error: " + e.getMessage());
+            Log.e(TAG, "setAnonKey error: " + e.getMessage());
         }
     }
 
