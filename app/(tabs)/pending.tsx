@@ -14,7 +14,8 @@ import { openWhatsApp } from '@/lib/customer-classifier';
 import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from '@/lib/sms-learner';
 import { parseTransferSms } from '@/lib/transfer-parser';
 import { matchNameAgainstCustomers } from '@/lib/name-matcher';
-import type { PendingOperation, FreezeRequest, TelecomSale, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport, LearnedSmsCategory, LearnedSmsRule, Customer, NameMapping } from '@/types';
+import { TransferMatchModal } from '@/components/TransferMatchModal';
+import type { PendingOperation, FreezeRequest, TelecomSale, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport, LearnedSmsCategory, LearnedSmsRule, Customer, NameMapping, TransferMatchType } from '@/types';
 
 type TabKey = 'pending' | 'freeze' | 'support' | 'learning' | 'reactivation' | 'transfers' | 'executed';
 
@@ -28,7 +29,7 @@ export default function PendingOperationsScreen() {
     ignoreUnrecognizedMessage, deleteUnrecognizedMessage,
     transferNotifications, transferReports, confirmTransferNotification, rejectTransferNotification,
     deleteTransferNotification, linkTransferNotification, pendingOperations: pendingOpsAll,
-    nameMappings,
+    nameMappings, suppliers, matchTransfer,
   } = useApp();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -41,6 +42,7 @@ export default function PendingOperationsScreen() {
   const [transferModal, setTransferModal] = useState<PendingOperation | null>(null);
   const [transferMatches, setTransferMatches] = useState<{ customerId: string | null; customerName: string; confidence: number }[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [matchModalNotification, setMatchModalNotification] = useState<TransferNotification | null>(null);
 
   const pending = useMemo(() => pendingOperations.filter((o) => o.status === 'pending'), [pendingOperations]);
   const executed = useMemo(() => pendingOperations.filter((o) => o.status !== 'pending'), [pendingOperations]);
@@ -917,6 +919,34 @@ export default function PendingOperationsScreen() {
           </View>
         ) : null}
 
+        {/* Match button for unmatched transfers */}
+        {n.status === 'unmatched' ? (
+          <View style={styles.opActions}>
+            <TouchableOpacity
+              onPress={() => setMatchModalNotification(n)}
+              style={[styles.opBtn, { backgroundColor: colors.primary }]}
+            >
+              <Banknote size={16} color="#FFFFFF" strokeWidth={2} />
+              <Text style={styles.opBtnText}>مطابقة</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* Show match details for confirmed transfers */}
+        {n.status === 'confirmed' && n.matchDetails ? (
+          <View style={[styles.opMessage, { backgroundColor: colors.success + '10' }]}>
+            <Text style={[styles.opMessageLabel, { color: colors.success }]}>
+              {n.matchDetails.matchType === 'supplier_payment' ? 'دفع مورد' :
+                n.matchDetails.matchType === 'expense' ? `مصروف: ${n.matchDetails.expenseCategory}` :
+                n.matchDetails.matchType === 'account_transfer' ? 'تحويل بين حسابات' :
+                n.matchDetails.matchType === 'debt_collection' ? 'تحصيل دين' : 'مطابق'}
+            </Text>
+            {n.matchDetails.description ? (
+              <Text style={[styles.opMessageText, { color: colors.textSecondary }]}>{n.matchDetails.description}</Text>
+            ) : null}
+          </View>
+        ) : null}
+
         {n.status === 'matched' ? (
           <View style={styles.opActions}>
             <TouchableOpacity
@@ -1252,6 +1282,38 @@ export default function PendingOperationsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Transfer Match Modal (financial categorization) */}
+      <Modal
+        visible={matchModalNotification !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setMatchModalNotification(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.matchModalSheet, { backgroundColor: colors.surface }]}>
+            <View style={[styles.matchModalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>مطابقة الحوالة</Text>
+              <TouchableOpacity
+                onPress={() => setMatchModalNotification(null)}
+                style={[styles.closeBtn, { backgroundColor: colors.surfaceAlt }]}
+              >
+                <X size={20} color={colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            {matchModalNotification ? (
+              <TransferMatchModal
+                visible={matchModalNotification !== null}
+                notification={matchModalNotification}
+                suppliers={suppliers}
+                customers={customers}
+                onMatch={matchTransfer}
+                onClose={() => setMatchModalNotification(null)}
+              />
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1307,4 +1369,7 @@ const styles = StyleSheet.create({
   categoryBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   categoryBadgeText: { fontSize: 12, fontFamily: 'Cairo-SemiBold' },
   learnedRuleKeywords: { flex: 1, fontSize: 13, fontFamily: 'Cairo-Regular' },
+  matchModalSheet: { width: '92%', maxWidth: 480, borderRadius: 20, overflow: 'hidden', maxHeight: '85%' },
+  matchModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
+  closeBtn: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 });

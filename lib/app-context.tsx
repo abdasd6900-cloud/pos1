@@ -16,6 +16,7 @@ import type {
   AgentBundle, SimLocation, SimLocationStock, TelecomSupplier, Shipment, RechargeRequest, RechargeRequestStatus,
   BusinessHoursConfig, KeywordReply, PendingOperation, PendingOperationStatus, FreezeRequest, DebtEscalationState, EscalationPhase, SupportTicket, SupportTicketStatus, UnrecognizedMessage, UnrecognizedMessageStatus,
   TransferNotification, TransferReport, NameMapping, TransferNotificationStatus, TransferReportStatus,
+  TransferDirection, TransferMatchType, TransferMatchDetails,
   SmsMessage, SmsMessageCategory, SmsMessageStatus, QuickReplyTemplate, ScheduledSms,
   PhoneNumberEntry, WalletTransaction, WalletType, WalletTxnType,
   CompanyBalanceTxn, RechargeCompanyId, LearnedSmsRule, LearnedSmsCategory,
@@ -137,6 +138,15 @@ interface AppData {
   addNameMapping: (fromName: string, toCustomerId: string | null, toCustomerName: string, toCustomerPhone: string) => void;
   deleteNameMapping: (id: string) => void;
   linkTransferNotification: (notificationId: string, pendingOpId: string | null, saleId: string | null, customerId: string | null) => void;
+  matchTransfer: (notificationId: string, matchType: TransferMatchType, params: {
+    supplierId?: string;
+    customerId?: string;
+    expenseCategory?: string;
+    fromWallet?: WalletType;
+    toWallet?: WalletType;
+    walletType?: WalletType;
+    description?: string;
+  }) => void;
 
   smsMessages: SmsMessage[];
   addSmsMessage: (m: Omit<SmsMessage, 'id' | 'timestamp'>) => SmsMessage;
@@ -747,7 +757,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   }
                 }
                 if (parsedTransfer.isTransfer) {
-                  const senderLabel = parsedTransfer.senderName || parsedTransfer.senderPhone || 'غير معروف';
+                  const senderLabel = parsedTransfer.direction === 'outgoing'
+                    ? (parsedTransfer.recipientName || parsedTransfer.recipientPhone || 'غير معروف')
+                    : (parsedTransfer.senderName || parsedTransfer.senderPhone || 'غير معروف');
                   const tnId = storage.generateId();
                   const tn: TransferNotification = {
                     id: tnId,
@@ -760,7 +772,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     bankName: parsedTransfer.bankName,
                     reference: parsedTransfer.reference,
                     receivedAt: reply.timestamp ?? Date.now(),
-                    status: 'pending' as TransferNotificationStatus,
+                    status: 'unmatched' as TransferNotificationStatus,
+                    direction: parsedTransfer.direction as TransferDirection,
+                    matchDetails: null,
                     matchedPendingOpId: null,
                     matchedTransferReportId: null,
                     matchedSaleId: null,
@@ -771,8 +785,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     createdAt: Date.now(),
                   };
                   setTransferNotifications((prev) => { const next = [tn, ...prev]; storage.saveTransferNotifications(next); return next; });
-                  autoMatchTransferNotificationRef.current(tn);
-                  void sendLocalNotification('تحويل وارد', `${senderLabel} - ${parsedTransfer.amount} ${parsedTransfer.currency}`);
+                  // Only auto-match incoming transfers for pending operations
+                  if (parsedTransfer.direction === 'incoming') {
+                    autoMatchTransferNotificationRef.current(tn);
+                  }
+                  const directionLabel = parsedTransfer.direction === 'outgoing' ? 'تحويل صادر' : 'تحويل وارد';
+                  void sendLocalNotification(directionLabel, `${senderLabel} - ${parsedTransfer.amount} ${parsedTransfer.currency}`);
                   break;
                 }
 
@@ -4230,6 +4248,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // ============ Transfer Matching (manual categorization) ============
+  const matchTransfer: AppData['matchTransfer'] = useCallback((notificationId, matchType, params) => {
+    const notification = transferNotifications.find((n) => n.id === notificationId);
+    if (!notification) return;
+
+    const matchedBy = currentStaff?.name || settings?.ownerName || 'المالك';
+    const description = params.description ?? '';
+    const now = Date.now();
+
+    // Perform the financial action based on match type
+    if (matchType === 'supplier_payment' && params.supplierId && params.walletType) {
+      recordSupplierWalletPayment(params.supplierId, notification.amount, params.walletType);
+    } else if (matchType === 'expense' && params.expenseCategory && params.walletType) {
+      addExpense(notification.amount, params.expenseCategory, description || `مصروف من حوالة - ${notification.bankName}`, params.walletType);
+    } else if (matchType === 'account_transfer' && params.fromWallet && params.toWallet) {
+      transferBetweenWallets(params.fromWallet, params.toWallet, notification.amount, description || `تحويل بين حسابات من حوالة`);
+    } else if (matchType === 'debt_collection' && params.customerId) {
+      recordPayment(params.customerId, notification.amount);
+    }
+
+    // Update the notification with match details
+    const matchDetails: TransferMatchDetails = {
+      matchType,
+      matchedSupplierId: params.supplierId ?? null,
+      matchedCustomerId: params.customerId ?? null,
+      expenseCategory: params.expenseCategory ?? null,
+      fromWallet: (params.fromWallet as string) ?? null,
+      toWallet: (params.toWallet as string) ?? null,
+      walletType: (params.walletType as string) ?? null,
+      description,
+      matchedAt: now,
+      matchedBy,
+    };
+
+    setTransferNotifications((prev) => {
+      const next = prev.map((n) => n.id === notificationId ? {
+        ...n,
+        status: 'confirmed' as TransferNotificationStatus,
+        matchDetails,
+        matchedCustomerId: params.customerId ?? n.matchedCustomerId,
+        confirmedAt: now,
+        confirmedBy: matchedBy,
+      } : n);
+      storage.saveTransferNotifications(next);
+      return next;
+    });
+
+    const matchTypeLabel: Record<TransferMatchType, string> = {
+      supplier_payment: 'دفع مورد',
+      expense: 'مصروف',
+      account_transfer: 'تحويل بين حسابات',
+      debt_collection: 'تحصيل دين',
+      none: 'بدون',
+    };
+    addAuditEntry('update', 'transfer_notification', notificationId, `مطابقة حوالة: ${matchTypeLabel[matchType]}`);
+    void sendLocalNotification('تمت المطابقة', `تم مطابقة الحوالة بمبلغ ${notification.amount} ${notification.currency} - ${matchTypeLabel[matchType]}`);
+  }, [transferNotifications, currentStaff, settings, recordSupplierWalletPayment, addExpense, transferBetweenWallets, recordPayment, addAuditEntry]);
+
   // Auto-forward timer: check every minute for pending support tickets that have timed out
   useEffect(() => {
     if (!loaded) return;
@@ -5169,6 +5245,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addNameMapping,
         deleteNameMapping,
         linkTransferNotification,
+        matchTransfer,
         addRechargeRequest,
         updateRechargeRequest,
         deleteRechargeRequest,

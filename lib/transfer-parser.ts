@@ -2,8 +2,11 @@
 
 export interface ParsedTransferNotification {
   isTransfer: boolean;
+  direction: 'incoming' | 'outgoing' | 'unknown';
   senderName: string;
   senderPhone: string;
+  recipientName: string;
+  recipientPhone: string;
   amount: number;
   currency: string;
   bankName: string;
@@ -147,11 +150,90 @@ const WALLET_PATTERNS: { bank: string; patterns: RegExp[] }[] = [
   },
 ];
 
-// Generic patterns for unknown banks
+// Outgoing transfer patterns — you SENT money to someone
+const OUTGOING_WALLET_PATTERNS: { bank: string; patterns: RegExp[] }[] = [
+  {
+    bank: 'جوال بي (Jawwal Pay)',
+    patterns: [
+      // "Jawwal Pay: تم تحويل مبلغ 70.00 ILS إلى 0595337894"
+      /(?:jawwal\s*pay|jowal\s*pay|جوال\s*بي).*?(?:تم\s*تحويل|حولت)\s*مبلغ\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:إلى|الى|to)\s*(\d{5,15})/i,
+      /(?:تم\s*تحويل|حولت)\s*مبلغ\s*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:إلى|الى|to)\s*(\d{5,15}).*?(?:jawwal\s*pay|جوال\s*بي)/i,
+      // "Jawwal Pay: تم صرف مبلغ 70.00 ILS إلى 0595337894"
+      /(?:jawwal\s*pay|jowal\s*pay|جوال\s*بي).*?(?:تم\s*صرف|صرفت)\s*مبلغ\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:إلى|الى|to)?\s*(\d{5,15})/i,
+    ],
+  },
+  {
+    bank: 'بال بي (PalPay)',
+    patterns: [
+      /(?:pal\s*pay|palpay|بال\s*بي).*?(?:تم\s*تحويل|حولت|تم\s*صرف|صرفت)\s*مبلغ\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:إلى|الى|to)\s*(\d{5,15})/i,
+    ],
+  },
+  {
+    bank: 'مال شات (MalChat)',
+    patterns: [
+      /(?:mal\s*chat|malchat|مال\s*شات).*?(?:تم\s*تحويل|حولت|تم\s*صرف|صرفت)\s*(?:مبلغ\s*)?([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:إلى|الى|to)\s*(\d{5,15})/i,
+    ],
+  },
+  {
+    bank: 'محفظة',
+    patterns: [
+      // "تم تحويل مبلغ 70.00 من محفظتك إلى 0595337894"
+      /(?:تم\s*تحويل|حولت)\s*مبلغ\s*([\d.,]+)\s*(?:ILS|USD|JOD|SAR|EGP|شيكل|₪|\$)?\s*(?:من\s*محفظتك\s*)?(?:إلى|الى|to)\s*(\d{5,15})/i,
+      // "تم صرف مبلغ 70 إلى 0595337894"
+      /(?:تم\s*صرف|صرفت)\s*مبلغ\s*([\d.,]+)\s*(?:ILS|USD|JOD|SAR|EGP|شيكل|₪|\$)?\s*(?:إلى|الى|to)?\s*(\d{5,15})/i,
+      // "حوالة صادرة بمبلغ 70 إلى 0595337894"
+      /حوال[ةه]\s*صادر[ةه]?\s*(?:بمبلغ|مبلغ)\s*([\d.,]+)\s*(?:إلى|الى|to)\s*(\d{5,15})/i,
+    ],
+  },
+];
+
+// Outgoing bank transfer patterns — you SENT money to a named recipient
+const OUTGOING_BANK_PATTERNS: { bank: string; patterns: RegExp[] }[] = [
+  {
+    bank: 'بنك فلسطين',
+    patterns: [
+      /(?:بنك\s*فلسطين|BOP).*?(?:تم\s*تحويل|حولت|تم\s*صرف|صرفت).*?مبلغ[:\s]*([\d.,]+)\s*(?:ILS|USD|JOD|شيكل|₪|\$)?\s*(?:إلى|الى|to|لـ)\s+([^\d\n,]+)/i,
+      /(?:بنك\s*فلسطين|BOP).*?(?:إلى|الى|to)\s+([^\d\n,]+?)\s*(?:بمبلغ|مبلغ)\s*([\d.,]+)/i,
+    ],
+  },
+  {
+    bank: 'الراجحي',
+    patterns: [
+      /(?:تم\s*تحويل|حولت|تم\s*صرف|صرفت).*?مبلغ[:\s]*([\d.,]+)\s*(?:ريال|SAR|Riyal|ر\.س)?\s*(?:إلى|الى|to|لـ)\s+([^\d\n,]+)/i,
+    ],
+  },
+  {
+    bank: 'STC Pay',
+    patterns: [
+      /(?:STC\s*Pay|stcpay).*?(?:تم\s*تحويل|حولت|تم\s*صرف|صرفت).*?مبلغ[:\s]*([\d.,]+)\s*(?:إلى|الى|to)\s*(\d{5,15})/i,
+    ],
+  },
+];
+
+// Generic patterns for unknown banks (incoming)
 const GENERIC_PATTERNS: RegExp[] = [
   /(?:تم\s*إيداع|استلام\s*تحويل|حواله\s*وارد|تم\s*تحويل)\s+مبلغ[:\s]*([\d.,]+)\s*(?:من|from)\s+([^\d\n,]+)/i,
   /(?:من|from)\s+([^\d\n,]+?)\s+(?:مبلغ|amount)[:\s]*([\d.,]+)/i,
   /amount[:\s]*([\d.,]+)\s*(?:from|من)\s+([^\d\n,]+)/i,
+];
+
+// Generic outgoing patterns
+const GENERIC_OUTGOING_PATTERNS: RegExp[] = [
+  /(?:تم\s*تحويل|حولت|تم\s*صرف|صرفت)\s+مبلغ[:\s]*([\d.,]+)\s*(?:إلى|الى|to)\s+([^\d\n,]+)/i,
+  /(?:تم\s*تحويل|حولت|تم\s*صرف|صرفت)\s+مبلغ[:\s]*([\d.,]+)\s*(?:إلى|الى|to)\s*(\d{5,15})/i,
+  /حوال[ةه]\s*صادر[ةه]?\s*(?:بمبلغ|مبلغ)\s*([\d.,]+)/i,
+];
+
+// Keywords that strongly indicate OUTGOING transfers (must check before incoming)
+const OUTGOING_KEYWORDS = [
+  'تم تحويل', 'حولت', 'تم صرف', 'صرفت', 'حوالة صادرة', 'حواله صادره',
+  'تم التحويل', 'محول', 'sent', 'transferred', 'payment sent',
+];
+
+// Verification code keywords — these are NOT transfers
+const VERIFICATION_CODE_KEYWORDS = [
+  'رمز', 'كود', 'تحقق', 'تأكيد', 'verification', 'verify', 'code', 'otp',
+  'رمز التحقق', 'رمز تأكيد', 'كود التحقق',
 ];
 
 const CURRENCY_MAP: Record<string, string> = {
@@ -190,10 +272,20 @@ function cleanName(raw: string): string {
 
 export function parseTransferSms(sms: string): ParsedTransferNotification {
   const empty: ParsedTransferNotification = {
-    isTransfer: false, senderName: '', senderPhone: '', amount: 0, currency: 'ILS', bankName: '', reference: '',
+    isTransfer: false, direction: 'unknown', senderName: '', senderPhone: '', recipientName: '', recipientPhone: '', amount: 0, currency: 'ILS', bankName: '', reference: '',
   };
 
   if (!sms || sms.length < 10) return empty;
+
+  // Reject verification code messages — they are NOT transfers
+  const lowerSms = sms.toLowerCase();
+  for (const kw of VERIFICATION_CODE_KEYWORDS) {
+    if (lowerSms.includes(kw.toLowerCase())) {
+      // If the message is ONLY a verification code (short message), skip entirely
+      // But if it's a transfer that also mentions a code, still parse it
+      if (sms.length < 100) return empty;
+    }
+  }
 
   // PalPay friend-payment notifications include two names and place the
   // currency before the amount, for example: "تحويل دفع لصديق: yousra ibrahem: ahmaad ghunaim مبلغ ILS 60.00".
@@ -207,8 +299,11 @@ export function parseTransferSms(sms: string): ParsedTransferNotification {
     if (firstName && secondName && amount > 0) {
       return {
         isTransfer: true,
+        direction: 'incoming',
         senderName: `${firstName} ${secondName}`,
         senderPhone: '',
+        recipientName: '',
+        recipientPhone: '',
         amount,
         currency: extractCurrency(sms),
         bankName: 'بال باي (PalPay)',
@@ -217,7 +312,120 @@ export function parseTransferSms(sms: string): ParsedTransferNotification {
     }
   }
 
-  // Check wallet patterns first (phone-based, most common for Palestinian market)
+  // ===== Check OUTGOING wallet patterns first (if outgoing keywords are present) =====
+  const hasOutgoingKeyword = OUTGOING_KEYWORDS.some((kw) => lowerSms.includes(kw.toLowerCase()));
+
+  if (hasOutgoingKeyword) {
+    // Check outgoing wallet patterns (phone-based recipient)
+    for (const { bank, patterns } of OUTGOING_WALLET_PATTERNS) {
+      for (const pattern of patterns) {
+        const match = sms.match(pattern);
+        if (match) {
+          const g1 = match[1];
+          const g2 = match[2];
+          const amount = extractAmount(g1);
+          const phone = g2.replace(/\D/g, '');
+          if (phone && amount > 0) {
+            return {
+              isTransfer: true,
+              direction: 'outgoing',
+              senderName: '',
+              senderPhone: '',
+              recipientName: '',
+              recipientPhone: normalizePhone(phone),
+              amount,
+              currency: extractCurrency(sms),
+              bankName: bank,
+              reference: extractReference(sms),
+            };
+          }
+        }
+      }
+    }
+
+    // Check outgoing bank patterns (name-based recipient)
+    for (const { bank, patterns } of OUTGOING_BANK_PATTERNS) {
+      for (const pattern of patterns) {
+        const match = sms.match(pattern);
+        if (match) {
+          const g1 = match[1];
+          const g2 = match[2];
+          let name = '';
+          let amount = 0;
+          if (/^[\d.,]+$/.test(g1)) {
+            amount = extractAmount(g1);
+            name = cleanName(g2);
+          } else if (/^[\d.,]+$/.test(g2)) {
+            amount = extractAmount(g2);
+            name = cleanName(g1);
+          }
+          if (amount > 0) {
+            return {
+              isTransfer: true,
+              direction: 'outgoing',
+              senderName: '',
+              senderPhone: '',
+              recipientName: name,
+              recipientPhone: '',
+              amount,
+              currency: extractCurrency(sms),
+              bankName: bank,
+              reference: extractReference(sms),
+            };
+          }
+        }
+      }
+    }
+
+    // Try generic outgoing patterns
+    for (const pattern of GENERIC_OUTGOING_PATTERNS) {
+      const match = sms.match(pattern);
+      if (match) {
+        const g1 = match[1];
+        const g2 = match[2];
+        // If g2 is a phone number
+        if (g2 && /^\d{5,15}$/.test(g2.replace(/\D/g, ''))) {
+          const amount = extractAmount(g1);
+          const phone = g2.replace(/\D/g, '');
+          if (amount > 0) {
+            return {
+              isTransfer: true,
+              direction: 'outgoing',
+              senderName: '',
+              senderPhone: '',
+              recipientName: '',
+              recipientPhone: normalizePhone(phone),
+              amount,
+              currency: extractCurrency(sms),
+              bankName: 'غير محدد',
+              reference: extractReference(sms),
+            };
+          }
+        }
+        // If g2 is a name
+        if (g2 && !/^[\d.,]+$/.test(g2)) {
+          const amount = extractAmount(g1);
+          const name = cleanName(g2);
+          if (name && amount > 0) {
+            return {
+              isTransfer: true,
+              direction: 'outgoing',
+              senderName: '',
+              senderPhone: '',
+              recipientName: name,
+              recipientPhone: '',
+              amount,
+              currency: extractCurrency(sms),
+              bankName: 'غير محدد',
+              reference: extractReference(sms),
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // ===== Check INCOMING wallet patterns (phone-based sender) =====
   for (const { bank, patterns } of WALLET_PATTERNS) {
     for (const pattern of patterns) {
       const match = sms.match(pattern);
@@ -229,8 +437,11 @@ export function parseTransferSms(sms: string): ParsedTransferNotification {
         if (phone && amount > 0) {
           return {
             isTransfer: true,
+            direction: 'incoming',
             senderName: '',
             senderPhone: normalizePhone(phone),
+            recipientName: '',
+            recipientPhone: '',
             amount,
             currency: extractCurrency(sms),
             bankName: bank,
@@ -241,7 +452,7 @@ export function parseTransferSms(sms: string): ParsedTransferNotification {
     }
   }
 
-  // Check known bank patterns
+  // Check known bank patterns (incoming)
   for (const { bank, patterns } of BANK_PATTERNS) {
     for (const pattern of patterns) {
       const match = sms.match(pattern);
@@ -267,8 +478,11 @@ export function parseTransferSms(sms: string): ParsedTransferNotification {
         if (name && amount > 0) {
           return {
             isTransfer: true,
+            direction: 'incoming',
             senderName: name,
             senderPhone: '',
+            recipientName: '',
+            recipientPhone: '',
             amount,
             currency: extractCurrency(sms),
             bankName: bank,
@@ -279,7 +493,7 @@ export function parseTransferSms(sms: string): ParsedTransferNotification {
     }
   }
 
-  // Try generic patterns
+  // Try generic incoming patterns
   for (const pattern of GENERIC_PATTERNS) {
     const match = sms.match(pattern);
     if (match) {
@@ -299,8 +513,11 @@ export function parseTransferSms(sms: string): ParsedTransferNotification {
       if (name && amount > 0) {
         return {
           isTransfer: true,
+          direction: 'incoming',
           senderName: name,
           senderPhone: '',
+          recipientName: '',
+          recipientPhone: '',
           amount,
           currency: extractCurrency(sms),
           bankName: 'غير محدد',

@@ -900,6 +900,22 @@ export type TransferNotificationStatus = 'unmatched' | 'matched' | 'confirmed' |
 export type TransferReportSource = 'sms' | 'whatsapp' | 'manual';
 export type TransferReportStatus = 'reported_not_detected' | 'reported_with_receipt' | 'matched' | 'confirmed' | 'rejected';
 
+export type TransferDirection = 'incoming' | 'outgoing' | 'unknown';
+export type TransferMatchType = 'supplier_payment' | 'expense' | 'account_transfer' | 'debt_collection' | 'none';
+
+export interface TransferMatchDetails {
+  matchType: TransferMatchType;
+  matchedSupplierId: string | null;
+  matchedCustomerId: string | null;
+  expenseCategory: string | null;
+  fromWallet: string | null;
+  toWallet: string | null;
+  walletType: string | null;
+  description: string;
+  matchedAt: number | null;
+  matchedBy: string | null;
+}
+
 export interface TransferNotification {
   id: string;
   rawSms: string;
@@ -912,6 +928,8 @@ export interface TransferNotification {
   reference: string;
   receivedAt: number;
   status: TransferNotificationStatus;
+  direction: TransferDirection;
+  matchDetails: TransferMatchDetails | null;
   matchedPendingOpId: string | null;
   matchedTransferReportId: string | null;
   matchedSaleId: string | null;
