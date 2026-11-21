@@ -108,12 +108,46 @@ public class SmsGatewayService extends Service {
                 if (gatewayEnabled && supabaseUrl != null && !supabaseUrl.isEmpty() && supabaseUrl.startsWith("https://")) {
                     new Thread(() -> {
                         sendHeartbeat();
+                        resetStuckClaims();
                         processOutbox();
                     }).start();
                 }
                 handler.postDelayed(this, POLL_INTERVAL_MS);
             }
         }, POLL_INTERVAL_MS);
+    }
+
+    private void resetStuckClaims() {
+        try {
+            // Reset rows that were claimed but never completed (service crashed/killed mid-send)
+            // Claims older than 5 minutes are considered stuck
+            String fiveMinAgo = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", java.util.Locale.US)
+                .format(new java.util.Date(System.currentTimeMillis() - 5 * 60 * 1000));
+            URL url = new URL(supabaseUrl + "/rest/v1/sms_outbox?status=eq.pending&claimed_at=lt." + fiveMinAgo);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("PATCH");
+            conn.setRequestProperty("apikey", supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + authToken());
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Prefer", "return=minimal");
+
+            JSONObject body = new JSONObject();
+            body.put("claimed_at", JSONObject.NULL);
+
+            conn.setDoOutput(true);
+            OutputStream os = conn.getOutputStream();
+            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            os.close();
+
+            int code = conn.getResponseCode();
+            conn.disconnect();
+
+            if (code == 200 || code == 204) {
+                Log.i(TAG, "Stuck claims reset completed");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "resetStuckClaims error: " + e.getMessage());
+        }
     }
 
     private void processOutbox() {

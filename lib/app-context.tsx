@@ -1777,10 +1777,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [loaded, settings.enableScreenshotDetection, session?.access_token]);
 
   // Toggle SMS gateway service in native SharedPreferences
+  // The outbox sender is independent of SMS monitoring — it must always run
+  // on Android so queued messages are delivered even if monitoring is off.
   useEffect(() => {
     if (!loaded) return;
-    setSmsGatewayEnabled(!!settings.enableSmsMonitoring);
-  }, [loaded, settings.enableSmsMonitoring]);
+    if (Platform.OS === 'android') {
+      setSmsGatewayEnabled(true);
+    }
+  }, [loaded]);
 
   const addAuditEntry = useCallback((action: AuditAction, entity: string, entityId: string, description: string) => {
     const entry: AuditEntry = {

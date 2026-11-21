@@ -696,6 +696,12 @@ export default function SettingsScreen() {
                     <Text style={[styles.retryBtnText, { color: colors.warning }]}>إعادة إرسال الفاشلة</Text>
                   </TouchableOpacity>
                 )}
+                {smsGateway.status.pendingCount > 0 && (
+                  <TouchableOpacity onPress={() => smsGateway.retryAllPending()} style={[styles.retryBtn, { backgroundColor: colors.info + '15' }]} activeOpacity={0.7}>
+                    <RefreshCw size={16} color={colors.info} strokeWidth={2} />
+                    <Text style={[styles.retryBtnText, { color: colors.info }]}>إعادة إرسال العالقة ({smsGateway.status.pendingCount})</Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
 

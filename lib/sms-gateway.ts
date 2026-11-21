@@ -377,10 +377,40 @@ export function useSmsGateway() {
     setStatus((prev) => ({ ...prev, active: false, sending: false }));
   }, []);
 
+  const resetStuckClaims = useCallback(async () => {
+    try {
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      await supabase
+        .from('sms_outbox')
+        .update({ claimed_at: null })
+        .eq('status', 'pending')
+        .not('claimed_at', 'is', null)
+        .lt('claimed_at', fiveMinAgo);
+    } catch {
+      // non-fatal
+    }
+  }, []);
+
+  const retryAllPending = useCallback(async () => {
+    // Reset stuck claims (claimed_at set but status still pending)
+    await resetStuckClaims();
+    // On Android, ensure the native gateway service is enabled and running
+    if (Platform.OS === 'android') {
+      try {
+        NativeModules.BusinessHoursNative?.setSmsGatewayEnabled(true);
+      } catch {
+        // non-fatal
+      }
+    }
+    // Trigger immediate processing on web
+    if (activeRef.current) void processOutbox();
+    await loadCounts();
+  }, [resetStuckClaims, processOutbox, loadCounts]);
+
   const retryFailed = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    await supabase.from('sms_outbox').update({ status: 'pending', attempts: 0, last_error: null }).eq('status', 'failed').eq('user_id', user.id);
+    await supabase.from('sms_outbox').update({ status: 'pending', attempts: 0, last_error: null, claimed_at: null }).eq('status', 'failed').eq('user_id', user.id);
     if (activeRef.current) void processOutbox();
     await loadCounts();
   }, [processOutbox, loadCounts]);
@@ -399,5 +429,5 @@ export function useSmsGateway() {
     };
   }, [start, loadCounts]);
 
-  return { status, start, stop, retryFailed, refreshCounts: loadCounts };
+  return { status, start, stop, retryFailed, retryAllPending, resetStuckClaims, refreshCounts: loadCounts };
 }
