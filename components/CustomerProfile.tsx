@@ -20,6 +20,7 @@ import {
   daysUntilExpiry, formatExpiry, fillSmsTemplate,
 } from '@/lib/format';
 import { exportXlsx } from '@/lib/xlsx-export';
+import { supabaseUrl } from '@/lib/supabase';
 import type { Customer, Transaction, TelecomSale, PaymentStatus } from '@/types';
 
 type Colors = ReturnType<typeof useTheme>['colors'];
@@ -263,12 +264,16 @@ export function CustomerProfile({
 
   const handleShareLink = () => {
     if (!customer) return;
+    const url = Platform.OS === 'web'
+      ? `${window.location.origin}/customer-view?id=${customer.id}`
+      : `${supabaseUrl}/functions/v1/customer-portal?id=${customer.id}`;
     if (Platform.OS === 'web') {
-      const url = `${window.location.origin}/customer-view?id=${customer.id}`;
       navigator.clipboard?.writeText(url).then(() => {
         setLinkCopied(true);
         setTimeout(() => setLinkCopied(false), 2500);
       }).catch(() => {});
+    } else {
+      Linking.openURL(url).catch(() => {});
     }
   };
 

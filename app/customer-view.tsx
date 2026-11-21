@@ -4,6 +4,7 @@ import {
   Platform,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { supabaseUrl } from '@/lib/supabase';
 import {
   Phone, Crown, Wallet, BookOpen, Clock, Calendar,
   TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
@@ -131,8 +132,7 @@ export default function CustomerViewPage() {
       return;
     }
 
-    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl) {
+    if (!supabaseUrl || supabaseUrl === 'https://placeholder.supabase.co') {
       setError('إعدادات الخادم غير متوفرة');
       setLoading(false);
       return;
