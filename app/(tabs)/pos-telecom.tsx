@@ -35,7 +35,7 @@ type Colors = ReturnType<typeof useTheme>['colors'];
 export default function TelecomPOSScreen() {
   const {
     settings, telecomCompanies, simCards, subAgents, customers, telecomSales,
-    addTelecomSale, updateTelecomSale, deleteTelecomSale, checkAutoRenewals,
+    addTelecomSale, updateTelecomSale, deleteTelecomSale, cancelTelecomSale, checkAutoRenewals,
     addCustomer, updateCustomer, recordPayment,
     addDebtReminder, activeShift, currentStaff, readOnlyMode,
     agentBundles, logOutboundSms, updateSubAgent, phoneNumbers,
@@ -1502,7 +1502,7 @@ export default function TelecomPOSScreen() {
       walletType: paymentMethod === 'wallet' ? selectedWalletType : null,
       reminderDate: reminderDate ? new Date(reminderDate).getTime() : null,
       debtChange,
-      followUpStatus: remaining > 0 ? 'not_contacted' : 'collected',
+      followUpStatus: effectiveRemaining > 0 ? 'not_contacted' : 'collected',
       cancellationDeduction: 0,
       cancelledAt: null,
       customerBalanceBefore,
@@ -1703,7 +1703,7 @@ export default function TelecomPOSScreen() {
     if (amount <= 0) return;
     handleCollectDebt(collectSale.customerId, amount);
     if (amount >= collectSale.remaining) {
-      updateTelecomSale(collectSale.id, { remaining: 0, paid: collectSale.total, paymentMethod: collectPaymentMethod, walletType: collectPaymentMethod === 'wallet' ? collectWalletType : null, debtChange: 0, followUpStatus: 'collected', paymentDate: Date.now() });
+      updateTelecomSale(collectSale.id, { remaining: 0, paid: collectSale.total, paymentMethod: collectPaymentMethod, walletType: collectPaymentMethod === 'wallet' ? collectWalletType : null, followUpStatus: 'collected', paymentDate: Date.now() });
     } else {
       updateTelecomSale(collectSale.id, { remaining: collectSale.remaining - amount, paid: collectSale.paid + amount, paymentMethod: collectPaymentMethod, walletType: collectPaymentMethod === 'wallet' ? collectWalletType : null, followUpStatus: 'contacted', paymentDate: Date.now() });
     }
@@ -1739,15 +1739,7 @@ export default function TelecomPOSScreen() {
   const confirmCancelSale = () => {
     if (!cancelSale) return;
     const deduction = parseFloat(cancelDeduction) || 0;
-    updateTelecomSale(cancelSale.id, {
-      operationType: 'cancelled',
-      cancelledAt: Date.now(),
-      cancellationDeduction: deduction,
-      followUpStatus: 'not_contacted',
-    });
-    if (cancelSale.customerId && cancelSale.remaining > 0) {
-      recordPayment(cancelSale.customerId, 0);
-    }
+    cancelTelecomSale(cancelSale.id);
     if (settings.enableSms && cancelSale.customerPhone.trim()) {
       void logOutboundSms(
         cancelSale.customerPhone.trim(),

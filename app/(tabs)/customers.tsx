@@ -349,6 +349,7 @@ export default function CustomersScreen() {
       case 'fresh': return colors.success;
       case 'warning': return colors.warning;
       case 'critical': return colors.danger;
+      default: return colors.success;
     }
   };
 
@@ -359,6 +360,7 @@ export default function CustomersScreen() {
       case 'fresh': return colors.success + '15';
       case 'warning': return colors.warning + '15';
       case 'critical': return colors.danger + '15';
+      default: return colors.success + '15';
     }
   };
 

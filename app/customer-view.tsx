@@ -141,7 +141,7 @@ export default function CustomerViewPage() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    fetch(`${supabaseUrl}/functions/v1/customer-portal?id=${params.id}`, { signal: controller.signal })
+    fetch(`${supabaseUrl}/functions/v1/customer-portal?id=${encodeURIComponent(params.id)}`, { signal: controller.signal })
       .then(async (resp) => {
         clearTimeout(timeoutId);
         if (!resp.ok) {

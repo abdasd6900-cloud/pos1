@@ -343,7 +343,7 @@ export default function RetailPOSScreen() {
       remaining: effectiveRemaining,
       paymentMethod,
       splitPayment: null,
-      debtChange: paymentMethod === 'balance' ? balanceDebtChange : debtChange,
+      debtChange: isBalancePayment ? balanceDebtChange : debtChange,
       loyaltyEarned: settings.enableLoyalty && customerId ? Math.floor(total * settings.loyaltyRate) : 0,
       note: notes.trim(),
       smsSent: settings.enableSms && !!customerId,

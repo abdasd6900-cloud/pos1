@@ -21,6 +21,28 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return new Response(
+      JSON.stringify({ error: "Unauthorized" }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKeyEnv = Deno.env.get("SUPABASE_ANON_KEY");
+  if (supabaseUrl && anonKeyEnv) {
+    const userResp = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { "apikey": anonKeyEnv, "Authorization": authHeader },
+    });
+    if (!userResp.ok) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+  }
+
   try {
     const { image } = await req.json();
     if (!image || typeof image !== "string") {

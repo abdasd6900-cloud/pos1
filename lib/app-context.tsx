@@ -3337,6 +3337,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       storage.saveTelecomSales(next);
       renewed.forEach((r) => {
         addAuditEntry('sale', 'telecom_sale', r.id, `تجديد تلقائي: ${r.simName} - ${r.customerName}`);
+        if (r.customerId && r.debtChange) {
+          setCustomers((prev) => {
+            const next = prev.map((c) => c.id === r.customerId ? { ...c, debt: Math.max(0, c.debt + r.debtChange), updatedAt: now } : c);
+            storage.saveCustomers(next);
+            return next;
+          });
+        }
       });
       return next;
     });
