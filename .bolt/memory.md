@@ -8,17 +8,21 @@
 - Companion web dashboard for inventory, sales, and debt tracking.
 - Primary users are Arabic-speaking shop owners/operators.
 - Backend uses Supabase for the SMS outbox queue.
+- Customer balance system requested: dual wallets — "رصيد التطبيق" (in-app digital balance) and "رصيد النقدي" (cash balance).
 
 ## Brand personality & voice
 
 - Arabic-first UI and explanations.
 - Clear, direct technical clarification; domain terms explained in plain Arabic.
+- Confirm understanding before implementing when requirements are ambiguous.
 
 ## Visual design & UX direction
 
 - Arabic RTL layout expected throughout the app and dashboard.
 - Telecom-retail workflow: sales entry, customer lookup via phone/SIM number, SMS-driven interactions.
 - Settings page includes SMS gateway controls with retry buttons for pending and failed messages.
+- Customer page to include balance top-up UI with two balance types (app / cash).
+- Sales flow to include balance-source selector (app vs. cash) determining which wallet is debited.
 
 ## Decisions, constraints & rationale
 
@@ -37,3 +41,6 @@
 - Handling policy for unknown customers (reject, prompt, or auto-create) — undecided.
 - Exact scope of web dashboard vs. mobile app features — to be clarified.
 - Debt tracking mechanics and SMS response templates — details pending.
+- Dual-balance semantics pending clarification: does "رصيد النقدي" mean cash held in trust by the shop owner for the customer, or simply a payment-method tag? Affects data model and deduction logic.
+- Whether a sale can split payment across both balances or must use one exclusively.
+- Whether negative balances are allowed or blocked at sale time.
