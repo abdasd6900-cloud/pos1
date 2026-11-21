@@ -45,12 +45,15 @@ export interface SignUpData {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-const AUTH_REQUEST_TIMEOUT_MS = 8000;
+const AUTH_REQUEST_TIMEOUT_MS = 20000;
 const AUTH_MAX_RETRIES = 3;
 const AUTH_RETRY_DELAY_MS = 2000;
 
 function phoneToEmail(phone: string): string {
-  const cleaned = phone.replace(/\D/g, '');
+  const normalized = phone
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - '٠'.charCodeAt(0)))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - '۰'.charCodeAt(0)));
+  const cleaned = normalized.replace(/\D/g, '');
   return `${cleaned}@sahab-pos.app`;
 }
 

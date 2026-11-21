@@ -9,7 +9,7 @@ interface SupabaseExtra {
 }
 
 const supabaseExtra = Constants.expoConfig?.extra as SupabaseExtra | undefined;
-const supabaseUrl = process.env.SUPABASE_URL || supabaseExtra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+export const supabaseUrl = process.env.SUPABASE_URL || supabaseExtra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 export const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || supabaseExtra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
 
 if (!(process.env.SUPABASE_URL || supabaseExtra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL) || !(process.env.SUPABASE_ANON_KEY || supabaseExtra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY)) {

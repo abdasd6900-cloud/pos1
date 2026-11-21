@@ -50,7 +50,7 @@ import { syncBusinessHoursToNative, startScreenshotDetection, stopScreenshotDete
 import { buildCustomerFiles, type CustomerFile } from './customer-files';
 import { shareBackupFile, pickBackupFile } from './backup-export';
 import { uploadCloudSnapshot, listCloudSnapshots, downloadCloudSnapshot, deleteCloudSnapshot, type CloudSnapshot, type FullBackupData } from './cloud-backup';
-import { supabase } from './supabase';
+import { supabase, supabaseUrl } from './supabase';
 import { useAuth } from './auth-context';
 
 interface AppData {
@@ -1780,13 +1780,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Screenshot detection: pass Supabase credentials to native module and start/stop service
   useEffect(() => {
     if (!loaded) return;
-    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+    const url = supabaseUrl;
     // Pass the user's authenticated access token so native services can make
     // RLS-protected Supabase calls. The anon key won't work after tightening RLS.
     const accessToken = session?.access_token || '';
-    if (supabaseUrl && accessToken) {
-      setNativeSupabaseCredentials(supabaseUrl, accessToken);
-      setNativeSupabaseCredentialsV2(supabaseUrl, accessToken, session?.user?.id ?? '');
+    if (url && accessToken) {
+      setNativeSupabaseCredentials(url, accessToken);
+      setNativeSupabaseCredentialsV2(url, accessToken, session?.user?.id ?? '');
     }
     if (settings.enableScreenshotDetection) {
       startScreenshotDetection();

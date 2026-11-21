@@ -46,7 +46,7 @@
       "barStyle": "default"
     },
     "updates": {
-      "url": "https://u.expo.dev/pkpgxtvdxkqfadpqvvoz",
+      "url": "https://u.expo.dev/nguksqxmoaborxorbquw",
       "enabled": true,
       "fallbackToCacheTimeout": 0,
       "checkAutomaticallyOnLaunch": "ON_LOAD"
@@ -71,8 +71,10 @@
     },
     "extra": {
       "eas": {
-        "projectId": "pkpgxtvdxkqfadpqvvoz"
-      }
+        "projectId": "nguksqxmoaborxorbquw"
+      },
+      "supabaseUrl": "https://nguksqxmoaborxorbquw.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndWtzcXhtb2Fib3J4b3JicXV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyNzUwNzUsImV4cCI6MjExMDg1MTA3NX0.B-Ky-8QIW5hmYY309YojZ4cbca_dqc-hgnzTjCPCnBM"
     }
   }
 }
