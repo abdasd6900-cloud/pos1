@@ -138,16 +138,26 @@ export default function CustomerViewPage() {
       return;
     }
 
-    fetch(`${supabaseUrl}/functions/v1/customer-portal?id=${params.id}`)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    fetch(`${supabaseUrl}/functions/v1/customer-portal?id=${params.id}`, { signal: controller.signal })
       .then(async (resp) => {
+        clearTimeout(timeoutId);
         if (!resp.ok) {
           const body = await resp.json().catch(() => ({}));
-          throw new Error(body.error || 'تعذر جلب البيانات');
+          throw new Error(body.error || `تعذر جلب البيانات (${resp.status})`);
         }
         return resp.json();
       })
       .then((d: PortalResponse) => setData(d))
-      .catch((e) => setError(e.message || 'حدث خطأ'))
+      .catch((e) => {
+        clearTimeout(timeoutId);
+        if (e.name === 'AbortError') setError('انتهت مهلة الاتصال — تحقق من الإنترنت وحاول مجدداً');
+        else if (e.message === 'Customer not found') setError('الزبون غير موجود — تأكد من أن البيانات تمت مزامنتها من التطبيق');
+        else if (e.message === 'Failed to fetch data') setError('تعذر جلب البيانات من الخادم — حاول لاحقاً');
+        else setError(e.message || 'حدث خطأ غير متوقع');
+      })
       .finally(() => setLoading(false));
   }, [params.id]);
 

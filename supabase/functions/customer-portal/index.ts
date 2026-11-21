@@ -5,6 +5,8 @@ interface Customer {
   tier: string;
   debt: number;
   balance: number;
+  appBalance: number;
+  cashBalance: number;
   creditLimit: number;
   loyaltyPoints: number;
   notes: string;
@@ -82,11 +84,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Use service role key to bypass RLS — the function only returns
-    // data for the single requested customer, so no cross-tenant leakage.
     const collections = ["customers", "transactions", "telecomSales", "settings"];
-    const filterParam = `in.(${collections.map((c) => `"${c}"`).join(",")})`;
-    const fetchUrl = `${supabaseUrl}/rest/v1/data_sync?collection=${filterParam}&select=collection,data`;
+    const filterParam = `in.(${collections.join(",")})`;
+    const fetchUrl = `${supabaseUrl}/rest/v1/data_sync?collection=${encodeURIComponent(filterParam)}&select=collection,data`;
     const resp = await fetch(fetchUrl, {
       headers: {
         "apikey": serviceRoleKey,
@@ -96,6 +96,8 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!resp.ok) {
+      const errBody = await resp.text().catch(() => "");
+      console.error("data_sync fetch failed", resp.status, errBody);
       return new Response(
         JSON.stringify({ error: "Failed to fetch data" }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -146,6 +148,8 @@ Deno.serve(async (req: Request) => {
           tier: customer.tier,
           debt: customer.debt,
           balance: customer.balance,
+          appBalance: customer.appBalance ?? 0,
+          cashBalance: customer.cashBalance ?? 0,
           creditLimit: customer.creditLimit,
           loyaltyPoints: customer.loyaltyPoints,
           notes: customer.notes,
@@ -181,7 +185,8 @@ Deno.serve(async (req: Request) => {
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-  } catch {
+  } catch (err) {
+    console.error("customer-portal error", err);
     return new Response(
       JSON.stringify({ error: "Server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
