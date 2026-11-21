@@ -172,7 +172,7 @@ export default function CustomerViewPage() {
     return {
       totalSpent,
       totalPaid,
-      totalDebt: data.customer.debt + data.telecomSales.reduce((sum, s) => sum + s.remaining, 0),
+      totalDebt: Math.max(0, data.customer.debt),
       count: data.transactions.length + data.telecomSales.length,
     };
   }, [data]);
