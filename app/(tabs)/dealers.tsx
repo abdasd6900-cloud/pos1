@@ -37,11 +37,12 @@ export default function DealersManagementScreen() {
   const [processingEsim, setProcessingEsim] = useState<EsimRequest | null>(null);
   const lastPendingIdRef = useRef<string | null>(null);
 
-  // Poll for new pending recharge requests and show browser notifications
+  // Poll for new pending recharge requests and show browser notifications (only when dealers exist)
   useEffect(() => {
     if (!session?.user?.id) return;
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     if (!('Notification' in window)) return;
+    if (dealers.length === 0) return;
 
     if (Notification.permission === 'default') {
       void Notification.requestPermission();
@@ -90,9 +91,9 @@ export default function DealersManagementScreen() {
     };
 
     void poll();
-    const interval = setInterval(() => void poll(), 20000);
+    const interval = setInterval(() => void poll(), 30000);
     return () => clearInterval(interval);
-  }, [session?.user?.id]);
+  }, [session?.user?.id, dealers.length]);
 
   const autoSyncPricing = useCallback(async (ownerId: string, existingPricing: PricingEntry[]) => {
     const [bundles, agentBundles] = await Promise.all([
@@ -155,6 +156,8 @@ export default function DealersManagementScreen() {
     return changed;
   }, []);
 
+  const pricingSyncedRef = useRef(false);
+
   const fetchData = useCallback(async () => {
     if (!session?.user?.id) return;
     setLoading(true);
@@ -163,11 +166,14 @@ export default function DealersManagementScreen() {
       let pricingRes = await supabase.from('dealer_pricing').select('*').eq('owner_user_id', session.user.id).order('company_name', { ascending: false });
       let existingPricing = (pricingRes.data || []) as PricingEntry[];
 
-      const changed = await autoSyncPricing(session.user.id, existingPricing);
-
-      if (changed) {
-        pricingRes = await supabase.from('dealer_pricing').select('*').eq('owner_user_id', session.user.id).order('company_name', { ascending: false });
-        existingPricing = (pricingRes.data || []) as PricingEntry[];
+      // Only auto-sync pricing once per session to avoid repeated DB writes on refresh
+      if (!pricingSyncedRef.current) {
+        const changed = await autoSyncPricing(session.user.id, existingPricing);
+        pricingSyncedRef.current = true;
+        if (changed) {
+          pricingRes = await supabase.from('dealer_pricing').select('*').eq('owner_user_id', session.user.id).order('company_name', { ascending: false });
+          existingPricing = (pricingRes.data || []) as PricingEntry[];
+        }
       }
 
       const [dealersRes, reqRes, simsRes, esimRes, customersRes] = await Promise.all([

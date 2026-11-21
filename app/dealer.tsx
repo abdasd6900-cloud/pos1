@@ -373,7 +373,7 @@ function DealerDashboard({
     };
 
     void poll();
-    const interval = setInterval(() => void poll(), 15000);
+    const interval = setInterval(() => void poll(), 30000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -461,6 +461,7 @@ function DashboardTab({ token, dealer, onDealerUpdate }: { token: string; dealer
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState('');
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -477,7 +478,7 @@ function DashboardTab({ token, dealer, onDealerUpdate }: { token: string; dealer
     }
   }, [api]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (!loadedRef.current) { loadedRef.current = true; void load(); } }, [load]);
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} onRetry={load} />;
@@ -525,6 +526,7 @@ function CustomersTab({ token }: { token: string }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<DealerCustomer | null>(null);
   const [form, setForm] = useState({ customer_name: '', phone_number: '', contact_phone: '', company_name: '', status: 'active' });
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -535,7 +537,7 @@ function CustomersTab({ token }: { token: string }) {
     } catch {} finally { setLoading(false); }
   }, [api]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (!loadedRef.current) { loadedRef.current = true; void load(); } }, [load]);
 
   const handleSave = async () => {
     if (!form.customer_name.trim()) return;
@@ -620,6 +622,7 @@ function RequestsTab({ token, dealer }: { token: string; dealer: DealerInfo }) {
   const [filter, setFilter] = useState('all');
   const [showNew, setShowNew] = useState(false);
   const [offers, setOffers] = useState<PricingEntry[]>([]);
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -635,7 +638,7 @@ function RequestsTab({ token, dealer }: { token: string; dealer: DealerInfo }) {
     } catch {} finally { setLoading(false); }
   }, [api]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (!loadedRef.current) { loadedRef.current = true; void load(); } }, [load]);
 
   const filtered = filter === 'all' ? requests : requests.filter((r) => r.status === filter);
 
@@ -801,6 +804,7 @@ function OffersTab({ token }: { token: string }) {
   const [editingPrice, setEditingPrice] = useState<{ pricingId: string; currentPrice: number } | null>(null);
   const [newPrice, setNewPrice] = useState('');
   const [esimModal, setEsimModal] = useState<PricingEntry | null>(null);
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -816,7 +820,7 @@ function OffersTab({ token }: { token: string }) {
     } catch {} finally { setLoading(false); }
   }, [api]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (!loadedRef.current) { loadedRef.current = true; void load(); } }, [load]);
 
   const getCustomPrice = (pricingId: string): number | null => {
     const cp = customPrices.find((c) => c.pricing_id === pricingId);
@@ -973,6 +977,7 @@ function DebtsTab({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [collectingDebt, setCollectingDebt] = useState<DealerCustomerDebt | null>(null);
   const [collectAmount, setCollectAmount] = useState('');
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -983,7 +988,7 @@ function DebtsTab({ token }: { token: string }) {
     } catch {} finally { setLoading(false); }
   }, [api]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (!loadedRef.current) { loadedRef.current = true; void load(); } }, [load]);
 
   const handleCollect = async () => {
     if (!collectingDebt) return;
@@ -1099,6 +1104,7 @@ function SimsTab({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ sim_number: '', company_name: '', bundle_name: '' });
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1109,7 +1115,7 @@ function SimsTab({ token }: { token: string }) {
     } catch {} finally { setLoading(false); }
   }, [api]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (!loadedRef.current) { loadedRef.current = true; void load(); } }, [load]);
 
   const handleAdd = async () => {
     if (!form.sim_number.trim()) return;
@@ -1184,8 +1190,11 @@ function NotificationsTab({ token }: { token: string }) {
   const api = useApi(token);
   const [notifications, setNotifications] = useState<DealerNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const loadedRef = useRef(false);
 
   useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
     (async () => {
       try {
         const resp = await api('/notifications');
@@ -1234,8 +1243,11 @@ function TransactionsTab({ token }: { token: string }) {
   const api = useApi(token);
   const [txns, setTxns] = useState<DealerTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const loadedRef = useRef(false);
 
   useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
     (async () => {
       try {
         const resp = await api('/transactions');
