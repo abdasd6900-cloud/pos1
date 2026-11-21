@@ -8,10 +8,6 @@
     "customer-portal": {
       "hasChanged": false,
       "hash": "6837390aab353f508a9cf2c0bd674bad2793cde58a0958278513ad6396cad6b3"
-    },
-    "dealer-portal": {
-      "hasChanged": false,
-      "hash": "fbf32b4ca765b4d60d4b17ac8280292e46a38eb33e22f195f2cac7ee4f81bbe5"
     }
   }
 }

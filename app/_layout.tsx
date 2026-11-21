@@ -63,7 +63,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
     const isInAuthGroup = segments[0] === 'login';
-    const isPublicRoute = segments[0] === 'customer-view' || segments[0] === 'dealer';
+    const isPublicRoute = segments[0] === 'customer-view';
     if (!session && !isInAuthGroup && !isPublicRoute) {
       router.replace('/login');
     } else if (session && isInAuthGroup) {
@@ -193,7 +193,6 @@ function AppShell() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="login" />
           <Stack.Screen name="customer-view" />
-          <Stack.Screen name="dealer" />
           <Stack.Screen name="messages-app" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="+not-found" />

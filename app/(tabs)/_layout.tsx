@@ -45,7 +45,6 @@ const pageTitles: Record<string, string> = {
   'pos-telecom': 'بيع الاتصالات',
   numbers: 'الأرقام',
   admin: 'لوحة المدير',
-  dealers: 'إدارة الموزعين',
 };
 
 function WebPageTitle() {
@@ -206,7 +205,6 @@ export default function TabLayout() {
         <Tabs.Screen name="pos-telecom" options={hiddenScreen} />
         <Tabs.Screen name="numbers" options={settings.businessMode === 'telecom' ? { title: 'الأرقام' } : hiddenScreen} />
         <Tabs.Screen name="admin" options={hiddenScreen} />
-        <Tabs.Screen name="dealers" options={hiddenScreen} />
         </Tabs>
       </View>
     </>
