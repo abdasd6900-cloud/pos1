@@ -1,5 +1,6 @@
 import type { PendingOperation, PendingOperationSource, Customer, TelecomCompany } from '@/types';
 import { extractSimNumbers, guessCompanyFromMessage, guessBundleFromMessage } from './sms-parser';
+import { parseTransferSms } from './transfer-parser';
 
 export function createPendingOperationFromMessage(
   message: string,
@@ -11,10 +12,20 @@ export function createPendingOperationFromMessage(
   generateId: () => string,
 ): PendingOperation | null {
   const { primarySimNumber } = extractSimNumbers(message);
-  if (!primarySimNumber) return null;
+  const transferParsed = parseTransferSms(message);
 
+  let operationType: PendingOperation['operationType'] = 'unknown';
+  if (transferParsed.isTransfer) {
+    operationType = 'transfer';
+  } else if (primarySimNumber) {
+    operationType = 'recharge';
+  }
+
+  if (!primarySimNumber && !transferParsed.isTransfer) return null;
+
+  const simNumber = primarySimNumber || '';
   const matchedCustomer = customers.find(
-    (c) => c.phone === senderPhone || c.phone === primarySimNumber,
+    (c) => c.phone === senderPhone || c.phone === simNumber,
   );
 
   const companyGuess = guessCompanyFromMessage(message, companies);
@@ -22,10 +33,11 @@ export function createPendingOperationFromMessage(
 
   return {
     id: generateId(),
+    operationType,
     source,
     senderPhone,
     senderName: senderName || (matchedCustomer?.name ?? ''),
-    simNumber: primarySimNumber,
+    simNumber,
     originalMessage: message,
     status: 'pending',
     customerMatched: !!matchedCustomer,

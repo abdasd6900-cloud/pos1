@@ -868,9 +868,11 @@ export interface LearnedSmsRule {
 
 export type PendingOperationSource = 'sms' | 'whatsapp' | 'manual';
 export type PendingOperationStatus = 'pending' | 'executed' | 'cancelled';
+export type PendingOperationType = 'recharge' | 'transfer' | 'unknown';
 
 export interface PendingOperation {
   id: string;
+  operationType: PendingOperationType;
   source: PendingOperationSource;
   senderPhone: string;
   senderName: string;

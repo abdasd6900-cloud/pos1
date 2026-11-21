@@ -784,6 +784,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   if (learnedAction === 'pending_op') {
                     const op: PendingOperation = {
                       id: storage.generateId(),
+                      operationType: 'recharge' as const,
                       source: 'sms' as const,
                       senderPhone: reply.senderPhone ?? '',
                       senderName: result.customerName ?? '',
@@ -889,6 +890,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   // Always create a pending operation so the recharge request appears in the pending tab
                   const op: PendingOperation = {
                     id: storage.generateId(),
+                    operationType: 'recharge' as const,
                     source: 'sms' as const,
                     senderPhone: reply.senderPhone ?? '',
                     senderName: result.customerName ?? '',
@@ -1121,6 +1123,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 if (result.action === 'esim_transfer_to_staff') {
                   const op: PendingOperation = {
                     id: storage.generateId(),
+                    operationType: 'unknown' as const,
                     source: 'sms' as const,
                     senderPhone: reply.senderPhone ?? '',
                     senderName: result.customerName ?? '',
@@ -1159,6 +1162,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   });
                   const op: PendingOperation = {
                     id: storage.generateId(),
+                    operationType: 'recharge' as const,
                     source: 'sms' as const,
                     senderPhone: reply.senderPhone ?? '',
                     senderName: result.customerName ?? '',
@@ -1221,6 +1225,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   }
                   const op: PendingOperation = {
                     id: storage.generateId(),
+                    operationType: 'recharge' as const,
                     source: 'sms' as const,
                     senderPhone: reply.senderPhone ?? '',
                     senderName: result.customerName ?? '',
@@ -1247,6 +1252,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     // eSIM recharge request without a sim number
                     const op: PendingOperation = {
                       id: storage.generateId(),
+                      operationType: 'unknown' as const,
                       source: 'sms' as const,
                       senderPhone: reply.senderPhone ?? '',
                       senderName: result.customerName ?? '',
@@ -1441,6 +1447,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           } else if (row.event_type === 'pendingOperation') {
             const op: PendingOperation = {
               id: storage.generateId(),
+              operationType: 'unknown' as const,
               source: (row.source ?? 'sms') as 'sms',
               senderPhone: row.sender_phone,
               senderName: '',
@@ -1588,6 +1595,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (duplicate) continue;
         const op: PendingOperation = {
           id: storage.generateId(),
+          operationType: 'unknown' as const,
           source: operation.source,
           senderPhone: operation.senderPhone,
           senderName: '',
@@ -3644,6 +3652,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (result.createPendingOp) {
           const op: PendingOperation = {
             id: storage.generateId(),
+            operationType: 'recharge' as const,
             source: 'sms' as const,
             senderPhone: s.customerPhone,
             senderName: s.customerName,

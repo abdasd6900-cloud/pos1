@@ -1,5 +1,6 @@
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Alert, TextInput, Modal, Linking } from 'react-native';
 import { useState, useMemo } from 'react';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Clock, MessageSquare, Smartphone, Check, X, Trash2,
@@ -11,7 +12,9 @@ import { useTheme } from '@/lib/theme-context';
 import { formatDateTime, formatCurrency } from '@/lib/format';
 import { openWhatsApp } from '@/lib/customer-classifier';
 import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from '@/lib/sms-learner';
-import type { PendingOperation, FreezeRequest, TelecomSale, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport, LearnedSmsCategory, LearnedSmsRule } from '@/types';
+import { parseTransferSms } from '@/lib/transfer-parser';
+import { matchNameAgainstCustomers } from '@/lib/name-matcher';
+import type { PendingOperation, FreezeRequest, TelecomSale, SupportTicket, UnrecognizedMessage, TransferNotification, TransferReport, LearnedSmsCategory, LearnedSmsRule, Customer, NameMapping } from '@/types';
 
 type TabKey = 'pending' | 'freeze' | 'support' | 'learning' | 'reactivation' | 'transfers' | 'executed';
 
@@ -25,6 +28,7 @@ export default function PendingOperationsScreen() {
     ignoreUnrecognizedMessage, deleteUnrecognizedMessage,
     transferNotifications, transferReports, confirmTransferNotification, rejectTransferNotification,
     deleteTransferNotification, linkTransferNotification, pendingOperations: pendingOpsAll,
+    nameMappings,
   } = useApp();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -33,6 +37,10 @@ export default function PendingOperationsScreen() {
   const [replyText, setReplyText] = useState('');
   const [teachModal, setTeachModal] = useState<UnrecognizedMessage | null>(null);
   const [waLoadingId, setWaLoadingId] = useState<string | null>(null);
+  const router = useRouter();
+  const [transferModal, setTransferModal] = useState<PendingOperation | null>(null);
+  const [transferMatches, setTransferMatches] = useState<{ customerId: string | null; customerName: string; confidence: number }[]>([]);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
   const pending = useMemo(() => pendingOperations.filter((o) => o.status === 'pending'), [pendingOperations]);
   const executed = useMemo(() => pendingOperations.filter((o) => o.status !== 'pending'), [pendingOperations]);
@@ -110,9 +118,72 @@ export default function PendingOperationsScreen() {
     );
   };
 
+  const buildTransferMatches = (op: PendingOperation) => {
+    const parsed = parseTransferSms(op.originalMessage);
+    const senderName = parsed.isTransfer ? parsed.senderName : op.senderName || op.customerName;
+    const match = matchNameAgainstCustomers(senderName, customers, nameMappings);
+    const matches: { customerId: string | null; customerName: string; confidence: number }[] = [];
+    if (match) {
+      matches.push(match);
+      customers.forEach((c) => {
+        if (c.id !== match.customerId) {
+          const m = matchNameAgainstCustomers(senderName, [c], nameMappings);
+          if (m && m.confidence > 0.5) {
+            matches.push({ customerId: c.id, customerName: c.name, confidence: m.confidence });
+          }
+        }
+      });
+    }
+    if (matches.length === 0) {
+      matches.push({ customerId: null, customerName: 'زبون جديد', confidence: 0 });
+    }
+    return matches;
+  };
+
+  const openTransferModal = (op: PendingOperation) => {
+    const matches = buildTransferMatches(op);
+    setTransferMatches(matches);
+    setSelectedMatchId(matches[0]?.customerId ?? null);
+    setTransferModal(op);
+  };
+
+  const handleConfirmTransferCollection = () => {
+    if (!transferModal) return;
+    executePendingOperation(transferModal.id);
+    const matchName = transferMatches.find((m) => m.customerId === selectedMatchId)?.customerName ?? 'زبون جديد';
+    setTransferModal(null);
+    setTransferMatches([]);
+    setSelectedMatchId(null);
+    Alert.alert('تم التحصيل', `تم تحصيل الحوالة وتنفيذ العملية للزبون: ${matchName}`);
+  };
+
   const handleExecute = (op: PendingOperation) => {
-    executePendingOperation(op.id);
-    Alert.alert('تم التنفيذ', 'تم نقل العملية إلى السجل. يمكنك الآن فتح شاشة البيع لإتمام المعاملة.');
+    const opType = op.operationType ?? 'recharge';
+    if (opType === 'recharge') {
+      executePendingOperation(op.id);
+      router.push({
+        pathname: '/(tabs)/pos-telecom',
+        params: { sim: op.simNumber, phone: op.senderPhone, name: op.customerName || op.senderName },
+      });
+    } else if (opType === 'transfer') {
+      openTransferModal(op);
+    } else {
+      Alert.alert(
+        'نوع العملية غير محدد',
+        'لم يتم التعرف على نوع الرسالة. اختر كيفية التنفيذ:',
+        [
+          { text: 'تراجع', style: 'cancel' },
+          { text: 'تنفيذ كشحن', onPress: () => {
+            executePendingOperation(op.id);
+            router.push({
+              pathname: '/(tabs)/pos-telecom',
+              params: { sim: op.simNumber, phone: op.senderPhone, name: op.customerName || op.senderName },
+            });
+          }},
+          { text: 'ربط بحوالة', onPress: () => openTransferModal(op) },
+        ],
+      );
+    }
   };
 
   const handleCancel = (op: PendingOperation) => {
@@ -260,13 +331,22 @@ export default function PendingOperationsScreen() {
     const sourceIcon = op.source === 'sms' ? <MessageSquare size={16} color={colors.info} strokeWidth={2} /> : op.source === 'whatsapp' ? <MessageSquare size={16} color={colors.success} strokeWidth={2} /> : <Smartphone size={16} color={colors.primary} strokeWidth={2} />;
     const sourceLabel = op.source === 'sms' ? 'SMS' : op.source === 'whatsapp' ? 'واتساب' : 'يدوي';
     const company = telecomCompanies.find((c) => c.id === op.companyGuess);
+    const opType = op.operationType ?? 'recharge';
+    const opTypeLabel = opType === 'transfer' ? 'حوالة' : opType === 'unknown' ? 'غير محدد' : 'شحن';
+    const opTypeColor = opType === 'transfer' ? colors.primary : opType === 'unknown' ? colors.warning : colors.info;
 
     return (
       <View key={op.id} style={[styles.opCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.opCardTop}>
-          <View style={[styles.opSource, { backgroundColor: colors.surfaceAlt }]}>
-            {sourceIcon}
-            <Text style={[styles.opSourceText, { color: colors.textSecondary }]}>{sourceLabel}</Text>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <View style={[styles.opSource, { backgroundColor: colors.surfaceAlt }]}>
+              {sourceIcon}
+              <Text style={[styles.opSourceText, { color: colors.textSecondary }]}>{sourceLabel}</Text>
+            </View>
+            <View style={[styles.opSource, { backgroundColor: opTypeColor + '15' }]}>
+              {opType === 'transfer' ? <Banknote size={16} color={opTypeColor} strokeWidth={2} /> : opType === 'unknown' ? <AlertTriangle size={16} color={opTypeColor} strokeWidth={2} /> : <Smartphone size={16} color={opTypeColor} strokeWidth={2} />}
+              <Text style={[styles.opSourceText, { color: opTypeColor }]}>{opTypeLabel}</Text>
+            </View>
           </View>
           <Text style={[styles.opTime, { color: colors.textMuted }]}>{formatDateTime(op.createdAt)}</Text>
         </View>
@@ -1095,6 +1175,78 @@ export default function PendingOperationsScreen() {
                 style={[styles.modalCancel, { backgroundColor: colors.surfaceAlt }]}
               >
                 <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Transfer Matching Modal */}
+      <Modal
+        visible={transferModal !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setTransferModal(null); setTransferMatches([]); setSelectedMatchId(null); }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>مطابقة الحوالة</Text>
+            {transferModal ? (() => {
+              const parsed = parseTransferSms(transferModal.originalMessage);
+              return (
+                <>
+                  <View style={[styles.opMessage, { backgroundColor: colors.surfaceAlt, marginBottom: 12 }]}>
+                    {parsed.isTransfer ? (
+                      <>
+                        <Text style={[styles.opMessageLabel, { color: colors.textMuted }]}>المرسل: {parsed.senderName}</Text>
+                        <Text style={[styles.opMessageLabel, { color: colors.textMuted }]}>المبلغ: {parsed.amount} {parsed.currency}</Text>
+                        {parsed.bankName ? <Text style={[styles.opMessageLabel, { color: colors.textMuted }]}>البنك: {parsed.bankName}</Text> : null}
+                      </>
+                    ) : (
+                      <Text style={[styles.opMessageText, { color: colors.textSecondary }]}>
+                        المرسل: {transferModal.senderName || transferModal.customerName}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={[styles.modalSub, { color: colors.textSecondary, marginBottom: 12 }]}>
+                    اختر الزبون المطابق لتحصيل الرصيد:
+                  </Text>
+                  {transferMatches.map((m) => (
+                    <TouchableOpacity
+                      key={m.customerId ?? 'new'}
+                      onPress={() => setSelectedMatchId(m.customerId)}
+                      style={[
+                        styles.categoryButton,
+                        {
+                          backgroundColor: selectedMatchId === m.customerId ? colors.primary + '15' : colors.surfaceAlt,
+                          borderColor: selectedMatchId === m.customerId ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <View style={[styles.categoryButtonDot, { backgroundColor: selectedMatchId === m.customerId ? colors.primary : colors.textMuted }]} />
+                      <Text style={[styles.categoryButtonText, { color: colors.text, flex: 1 }]}>
+                        {m.customerName}
+                        {m.confidence > 0 ? `  (${Math.round(m.confidence * 100)}%)` : ''}
+                      </Text>
+                      {selectedMatchId === m.customerId ? <Check size={18} color={colors.primary} strokeWidth={2} /> : null}
+                    </TouchableOpacity>
+                  ))}
+                </>
+              );
+            })() : null}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => { setTransferModal(null); setTransferMatches([]); setSelectedMatchId(null); }}
+                style={[styles.modalCancel, { backgroundColor: colors.surfaceAlt }]}
+              >
+                <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleConfirmTransferCollection}
+                style={[styles.modalSave, { backgroundColor: colors.success }]}
+              >
+                <Banknote size={18} color="#FFFFFF" strokeWidth={2} />
+                <Text style={styles.modalSaveText}>تأكيد التحصيل</Text>
               </TouchableOpacity>
             </View>
           </View>
