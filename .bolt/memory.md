@@ -7,6 +7,7 @@
 - SMS integration: customers send SMS to the device; app processes and responds.
 - Companion web dashboard for inventory, sales, and debt tracking.
 - Primary users are Arabic-speaking shop owners/operators.
+- Backend uses Supabase for the SMS outbox queue.
 
 ## Brand personality & voice
 
@@ -17,6 +18,7 @@
 
 - Arabic RTL layout expected throughout the app and dashboard.
 - Telecom-retail workflow: sales entry, customer lookup via phone/SIM number, SMS-driven interactions.
+- Settings page includes SMS gateway controls with retry buttons for pending and failed messages.
 
 ## Decisions, constraints & rationale
 
@@ -24,6 +26,10 @@
 - Customer identification: match incoming SMS sender number or SIM number against saved `telecomSales` records.
 - "زبون معروف" (known customer) = customer with a prior sales record in `telecomSales`; "غير معروف" = no prior record.
 - Offline-first; no assumption of constant network for core retail operations.
+- SMS gateway (outbox sender) is decoupled from SMS monitoring — gateway always runs on Android regardless of monitoring state. Rationale: stopping the built-in SMS app should not halt outgoing SMS processing.
+- Stuck claim recovery: Java Android service reclaims rows with `claimed_at` set but `status='pending'` after 5 minutes; checks every 10 seconds.
+- Failed retry also clears `claimed_at` to give messages a fresh chance.
+- Outbox message states: `pending`, `claimed` (claimed_at set), `failed`.
 
 ## Open questions & assumptions
 
