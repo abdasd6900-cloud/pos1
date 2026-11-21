@@ -107,7 +107,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const url = new URL(req.url);
-    const path = url.pathname.replace(/^\/functions\/v1\/dealer-portal/, "") || "/";
+    const normalizedPath = url.pathname.replace(/\/+$/, "") || "/";
+    const path = normalizedPath.replace(/^.*\/(?:functions\/v1\/)?dealer-portal/, "") || normalizedPath;
     const method = req.method;
 
     const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" };
