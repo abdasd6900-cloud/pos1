@@ -1410,10 +1410,16 @@ export default function TelecomPOSScreen() {
       }
     }
 
-    const effectivePaid = paymentMethod === 'balance' && selectedCustomer
-      ? Math.min(total, selectedCustomer.balance)
+    const isBalancePayment = paymentMethod === 'balance' || paymentMethod === 'app_balance' || paymentMethod === 'cash_balance';
+    const availableBalance = paymentMethod === 'app_balance' ? (selectedCustomer?.appBalance ?? 0)
+      : paymentMethod === 'cash_balance' ? (selectedCustomer?.cashBalance ?? 0)
+      : paymentMethod === 'balance' ? (selectedCustomer?.balance ?? 0)
+      : 0;
+
+    const effectivePaid = isBalancePayment && selectedCustomer
+      ? Math.min(total, availableBalance)
       : paid;
-    const effectiveRemaining = paymentMethod === 'balance' && selectedCustomer
+    const effectiveRemaining = isBalancePayment && selectedCustomer
       ? Math.max(0, total - effectivePaid)
       : remaining;
     const debtChange = effectiveRemaining > 0 && customerId ? effectiveRemaining : 0;
@@ -1531,10 +1537,14 @@ export default function TelecomPOSScreen() {
       updateTelecomSale(sale.id, { smsSent: true });
     }
 
-    if (paymentMethod === 'balance' && customerId) {
+    if ((paymentMethod === 'balance' || paymentMethod === 'app_balance' || paymentMethod === 'cash_balance') && customerId) {
       const cust = customers.find((c) => c.id === customerId);
       if (cust) {
-        updateCustomer(customerId, { balance: Math.max(0, cust.balance - effectivePaid), updatedAt: Date.now() });
+        const updates: Partial<Customer> = { updatedAt: Date.now() };
+        if (paymentMethod === 'app_balance') updates.appBalance = Math.max(0, (cust.appBalance ?? 0) - effectivePaid);
+        else if (paymentMethod === 'cash_balance') updates.cashBalance = Math.max(0, (cust.cashBalance ?? 0) - effectivePaid);
+        else updates.balance = Math.max(0, cust.balance - effectivePaid);
+        updateCustomer(customerId, updates);
       }
     }
 
@@ -2429,7 +2439,19 @@ export default function TelecomPOSScreen() {
         </View>
 
         {/* Prepaid balance + existing debt */}
-        {selectedCustomer && selectedCustomer.balance > 0 && (
+        {selectedCustomer && (selectedCustomer.appBalance ?? 0) > 0 && (
+          <View style={[styles.miniInfoBadge, { backgroundColor: colors.primary + '12' }]}>
+            <Wallet size={12} color={colors.primary} strokeWidth={2} />
+            <Text style={[styles.miniInfoText, { color: colors.primary }]} numberOfLines={1}>رصيد تطبيق: {formatCurrency(selectedCustomer.appBalance ?? 0, settings.currency)}</Text>
+          </View>
+        )}
+        {selectedCustomer && (selectedCustomer.cashBalance ?? 0) > 0 && (
+          <View style={[styles.miniInfoBadge, { backgroundColor: colors.success + '12' }]}>
+            <Wallet size={12} color={colors.success} strokeWidth={2} />
+            <Text style={[styles.miniInfoText, { color: colors.success }]} numberOfLines={1}>رصيد نقدي: {formatCurrency(selectedCustomer.cashBalance ?? 0, settings.currency)}</Text>
+          </View>
+        )}
+        {selectedCustomer && (selectedCustomer.balance ?? 0) > 0 && (selectedCustomer.appBalance ?? 0) === 0 && (selectedCustomer.cashBalance ?? 0) === 0 && (
           <View style={[styles.miniInfoBadge, { backgroundColor: colors.primary + '12' }]}>
             <Wallet size={12} color={colors.primary} strokeWidth={2} />
             <Text style={[styles.miniInfoText, { color: colors.primary }]} numberOfLines={1}>رصيد: {formatCurrency(selectedCustomer.balance, settings.currency)}</Text>
@@ -2544,7 +2566,27 @@ export default function TelecomPOSScreen() {
                 ))}
               </View>
             )}
-            {selectedCustomer && selectedCustomer.balance > 0 && (
+            {selectedCustomer && (selectedCustomer.appBalance ?? 0) > 0 && (
+              <TouchableOpacity
+                onPress={() => { setPaymentMethod('app_balance'); setPaymentStatus('paid_full'); setPaidAmount(total.toFixed(2)); }}
+                style={[styles.balanceBtn3Col, { backgroundColor: paymentMethod === 'app_balance' ? colors.primary : colors.surfaceAlt, borderColor: colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Wallet size={14} color={paymentMethod === 'app_balance' ? '#FFFFFF' : colors.primary} strokeWidth={2} />
+                <Text style={[styles.paymentText3Col, { color: paymentMethod === 'app_balance' ? '#FFFFFF' : colors.primary }]}>رصيد تطبيق ({formatCurrency(selectedCustomer.appBalance ?? 0, settings.currency)})</Text>
+              </TouchableOpacity>
+            )}
+            {selectedCustomer && (selectedCustomer.cashBalance ?? 0) > 0 && (
+              <TouchableOpacity
+                onPress={() => { setPaymentMethod('cash_balance'); setPaymentStatus('paid_full'); setPaidAmount(total.toFixed(2)); }}
+                style={[styles.balanceBtn3Col, { backgroundColor: paymentMethod === 'cash_balance' ? colors.success : colors.surfaceAlt, borderColor: colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Wallet size={14} color={paymentMethod === 'cash_balance' ? '#FFFFFF' : colors.success} strokeWidth={2} />
+                <Text style={[styles.paymentText3Col, { color: paymentMethod === 'cash_balance' ? '#FFFFFF' : colors.success }]}>رصيد نقدي ({formatCurrency(selectedCustomer.cashBalance ?? 0, settings.currency)})</Text>
+              </TouchableOpacity>
+            )}
+            {selectedCustomer && (selectedCustomer.balance ?? 0) > 0 && (selectedCustomer.appBalance ?? 0) === 0 && (selectedCustomer.cashBalance ?? 0) === 0 && (
               <TouchableOpacity
                 onPress={() => { setPaymentMethod('balance'); setPaymentStatus('paid_full'); setPaidAmount(total.toFixed(2)); }}
                 style={[styles.balanceBtn3Col, { backgroundColor: paymentMethod === 'balance' ? colors.accent : colors.surfaceAlt, borderColor: colors.border }]}

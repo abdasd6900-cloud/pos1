@@ -20,6 +20,7 @@ import type {
   SmsMessage, SmsMessageCategory, SmsMessageStatus, QuickReplyTemplate, ScheduledSms,
   PhoneNumberEntry, WalletTransaction, WalletType, WalletTxnType,
   CompanyBalanceTxn, RechargeCompanyId, LearnedSmsRule, LearnedSmsCategory,
+  CustomerBalanceType,
 } from '@/types';
 import { WALLET_TYPES, ELECTRONIC_WALLET_TYPES, RECHARGE_COMPANIES } from '@/types';
 import { storage, type BackupData, DEFAULT_SETTINGS } from './storage';
@@ -236,14 +237,14 @@ interface AppData {
   updateProduct: (id: string, updates: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
 
-  addCustomer: (c: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'debt' | 'loyaltyPoints' | 'balance'>) => Customer;
+  addCustomer: (c: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'debt' | 'loyaltyPoints' | 'balance' | 'appBalance' | 'cashBalance'>) => Customer;
   updateCustomer: (id: string, updates: Partial<Customer>) => void;
   deleteCustomer: (id: string) => void;
   createCustomerFiles: () => void;
   mergeDuplicateCustomers: () => number;
   recordPayment: (customerId: string, amount: number) => Transaction;
   updatePayment: (id: string, amount: number) => void;
-  addCustomerBalance: (customerId: string, amount: number, note: string, settleDebt?: boolean) => Transaction;
+  addCustomerBalance: (customerId: string, amount: number, note: string, settleDebt?: boolean, balanceType?: CustomerBalanceType) => Transaction;
   redeemLoyalty: (customerId: string, points: number) => void;
 
   addSupplier: (s: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt' | 'balance'>) => Supplier;
@@ -1853,7 +1854,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ============ Customers ============
   const addCustomer: AppData['addCustomer'] = useCallback((c) => {
-    const customer: Customer = { ...c, debt: 0, balance: 0, loyaltyPoints: 0, id: storage.generateId(), createdAt: Date.now(), updatedAt: Date.now() };
+    const customer: Customer = { ...c, debt: 0, balance: 0, appBalance: 0, cashBalance: 0, loyaltyPoints: 0, id: storage.generateId(), createdAt: Date.now(), updatedAt: Date.now() };
     setCustomers((prev) => { const next = [customer, ...prev]; storage.saveCustomers(next); return next; });
     addAuditEntry('create', 'customer', customer.id, `إضافة عميل: ${customer.name}`);
     return customer;
@@ -1914,6 +1915,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const mergedDebt = group.reduce((s, c) => s + c.debt, 0);
       const mergedBalance = group.reduce((s, c) => s + c.balance, 0);
+      const mergedAppBalance = group.reduce((s, c) => s + (c.appBalance ?? 0), 0);
+      const mergedCashBalance = group.reduce((s, c) => s + (c.cashBalance ?? 0), 0);
       const mergedLoyalty = group.reduce((s, c) => s + c.loyaltyPoints, 0);
       const mergedNotes = group.map((c) => c.notes).filter(Boolean).join(' | ');
       const mergedSub = primary.subscriptionNumber || duplicates.find((d) => d.subscriptionNumber)?.subscriptionNumber || '';
@@ -1925,6 +1928,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       primaryUpdates.set(primary.id, {
         debt: mergedDebt,
         balance: mergedBalance,
+        appBalance: mergedAppBalance,
+        cashBalance: mergedCashBalance,
         loyaltyPoints: mergedLoyalty,
         notes: mergedNotes || primary.notes,
         subscriptionNumber: mergedSub,
@@ -2002,7 +2007,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return mergedCount;
   }, [customers, transactions, telecomSales, pendingOperations, customerFiles, addAuditEntry]);
 
-  const addCustomerBalance: AppData['addCustomerBalance'] = useCallback((customerId, amount, note, settleDebt) => {
+  const addCustomerBalance: AppData['addCustomerBalance'] = useCallback((customerId, amount, note, settleDebt, balanceType = 'app') => {
     const customer = customers.find((c) => c.id === customerId);
     const currentDebt = Math.max(customer?.debt ?? 0, 0);
     const debtPaid = settleDebt ? Math.min(currentDebt, amount) : 0;
@@ -2023,7 +2028,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       splitPayment: null,
       debtChange: -debtPaid,
       loyaltyEarned: 0,
-      note: note || 'شحن رصيد مسبق',
+      note: note || (balanceType === 'cash' ? 'شحن رصيد نقدي' : 'شحن رصيد تطبيق'),
       smsSent: false,
       returnReason: '',
       originalTxnId: null,
@@ -2041,12 +2046,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...c,
         debt: Math.max(0, c.debt - debtPaid),
         balance: c.balance + balanceAdded,
+        appBalance: balanceType === 'app' ? c.appBalance + balanceAdded : c.appBalance,
+        cashBalance: balanceType === 'cash' ? c.cashBalance + balanceAdded : c.cashBalance,
         updatedAt: Date.now(),
       } : c);
       storage.saveCustomers(next);
       return next;
     });
-    addAuditEntry('payment', 'customer', txn.id, `شحن ${amount} - سداد دين ${debtPaid} - إضافة رصيد ${balanceAdded} - ${customer?.name ?? ''}`);
+    addAuditEntry('payment', 'customer', txn.id, `شحن ${amount} (${balanceType === 'cash' ? 'نقدي' : 'تطبيق'}) - سداد دين ${debtPaid} - إضافة رصيد ${balanceAdded} - ${customer?.name ?? ''}`);
     return txn;
   }, [customers, settings, currentStaffId, currentStaff, addAuditEntry]);
 
@@ -2259,9 +2266,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    if (txn.customerId && txn.paymentMethod === 'balance' && txn.type === 'sale') {
+    if (txn.customerId && (txn.paymentMethod === 'balance' || txn.paymentMethod === 'app_balance' || txn.paymentMethod === 'cash_balance') && txn.type === 'sale') {
       setCustomers((prev) => {
-        const next = prev.map((c) => c.id === txn.customerId ? { ...c, balance: Math.max(0, c.balance - txn.paid), updatedAt: Date.now() } : c);
+        const next = prev.map((c) => {
+          if (c.id !== txn.customerId) return c;
+          const newAppBalance = txn.paymentMethod === 'app_balance' ? Math.max(0, c.appBalance - txn.paid) : c.appBalance;
+          const newCashBalance = txn.paymentMethod === 'cash_balance' ? Math.max(0, c.cashBalance - txn.paid) : c.cashBalance;
+          const newBalance = txn.paymentMethod === 'balance' ? Math.max(0, c.balance - txn.paid) : c.balance;
+          return { ...c, appBalance: newAppBalance, cashBalance: newCashBalance, balance: newBalance, updatedAt: Date.now() };
+        });
         storage.saveCustomers(next);
         return next;
       });
@@ -2443,16 +2456,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (txn && txn.customerId) {
       const debtReversal = -(txn.debtChange ?? 0);
-      const balanceRefund = txn.paymentMethod === 'balance' ? txn.paid : 0;
+      const balanceRefund = (txn.paymentMethod === 'balance' || txn.paymentMethod === 'app_balance' || txn.paymentMethod === 'cash_balance') ? txn.paid : 0;
 
       if (debtReversal !== 0 || balanceRefund > 0) {
         setCustomers((prev) => {
-          const next = prev.map((c) => c.id === txn.customerId ? {
-            ...c,
-            debt: Math.max(0, c.debt + debtReversal),
-            balance: c.balance + balanceRefund,
-            updatedAt: Date.now(),
-          } : c);
+          const next = prev.map((c) => {
+            if (c.id !== txn.customerId) return c;
+            const appRefund = txn.paymentMethod === 'app_balance' ? balanceRefund : 0;
+            const cashRefund = txn.paymentMethod === 'cash_balance' ? balanceRefund : 0;
+            const legacyRefund = txn.paymentMethod === 'balance' ? balanceRefund : 0;
+            return {
+              ...c,
+              debt: Math.max(0, c.debt + debtReversal),
+              appBalance: c.appBalance + appRefund,
+              cashBalance: c.cashBalance + cashRefund,
+              balance: c.balance + legacyRefund,
+              updatedAt: Date.now(),
+            };
+          });
           storage.saveCustomers(next);
           return next;
         });
@@ -3081,16 +3102,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ? customers.find((c) => c.id === sale.customerId)
         : customers.find((c) => c.phone === sale.customerPhone || c.name === sale.customerName);
       const debtReversal = sale.operationType === 'cancelled' ? 0 : -(sale.remaining ?? sale.debtChange ?? 0);
-      const balanceRefund = sale.paymentMethod === 'balance' ? sale.paid : 0;
+      const balanceRefund = (sale.paymentMethod === 'balance' || sale.paymentMethod === 'app_balance' || sale.paymentMethod === 'cash_balance') ? sale.paid : 0;
 
       if (customer && (debtReversal !== 0 || balanceRefund > 0)) {
         setCustomers((prev) => {
-          const next = prev.map((c) => c.id === customer.id ? {
-            ...c,
-            debt: Math.max(0, c.debt + debtReversal),
-            balance: c.balance + balanceRefund,
-            updatedAt: Date.now(),
-          } : c);
+          const next = prev.map((c) => {
+            if (c.id !== customer.id) return c;
+            const appRefund = sale.paymentMethod === 'app_balance' ? balanceRefund : 0;
+            const cashRefund = sale.paymentMethod === 'cash_balance' ? balanceRefund : 0;
+            const legacyRefund = sale.paymentMethod === 'balance' ? balanceRefund : 0;
+            return {
+              ...c,
+              debt: Math.max(0, c.debt + debtReversal),
+              appBalance: (c.appBalance ?? 0) + appRefund,
+              cashBalance: (c.cashBalance ?? 0) + cashRefund,
+              balance: c.balance + legacyRefund,
+              updatedAt: Date.now(),
+            };
+          });
           storage.saveCustomers(next);
           return next;
         });
@@ -3162,11 +3191,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const usageCost = sale.salePrice * (usageDays / totalDays);
           const refund = Math.max(0, sale.paid - usageCost);
           setCustomers((prev) => {
-            const next = prev.map((c) => c.id === sale.customerId ? {
-              ...c,
-              balance: c.balance + refund,
-              updatedAt: now,
-            } : c);
+            const next = prev.map((c) => {
+              if (c.id !== sale.customerId) return c;
+              if (sale.paymentMethod === 'app_balance') return { ...c, appBalance: (c.appBalance ?? 0) + refund, updatedAt: now };
+              if (sale.paymentMethod === 'cash_balance') return { ...c, cashBalance: (c.cashBalance ?? 0) + refund, updatedAt: now };
+              return { ...c, balance: c.balance + refund, updatedAt: now };
+            });
             storage.saveCustomers(next);
             return next;
           });
@@ -4433,9 +4463,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       { id: storage.generateId(), name: 'ماء معدني 500مل', barcode: '6281007021239', localBarcode: '', price: 1.5, cost: 0.8, stock: 200, unit: 'حبة', subUnits: [{ name: 'دستة', factor: 12, price: 16 }, { name: 'كرتون', factor: 48, price: 60 }], minStock: 48, category: 'مشروبات', expiryDate: null, createdAt: now, updatedAt: now },
     ];
     const demoCustomers: Customer[] = [
-      { id: storage.generateId(), name: 'أحمد محمد', phone: '0555123456', tier: 'vip', debt: 150, balance: 200, creditLimit: 1000, discountPercent: 5, notes: 'زبون مميز', subscriptionNumber: '', subscriptionExpiry: now + dayMs * 3, loyaltyPoints: 320, createdAt: now, updatedAt: now },
-      { id: storage.generateId(), name: 'سارة عبدالله', phone: '0555987654', tier: 'regular', debt: 0, balance: 0, creditLimit: 500, discountPercent: 0, notes: '', subscriptionNumber: '', subscriptionExpiry: null, loyaltyPoints: 85, createdAt: now, updatedAt: now },
-      { id: storage.generateId(), name: 'خالد العتيبي', phone: '0533445566', tier: 'regular', debt: 75, balance: 0, creditLimit: 300, discountPercent: 0, notes: '', subscriptionNumber: '', subscriptionExpiry: now - dayMs * 20, loyaltyPoints: 40, createdAt: now - dayMs * 25, updatedAt: now },
+      { id: storage.generateId(), name: 'أحمد محمد', phone: '0555123456', tier: 'vip', debt: 150, balance: 200, appBalance: 0, cashBalance: 0, creditLimit: 1000, discountPercent: 5, notes: 'زبون مميز', subscriptionNumber: '', subscriptionExpiry: now + dayMs * 3, loyaltyPoints: 320, createdAt: now, updatedAt: now },
+      { id: storage.generateId(), name: 'سارة عبدالله', phone: '0555987654', tier: 'regular', debt: 0, balance: 0, appBalance: 0, cashBalance: 0, creditLimit: 500, discountPercent: 0, notes: '', subscriptionNumber: '', subscriptionExpiry: null, loyaltyPoints: 85, createdAt: now, updatedAt: now },
+      { id: storage.generateId(), name: 'خالد العتيبي', phone: '0533445566', tier: 'regular', debt: 75, balance: 0, appBalance: 0, cashBalance: 0, creditLimit: 300, discountPercent: 0, notes: '', subscriptionNumber: '', subscriptionExpiry: now - dayMs * 20, loyaltyPoints: 40, createdAt: now - dayMs * 25, updatedAt: now },
     ];
     const demoSuppliers: Supplier[] = [
       { id: storage.generateId(), name: 'شركة الإمداد الغذائي', phone: '0112345678', company: 'الإمداد', balance: 2500, notes: 'مورد مواد غذائية رئيسي', createdAt: now, updatedAt: now },

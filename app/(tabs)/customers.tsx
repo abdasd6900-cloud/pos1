@@ -7,8 +7,8 @@ import {
   Package, Clock, AlertCircle, Calendar, Star, Undo2, Gift,
   Upload, Download, FileSpreadsheet, PlusCircle, Contact as ContactIcon,
   X,
- Info, AlertTriangle, ArrowUpRight, ArrowDownRight, TrendingUp, RefreshCw,
- MoreVertical, ArrowUpDown, Filter } from 'lucide-react-native';
+  Info, AlertTriangle, ArrowUpRight, ArrowDownRight, TrendingUp, RefreshCw,
+  MoreVertical, ArrowUpDown, Filter, Smartphone, Banknote } from 'lucide-react-native';
 import * as XLSX from 'xlsx';
 import { useApp } from '@/lib/app-context';
 import { useTheme } from '@/lib/theme-context';
@@ -389,7 +389,8 @@ export default function CustomersScreen() {
     if (!isDesktopLayout) return renderCardItem(item);
     const isVip = item.tier === 'vip';
     const stats = customerStatsMap.get(item.id) ?? { subs: 0, ops: 0, totalSpent: 0 };
-    const netBalance = item.balance - item.debt;
+    const totalBalance = (item.appBalance ?? 0) + (item.cashBalance ?? 0) + (item.balance ?? 0);
+    const netBalance = totalBalance - item.debt;
 
     return (
       <TouchableOpacity
@@ -489,7 +490,8 @@ export default function CustomersScreen() {
   const renderCardItem = (item: Customer) => {
     const isVip = item.tier === 'vip';
     const stats = customerStatsMap.get(item.id) ?? { subs: 0, ops: 0, totalSpent: 0 };
-    const netBalance = item.balance - item.debt;
+    const totalBalance = (item.appBalance ?? 0) + (item.cashBalance ?? 0) + (item.balance ?? 0);
+    const netBalance = totalBalance - item.debt;
 
     return (
       <TouchableOpacity
@@ -882,9 +884,9 @@ export default function CustomersScreen() {
         currency={settings.currency}
         colors={colors}
         onClose={() => setBalanceCustomer(null)}
-        onConfirm={(amount, note, settleDebt) => {
+        onConfirm={(amount, note, settleDebt, balanceType) => {
           if (balanceCustomer) {
-            addCustomerBalance(balanceCustomer.id, amount, note, settleDebt);
+            addCustomerBalance(balanceCustomer.id, amount, note, settleDebt, balanceType);
             setBalanceCustomer(null);
           }
         }}
@@ -1405,12 +1407,13 @@ function BalanceModal({
   currency: string;
   colors: Colors;
   onClose: () => void;
-  onConfirm: (amount: number, note: string, settleDebt?: boolean) => void;
+  onConfirm: (amount: number, note: string, settleDebt?: boolean, balanceType?: 'app' | 'cash') => void;
 }) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [settleDebt, setSettleDebt] = useState(false);
+  const [balanceType, setBalanceType] = useState<'app' | 'cash'>('app');
 
   useEffect(() => {
     if (visible) {
@@ -1418,13 +1421,14 @@ function BalanceModal({
       setNote('');
       setError('');
       setSettleDebt(false);
+      setBalanceType('app');
     }
   }, [visible, customer]);
 
   const handleConfirm = () => {
     const val = parseFloat(amount);
     if (!val || val <= 0) { setError('أدخل مبلغاً صحيحاً'); return; }
-    onConfirm(val, note.trim(), settleDebt);
+    onConfirm(val, note.trim(), settleDebt, balanceType);
   };
 
   return (
@@ -1452,16 +1456,48 @@ function BalanceModal({
           </View>
 
           <View style={[styles.currentBalanceBox, { backgroundColor: colors.primary + '12' }]}>
-            <Text style={[styles.currentDebtLabel, { color: colors.textSecondary }]}>الرصيد الحالي</Text>
-            <Text style={[styles.currentBalanceValue, { color: colors.primary }]}>
-              {formatCurrency(customer.balance, currency)}
-            </Text>
+            <View style={styles.dualBalanceRow}>
+              <View style={styles.dualBalanceItem}>
+                <Text style={[styles.currentDebtLabel, { color: colors.textSecondary }]}>رصيد التطبيق</Text>
+                <Text style={[styles.currentBalanceValue, { color: colors.primary, fontSize: 16 }]}>
+                  {formatCurrency(customer.appBalance ?? 0, currency)}
+                </Text>
+              </View>
+              <View style={[styles.dualBalanceDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.dualBalanceItem}>
+                <Text style={[styles.currentDebtLabel, { color: colors.textSecondary }]}>الرصيد النقدي</Text>
+                <Text style={[styles.currentBalanceValue, { color: colors.success, fontSize: 16 }]}>
+                  {formatCurrency(customer.cashBalance ?? 0, currency)}
+                </Text>
+              </View>
+            </View>
             {customer.debt > 0 && (
               <Text style={[styles.currentDebtLabel, { color: colors.danger, marginTop: 4 }]}>
                 دين مستحق: {formatCurrency(customer.debt, currency)}
               </Text>
             )}
           </View>
+
+          <FormField label="نوع الرصيد" colors={colors}>
+            <View style={styles.balanceTypeSelector}>
+              <TouchableOpacity
+                onPress={() => setBalanceType('app')}
+                style={[styles.balanceTypeBtn, { backgroundColor: balanceType === 'app' ? colors.primary : colors.surfaceAlt, borderColor: balanceType === 'app' ? colors.primary : colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Smartphone size={16} color={balanceType === 'app' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} />
+                <Text style={[styles.balanceTypeText, { color: balanceType === 'app' ? '#FFFFFF' : colors.textSecondary }]}>رصيد التطبيق</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setBalanceType('cash')}
+                style={[styles.balanceTypeBtn, { backgroundColor: balanceType === 'cash' ? colors.success : colors.surfaceAlt, borderColor: balanceType === 'cash' ? colors.success : colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Banknote size={16} color={balanceType === 'cash' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} />
+                <Text style={[styles.balanceTypeText, { color: balanceType === 'cash' ? '#FFFFFF' : colors.textSecondary }]}>رصيد نقدي</Text>
+              </TouchableOpacity>
+            </View>
+          </FormField>
 
           {/* Debt settlement option */}
           {customer.debt > 0 && (
@@ -1939,6 +1975,12 @@ const styles = StyleSheet.create({
   topUpBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   currentBalanceBox: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginBottom: 16 },
   currentBalanceValue: { fontSize: 24, fontWeight: '700', fontFamily: 'Cairo-Bold' },
+  dualBalanceRow: { flexDirection: 'row', alignItems: 'center', width: '100%' },
+  dualBalanceItem: { flex: 1, alignItems: 'center' },
+  dualBalanceDivider: { width: 1, height: 36 },
+  balanceTypeSelector: { flexDirection: 'row', gap: 10 },
+  balanceTypeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5 },
+  balanceTypeText: { fontSize: 13, fontWeight: '700', fontFamily: 'Cairo-SemiBold' },
   settleDebtRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, marginBottom: 16 },
   settleDebtCheck: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   settleDebtLabel: { fontSize: 14, fontWeight: '700', fontFamily: 'Cairo-SemiBold' },

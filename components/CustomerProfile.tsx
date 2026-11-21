@@ -138,6 +138,8 @@ function paymentMethodLabel(method: string): string {
   if (method === 'cash') return 'نقدي';
   if (method === 'debt') return 'دين';
   if (method === 'balance') return 'من الرصيد';
+  if (method === 'app_balance') return 'رصيد تطبيق';
+  if (method === 'cash_balance') return 'رصيد نقدي';
   if (method === 'card') return 'بطاقة';
   if (method === 'transfer') return 'تحويل';
   return method;
@@ -448,9 +450,16 @@ export function CustomerProfile({
           />
           <SummaryCard
             icon={<Wallet size={22} color={colors.primary} strokeWidth={2} />}
-            label="الرصيد المسبق"
-            value={formatCurrency(customer.balance, settings.currency)}
+            label="رصيد التطبيق"
+            value={formatCurrency(customer.appBalance ?? 0, settings.currency)}
             color={colors.primary}
+            colors={colors}
+          />
+          <SummaryCard
+            icon={<Wallet size={22} color={colors.success} strokeWidth={2} />}
+            label="الرصيد النقدي"
+            value={formatCurrency(customer.cashBalance ?? 0, settings.currency)}
+            color={colors.success}
             colors={colors}
           />
           {settings.enableLoyalty && (

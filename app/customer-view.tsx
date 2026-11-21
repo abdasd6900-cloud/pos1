@@ -17,6 +17,8 @@ interface CustomerData {
   tier: string;
   debt: number;
   balance: number;
+  appBalance?: number;
+  cashBalance?: number;
   creditLimit: number;
   loyaltyPoints: number;
   notes: string;
@@ -79,6 +81,8 @@ const paymentMethodLabel = (m: string): string => {
   if (m === 'wallet') return 'محفظة';
   if (m === 'usdt') return 'USDT';
   if (m === 'debt') return 'دين';
+  if (m === 'app_balance') return 'رصيد تطبيق';
+  if (m === 'cash_balance') return 'رصيد نقدي';
   return m;
 };
 
@@ -246,9 +250,15 @@ export default function CustomerViewPage() {
         />
         <SummaryCard
           icon={<Wallet size={18} color={COLORS.primary} strokeWidth={2} />}
-          label="الرصيد المسبق"
-          value={formatCurrency(c.balance, data.currency)}
+          label="رصيد التطبيق"
+          value={formatCurrency(c.appBalance ?? 0, data.currency)}
           color={COLORS.primary}
+        />
+        <SummaryCard
+          icon={<Wallet size={18} color={COLORS.success} strokeWidth={2} />}
+          label="الرصيد النقدي"
+          value={formatCurrency(c.cashBalance ?? 0, data.currency)}
+          color={COLORS.success}
         />
       </View>
 

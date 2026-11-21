@@ -206,6 +206,11 @@ export default function RetailPOSScreen() {
 
   const paid = parseFloat(paidAmount) || (paymentMethod === 'debt' ? 0 : total);
   const remaining = Math.max(0, total - paid);
+  const isBalancePayment = paymentMethod === 'balance' || paymentMethod === 'app_balance' || paymentMethod === 'cash_balance';
+  const availableBalance = paymentMethod === 'app_balance' ? (selectedCustomer?.appBalance ?? 0)
+    : paymentMethod === 'cash_balance' ? (selectedCustomer?.cashBalance ?? 0)
+    : paymentMethod === 'balance' ? (selectedCustomer?.balance ?? 0)
+    : 0;
 
   const addToCart = useCallback((product: Product) => {
     if (product.stock <= 0) return;
@@ -317,14 +322,14 @@ export default function RetailPOSScreen() {
 
     const debtChange = remaining > 0 && customerId ? remaining : 0;
 
-    const effectivePaid = paymentMethod === 'balance' && selectedCustomer
-      ? Math.min(total, selectedCustomer.balance)
+    const effectivePaid = isBalancePayment && selectedCustomer
+      ? Math.min(total, availableBalance)
       : paid;
-    const effectiveRemaining = paymentMethod === 'balance' && selectedCustomer
+    const effectiveRemaining = isBalancePayment && selectedCustomer
       ? Math.max(0, total - effectivePaid)
       : remaining;
 
-    const balanceDebtChange = paymentMethod === 'balance' && effectiveRemaining > 0 && customerId ? effectiveRemaining : 0;
+    const balanceDebtChange = isBalancePayment && effectiveRemaining > 0 && customerId ? effectiveRemaining : 0;
 
     const txn = addTransaction({
       type: 'sale',
@@ -360,7 +365,7 @@ export default function RetailPOSScreen() {
     setLastTxn(txn);
     setShowSuccess(true);
     resetSale();
-  }, [canCheckout, cart, selectedCustomer, customerName, customerPhone, paymentMethod, total, paid, remaining, discountAmount, notes, settings, activeShift, currentStaff, addTransaction, addCustomer]);
+  }, [canCheckout, cart, selectedCustomer, customerName, customerPhone, paymentMethod, total, paid, remaining, isBalancePayment, availableBalance, discountAmount, notes, settings, activeShift, currentStaff, addTransaction, addCustomer]);
 
   const sendSms = (phone: string, message: string) => {
     void logOutboundSms(phone, message, 'sms');
@@ -595,12 +600,24 @@ export default function RetailPOSScreen() {
         </View>
       )}
 
-      {selectedCustomer && selectedCustomer.balance > 0 && (
+      {selectedCustomer && ((selectedCustomer.appBalance ?? 0) > 0 || (selectedCustomer.cashBalance ?? 0) > 0 || (selectedCustomer.balance ?? 0) > 0) && (
         <View style={[styles.balanceCardPos, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
           <Wallet size={16} color={colors.primary} strokeWidth={2} />
-          <Text style={[styles.balanceCardPosText, { color: colors.primary }]}>
-            رصيد مسبق: {formatCurrency(selectedCustomer.balance, settings.currency)}
-          </Text>
+          {(selectedCustomer.appBalance ?? 0) > 0 && (
+            <Text style={[styles.balanceCardPosText, { color: colors.primary }]}>
+              تطبيق: {formatCurrency(selectedCustomer.appBalance ?? 0, settings.currency)}
+            </Text>
+          )}
+          {(selectedCustomer.cashBalance ?? 0) > 0 && (
+            <Text style={[styles.balanceCardPosText, { color: colors.success }]}>
+              نقدي: {formatCurrency(selectedCustomer.cashBalance ?? 0, settings.currency)}
+            </Text>
+          )}
+          {(selectedCustomer.balance ?? 0) > 0 && (selectedCustomer.appBalance ?? 0) === 0 && (selectedCustomer.cashBalance ?? 0) === 0 && (
+            <Text style={[styles.balanceCardPosText, { color: colors.primary }]}>
+              رصيد: {formatCurrency(selectedCustomer.balance, settings.currency)}
+            </Text>
+          )}
         </View>
       )}
     </>
@@ -626,7 +643,27 @@ export default function RetailPOSScreen() {
           <Wallet size={18} color={paymentMethod === 'cash' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} />
           <Text style={[styles.paymentText, { color: paymentMethod === 'cash' ? '#FFFFFF' : colors.textSecondary }]}>نقدي</Text>
         </TouchableOpacity>
-        {selectedCustomer && selectedCustomer.balance > 0 && (
+        {selectedCustomer && (selectedCustomer.appBalance ?? 0) > 0 && (
+          <TouchableOpacity
+            onPress={() => { setPaymentMethod('app_balance'); setPaidAmount(total.toFixed(2)); }}
+            style={[styles.paymentBtn, paymentMethod === 'app_balance' ? { backgroundColor: colors.primary } : { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+            activeOpacity={0.7}
+          >
+            <Wallet size={18} color={paymentMethod === 'app_balance' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} />
+            <Text style={[styles.paymentText, { color: paymentMethod === 'app_balance' ? '#FFFFFF' : colors.textSecondary }]}>رصيد تطبيق</Text>
+          </TouchableOpacity>
+        )}
+        {selectedCustomer && (selectedCustomer.cashBalance ?? 0) > 0 && (
+          <TouchableOpacity
+            onPress={() => { setPaymentMethod('cash_balance'); setPaidAmount(total.toFixed(2)); }}
+            style={[styles.paymentBtn, paymentMethod === 'cash_balance' ? { backgroundColor: colors.success } : { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+            activeOpacity={0.7}
+          >
+            <Wallet size={18} color={paymentMethod === 'cash_balance' ? '#FFFFFF' : colors.textSecondary} strokeWidth={2} />
+            <Text style={[styles.paymentText, { color: paymentMethod === 'cash_balance' ? '#FFFFFF' : colors.textSecondary }]}>رصيد نقدي</Text>
+          </TouchableOpacity>
+        )}
+        {selectedCustomer && (selectedCustomer.balance ?? 0) > 0 && (selectedCustomer.appBalance ?? 0) === 0 && (selectedCustomer.cashBalance ?? 0) === 0 && (
           <TouchableOpacity
             onPress={() => { setPaymentMethod('balance'); setPaidAmount(total.toFixed(2)); }}
             style={[styles.paymentBtn, paymentMethod === 'balance' ? { backgroundColor: colors.accent } : { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
@@ -683,20 +720,20 @@ export default function RetailPOSScreen() {
         </View>
       )}
 
-      {paymentMethod === 'balance' && selectedCustomer && (
+      {(paymentMethod === 'balance' || paymentMethod === 'app_balance' || paymentMethod === 'cash_balance') && selectedCustomer && (
         <View style={[styles.balanceConfirmBanner, { backgroundColor: colors.accent + '12' }]}>
           <Wallet size={16} color={colors.accent} strokeWidth={2} />
           <Text style={[styles.balanceConfirmText, { color: colors.accent }]}>
-            {`سيتم خصم ${formatCurrency(Math.min(total, selectedCustomer.balance), settings.currency)} من رصيد العميل (المتاح: ${formatCurrency(selectedCustomer.balance, settings.currency)})`}
+            {`سيتم خصم ${formatCurrency(Math.min(total, availableBalance), settings.currency)} من رصيد العميل (المتاح: ${formatCurrency(availableBalance, settings.currency)})`}
           </Text>
         </View>
       )}
 
-      {paymentMethod === 'balance' && selectedCustomer && total > selectedCustomer.balance && (
+      {(paymentMethod === 'balance' || paymentMethod === 'app_balance' || paymentMethod === 'cash_balance') && selectedCustomer && total > availableBalance && (
         <View style={[styles.balanceInsufficientBanner, { backgroundColor: colors.warning + '12' }]}>
           <AlertCircle size={16} color={colors.warning} strokeWidth={2} />
           <Text style={[styles.balanceInsufficientText, { color: colors.warning }]}>
-            الرصيد لا يكفي! المتبقي {formatCurrency(total - selectedCustomer.balance, settings.currency)} سيُسجل كدين
+            الرصيد لا يكفي! المتبقي {formatCurrency(total - availableBalance, settings.currency)} سيُسجل كدين
           </Text>
         </View>
       )}
@@ -722,7 +759,7 @@ export default function RetailPOSScreen() {
 
       <TouchableOpacity
         onPress={() => {
-          if (paymentMethod === 'balance' && selectedCustomer) {
+          if ((paymentMethod === 'balance' || paymentMethod === 'app_balance' || paymentMethod === 'cash_balance') && selectedCustomer) {
             setShowBalanceConfirm(true);
           } else {
             handleCheckout();
@@ -986,25 +1023,25 @@ export default function RetailPOSScreen() {
             </View>
             <View style={[styles.balanceConfirmDetailRow, { backgroundColor: colors.primary + '10' }]}>
               <Text style={[styles.balanceConfirmDetailLabel, { color: colors.textSecondary }]}>الرصيد المتاح</Text>
-              <Text style={[styles.balanceConfirmDetailValue, { color: colors.primary }]}>{formatCurrency(selectedCustomer.balance, settings.currency)}</Text>
+              <Text style={[styles.balanceConfirmDetailValue, { color: colors.primary }]}>{formatCurrency(availableBalance, settings.currency)}</Text>
             </View>
             <View style={[styles.balanceConfirmDetailRow, { backgroundColor: colors.accent + '10' }]}>
               <Text style={[styles.balanceConfirmDetailLabel, { color: colors.textSecondary }]}>مبلغ الشراء</Text>
               <Text style={[styles.balanceConfirmDetailValue, { color: colors.accent }]}>{formatCurrency(total, settings.currency)}</Text>
             </View>
-            <View style={[styles.balanceConfirmDetailRow, { backgroundColor: total > selectedCustomer.balance ? colors.warning + '10' : colors.success + '10' }]}>
+            <View style={[styles.balanceConfirmDetailRow, { backgroundColor: total > availableBalance ? colors.warning + '10' : colors.success + '10' }]}>
               <Text style={[styles.balanceConfirmDetailLabel, { color: colors.textSecondary }]}>
-                {total > selectedCustomer.balance ? 'الرصيد المتبقي بعد الخصم' : 'الرصيد بعد الخصم'}
+                {total > availableBalance ? 'الرصيد المتبقي بعد الخصم' : 'الرصيد بعد الخصم'}
               </Text>
-              <Text style={[styles.balanceConfirmDetailValue, { color: total > selectedCustomer.balance ? colors.warning : colors.success }]}>
-                {formatCurrency(Math.max(0, selectedCustomer.balance - total), settings.currency)}
+              <Text style={[styles.balanceConfirmDetailValue, { color: total > availableBalance ? colors.warning : colors.success }]}>
+                {formatCurrency(Math.max(0, availableBalance - total), settings.currency)}
               </Text>
             </View>
-            {total > selectedCustomer.balance && (
+            {total > availableBalance && (
               <View style={[styles.balanceInsufficientBanner, { backgroundColor: colors.warning + '12' }]}>
                 <AlertCircle size={16} color={colors.warning} strokeWidth={2} />
                 <Text style={[styles.balanceInsufficientText, { color: colors.warning }]}>
-                  الرصيد لا يكفي! سيتم خصم {formatCurrency(selectedCustomer.balance, settings.currency)} من الرصيد و تسجيل {formatCurrency(total - selectedCustomer.balance, settings.currency)} كدين
+                  الرصيد لا يكفي! سيتم خصم {formatCurrency(availableBalance, settings.currency)} من الرصيد و تسجيل {formatCurrency(total - availableBalance, settings.currency)} كدين
                 </Text>
               </View>
             )}

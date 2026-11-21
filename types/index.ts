@@ -412,7 +412,7 @@ export type ThemeMode = 'light' | 'dark';
 
 export type CustomerTier = 'regular' | 'vip';
 
-export type PaymentMethod = 'cash' | 'debt' | 'wallet' | 'usdt' | 'balance';
+export type PaymentMethod = 'cash' | 'debt' | 'wallet' | 'usdt' | 'balance' | 'app_balance' | 'cash_balance';
 
 // ============ Wallet / Treasury System ============
 export type WalletType = 'cash' | 'bank_palestine' | 'palpay' | 'jawwal_pay' | 'jawwal_pay_merchant' | 'malchat';
@@ -537,6 +537,8 @@ export interface Product {
   updatedAt: number;
 }
 
+export type CustomerBalanceType = 'app' | 'cash';
+
 export interface Customer {
   id: string;
   name: string;
@@ -544,6 +546,8 @@ export interface Customer {
   tier: CustomerTier;
   debt: number;
   balance: number;
+  appBalance: number;
+  cashBalance: number;
   creditLimit: number;
   discountPercent: number;
   notes: string;
