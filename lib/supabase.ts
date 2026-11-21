@@ -1,11 +1,18 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+interface SupabaseExtra {
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+}
 
-if (!(process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL) || !(process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY)) {
+const supabaseExtra = Constants.expoConfig?.extra as SupabaseExtra | undefined;
+const supabaseUrl = process.env.SUPABASE_URL || supabaseExtra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+export const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || supabaseExtra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+
+if (!(process.env.SUPABASE_URL || supabaseExtra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL) || !(process.env.SUPABASE_ANON_KEY || supabaseExtra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY)) {
   console.warn('Supabase configuration is missing — app will run in offline mode');
 }
 

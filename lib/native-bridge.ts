@@ -1,4 +1,5 @@
 import { Platform, NativeModules, DeviceEventEmitter } from 'react-native';
+import { supabaseAnonKey } from './supabase';
 
 export interface NativeBusinessHoursConfig {
   autoMode: boolean;
@@ -42,7 +43,7 @@ export async function setNativeSupabaseCredentialsV2(url: string, accessToken: s
       module.setSupabaseCredentials(url, accessToken, userId);
     }
     // Also pass the anon key so native code can use it as apikey header
-    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_KEY || '';
+    const anonKey = supabaseAnonKey || process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_KEY || '';
     if (anonKey && module?.setAnonKey) {
       module.setAnonKey(anonKey);
     }
